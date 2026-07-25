@@ -1,0 +1,20 @@
+const mysql = require('mysql2/promise');
+(async () => {
+  const c = await mysql.createConnection({ host: 'localhost', user: 'root', password: 'Memits@396', database: 'erp_mt_suite' });
+  await c.execute('SET FOREIGN_KEY_CHECKS = 0');
+  await c.execute('DROP TABLE IF EXISTS customer_payment_allocations');
+  await c.execute('DROP TABLE IF EXISTS customer_payments');
+  await c.execute('DROP TABLE IF EXISTS credit_note_details');
+  await c.execute('DROP TABLE IF EXISTS credit_notes');
+  await c.execute('DROP TABLE IF EXISTS sales_return_details');
+  await c.execute('DROP TABLE IF EXISTS sales_returns');
+  await c.execute('DROP TABLE IF EXISTS sales_invoice_details');
+  await c.execute('DROP TABLE IF EXISTS sales_invoices');
+  await c.execute('DROP TABLE IF EXISTS delivery_note_details');
+  await c.execute('DROP TABLE IF EXISTS delivery_notes');
+  await c.execute('DROP TABLE IF EXISTS sales_order_details');
+  await c.execute('DROP TABLE IF EXISTS sales_orders');
+  await c.execute('SET FOREIGN_KEY_CHECKS = 1');
+  console.log('All old tables dropped successfully');
+  await c.end();
+})();

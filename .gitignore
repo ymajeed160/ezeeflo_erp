@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+front-end/build/
+build/
+dist/
+
+# Environment files
+.env
+.env.local
+.env.production
+.env.development
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Uploads (large binary files)
+back-end/uploads/*
+!back-end/uploads/.gitkeep
+deploy-tezhost/nodejs_app/uploads/*
+!deploy-tezhost/nodejs_app/uploads/.gitkeep
+
+# Debug logs
+debug-logs/
+
+# Coverage
+coverage/
+
+# Misc
+*.bak
+*.tmp

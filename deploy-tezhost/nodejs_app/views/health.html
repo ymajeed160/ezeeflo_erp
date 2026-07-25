@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API Health – ERP Multi-Tenant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+    .card {
+      background: rgba(30,41,59,0.5);
+      border: 1px solid rgba(148,163,184,0.1);
+      border-radius: 20px;
+      padding: 3rem;
+      max-width: 640px;
+      width: 100%;
+      backdrop-filter: blur(20px);
+      position: relative;
+      overflow: hidden;
+    }
+    .card::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(circle at 30% 30%, rgba(34,197,94,0.06) 0%, transparent 50%);
+      pointer-events: none;
+    }
+
+    /* Status indicator */
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 2rem;
+      position: relative;
+    }
+    .status-dot {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #22c55e;
+      box-shadow: 0 0 20px rgba(34,197,94,0.4);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 20px rgba(34,197,94,0.4); }
+      50% { box-shadow: 0 0 35px rgba(34,197,94,0.7); }
+    }
+    .status-dot.error { background: #ef4444; box-shadow: 0 0 20px rgba(239,68,68,0.4); animation: pulseError 2s ease-in-out infinite; }
+    @keyframes pulseError {
+      0%, 100% { box-shadow: 0 0 20px rgba(239,68,68,0.4); }
+      50% { box-shadow: 0 0 35px rgba(239,68,68,0.7); }
+    }
+    .status-text {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #22c55e;
+    }
+    .status-text.error { color: #ef4444; }
+    .subtitle {
+      color: #64748b;
+      font-size: 0.9rem;
+      margin-top: 0.15rem;
+    }
+
+    /* Metrics grid */
+    .metrics {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin: 2rem 0;
+      position: relative;
+    }
+    .metric {
+      background: rgba(15,23,42,0.4);
+      border: 1px solid rgba(148,163,184,0.08);
+      border-radius: 12px;
+      padding: 1.25rem;
+    }
+    .metric .label {
+      font-size: 0.75rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 0.4rem;
+    }
+    .metric .value {
+      font-size: 1.2rem;
+      font-weight: 600;
+      color: #e2e8f0;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+    }
+    .metric .value.green { color: #22c55e; }
+    .metric .value.blue { color: #60a5fa; }
+    .metric .value.purple { color: #a78bfa; }
+    .metric .value.amber { color: #f59e0b; }
+
+    /* Bar chart */
+    .uptime-bar-container {
+      margin: 1.5rem 0;
+      position: relative;
+    }
+    .uptime-bar-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      color: #94a3b8;
+      margin-bottom: 0.4rem;
+    }
+    .uptime-bar {
+      height: 8px;
+      background: rgba(15,23,42,0.6);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .uptime-bar-fill {
+      height: 100%;
+      border-radius: 10px;
+      background: linear-gradient(90deg, #22c55e, #16a34a);
+      transition: width 0.5s ease;
+    }
+
+    /* Divider */
+    .divider {
+      border: none;
+      border-top: 1px solid rgba(148,163,184,0.08);
+      margin: 1.5rem 0;
+    }
+
+    /* Footer info */
+    .footer-info {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      color: #475569;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      position: relative;
+    }
+    .footer-info a {
+      color: #60a5fa;
+      text-decoration: none;
+    }
+    .footer-info a:hover { text-decoration: underline; }
+
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 50px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background: rgba(34,197,94,0.1);
+      border: 1px solid rgba(34,197,94,0.2);
+      color: #22c55e;
+      margin-bottom: 1.5rem;
+    }
+
+    @media (max-width: 500px) {
+      body { padding: 1rem; }
+      .card { padding: 1.5rem; }
+      .metrics { grid-template-columns: 1fr; }
+      .status-text { font-size: 1.2rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge">⚡ System Status</div>
+
+    <div class="status-row">
+      <div class="status-dot" id="statusDot"></div>
+      <div>
+        <div class="status-text" id="statusText">All Systems Operational</div>
+        <div class="subtitle" id="statusSubtitle">ERP Multi-Tenant API</div>
+      </div>
+    </div>
+
+    <div class="metrics">
+      <div class="metric">
+        <div class="label">Uptime</div>
+        <div class="value blue" id="uptimeValue">—</div>
+      </div>
+      <div class="metric">
+        <div class="label">Environment</div>
+        <div class="value purple" id="envValue">—</div>
+      </div>
+      <div class="metric">
+        <div class="label">Response Time</div>
+        <div class="value green" id="responseValue">&lt; 1ms</div>
+      </div>
+      <div class="metric">
+        <div class="label">Last Checked</div>
+        <div class="value amber" id="timestampValue">—</div>
+      </div>
+    </div>
+
+    <div class="uptime-bar-container">
+      <div class="uptime-bar-label">
+        <span>API Uptime</span>
+        <span id="uptimeLabel">Just started</span>
+      </div>
+      <div class="uptime-bar">
+        <div class="uptime-bar-fill" id="uptimeBar" style="width: 100%"></div>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <div class="footer-info">
+      <span>ERP Multi-Tenant System v1.0.0</span>
+      <a href="/api">← Back to API Docs</a>
+    </div>
+  </div>
+
+  <script>
+    function formatUptime(seconds) {
+      const d = Math.floor(seconds / 86400);
+      const h = Math.floor((seconds % 86400) / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = Math.floor(seconds % 60);
+      const parts = [];
+      if (d > 0) parts.push(d + 'd');
+      if (h > 0) parts.push(h + 'h');
+      if (m > 0) parts.push(m + 'm');
+      parts.push(s + 's');
+      return parts.join(' ');
+    }
+
+    function getUptimePercent(seconds) {
+      const maxSeconds = 30 * 24 * 3600; // 30 days = 100%
+      const pct = Math.min(100, (seconds / maxSeconds) * 100);
+      return Math.max(1, pct);
+    }
+
+    async function fetchHealth() {
+      try {
+        const start = performance.now();
+        const resp = await fetch('/api/health', { headers: { 'Accept': 'application/json' } });
+        const elapsed = Math.round(performance.now() - start);
+        const data = await resp.json();
+
+        const uptime = data.data?.uptime || 0;
+        const ts = data.data?.timestamp || new Date().toISOString();
+        const env = data.data?.environment || 'development';
+
+        document.getElementById('uptimeValue').textContent = formatUptime(uptime);
+        document.getElementById('envValue').textContent = env;
+        document.getElementById('timestampValue').textContent = new Date(ts).toLocaleString();
+        document.getElementById('responseValue').textContent = elapsed + 'ms';
+
+        // Uptime bar
+        const pct = getUptimePercent(uptime);
+        document.getElementById('uptimeBar').style.width = pct + '%';
+        document.getElementById('uptimeLabel').textContent = formatUptime(uptime);
+
+      } catch (err) {
+        document.getElementById('statusDot').className = 'status-dot error';
+        document.getElementById('statusText').className = 'status-text error';
+        document.getElementById('statusText').textContent = 'Service Unreachable';
+        document.getElementById('responseValue').textContent = 'ERR';
+      }
+    }
+
+    fetchHealth();
+    setInterval(fetchHealth, 30000);
+  </script>
+</body>
+</html>

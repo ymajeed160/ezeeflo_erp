@@ -1,0 +1,3 @@
+import axiosInstance from './axiosInstance';
+const api = { getAll(p) { return axiosInstance.get('/asset-custodians', { params: p }).then((r) => r.data); }, getActive() { return axiosInstance.get('/asset-custodians/active').then((r) => r.data); }, getById(id) { return axiosInstance.get(`/asset-custodians/${id}`).then((r) => r.data); }, create(d) { return axiosInstance.post('/asset-custodians', d).then((r) => r.data); }, update(id, d) { return axiosInstance.put(`/asset-custodians/${id}`, d).then((r) => r.data); }, toggleStatus(id) { return axiosInstance.patch(`/asset-custodians/${id}/toggle-status`).then((r) => r.data); }, del(id) { return axiosInstance.delete(`/asset-custodians/${id}`).then((r) => r.data); } };
+export default api;
