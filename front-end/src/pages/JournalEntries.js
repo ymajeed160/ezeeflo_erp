@@ -1,11 +1,11 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Box, Typography, Button, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, IconButton, Chip, Dialog,
   DialogTitle, DialogContent, DialogActions, TextField, MenuItem,
   Alert, CircularProgress, Tooltip, TablePagination, Stack,
-  Autocomplete, Grid, InputAdornment,
+  Autocomplete, Grid, InputAdornment, Switch, FormControlLabel,
 } from '@mui/material';
 import {
   Add, Edit, Delete, PostAdd, Undo, Search as SearchIcon,
@@ -49,7 +49,7 @@ const JournalEntries = () => {
   const [newAccountOpen, setNewAccountOpen] = useState(false);
   const [newAccountTargetLine, setNewAccountTargetLine] = useState(null); // which line index to select after creation
   const [newAccountForm, setNewAccountForm] = useState({
-    code: '', name: '', type: 'asset', description: '',
+    code: '', name: '', type: 'asset', description: '', parentAccountId: '', openingBalance: 0, isActive: true,
   });
   const [newAccountSaving, setNewAccountSaving] = useState(false);
   const [newAccountError, setNewAccountError] = useState('');
@@ -137,9 +137,26 @@ const JournalEntries = () => {
   };
 
   // --- New Account quick-create ---
+  // Build parent account options for quick-create dialog
+  const parentAccountOptions = useMemo(() => [
+    { id: '', label: 'None (Root Account)', code: '', name: '', type: '' },
+    ...(accounts || []).map((a) => ({
+      id: a.id,
+      label: `${a.code} - ${a.name} (${(a.type || '').toUpperCase()})`,
+      code: a.code,
+      name: a.name,
+      type: a.type,
+    })),
+  ], [accounts]);
+
+  const parentValue = useMemo(() => {
+    if (!newAccountForm.parentAccountId) return parentAccountOptions[0];
+    return parentAccountOptions.find((opt) => opt.id === newAccountForm.parentAccountId) || parentAccountOptions[0];
+  }, [newAccountForm.parentAccountId, parentAccountOptions]);
+
   const handleOpenNewAccount = (lineIndex) => {
     setNewAccountTargetLine(lineIndex);
-    setNewAccountForm({ code: '', name: '', type: 'asset', description: '' });
+    setNewAccountForm({ code: '', name: '', type: 'asset', description: '', parentAccountId: '', openingBalance: 0, isActive: true });
     setNewAccountError('');
     setNewAccountOpen(true);
   };
@@ -161,7 +178,16 @@ const JournalEntries = () => {
     setNewAccountSaving(true);
     setNewAccountError('');
     try {
-      const result = await dispatch(createAccount(newAccountForm)).unwrap();
+      const payload = {
+        code: newAccountForm.code.trim(),
+        name: newAccountForm.name.trim(),
+        type: newAccountForm.type,
+        description: newAccountForm.description?.trim() || null,
+        parentAccountId: newAccountForm.parentAccountId || null,
+        openingBalance: parseFloat(newAccountForm.openingBalance) || 0,
+        isActive: newAccountForm.isActive,
+      };
+      const result = await dispatch(createAccount(payload)).unwrap();
       // API returns { data: account, message }, so account is in result.data
       const newAccount = result?.data || result;
       const targetLine = newAccountTargetLine;
@@ -766,29 +792,31 @@ const JournalEntries = () => {
       <Dialog open={newAccountOpen} onClose={handleCloseNewAccount} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <AccountIcon color="primary" />
-          New Chart of Account
+          Add New Account
         </DialogTitle>
         <DialogContent dividers>
           <Stack spacing={2} sx={{ mt: 1 }}>
             {newAccountError && <Alert severity="error" sx={{ mb: 1 }}>{newAccountError}</Alert>}
-            <TextField
-              label="Account Code"
-              value={newAccountForm.code}
-              onChange={(e) => handleNewAccountChange('code', e.target.value)}
-              required
-              size="small"
-              fullWidth
-              placeholder="e.g., 1001"
-            />
-            <TextField
-              label="Account Name"
-              value={newAccountForm.name}
-              onChange={(e) => handleNewAccountChange('name', e.target.value)}
-              required
-              size="small"
-              fullWidth
-              placeholder="e.g., Cash Account"
-            />
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+              <TextField
+                label="Account Name"
+                value={newAccountForm.name}
+                onChange={(e) => handleNewAccountChange('name', e.target.value)}
+                required
+                size="small"
+                fullWidth
+                placeholder="e.g., Cash Account"
+              />
+              <TextField
+                label="Account Code"
+                value={newAccountForm.code}
+                onChange={(e) => handleNewAccountChange('code', e.target.value)}
+                required
+                size="small"
+                fullWidth
+                placeholder="e.g., 1001"
+              />
+            </Box>
             <TextField
               select
               label="Account Type"
@@ -797,11 +825,11 @@ const JournalEntries = () => {
               size="small"
               fullWidth
             >
-              <MenuItem value="asset">Asset</MenuItem>
-              <MenuItem value="liability">Liability</MenuItem>
-              <MenuItem value="equity">Equity</MenuItem>
-              <MenuItem value="revenue">Revenue</MenuItem>
-              <MenuItem value="expense">Expense</MenuItem>
+              <MenuItem value="asset">ASSET</MenuItem>
+              <MenuItem value="liability">LIABILITY</MenuItem>
+              <MenuItem value="equity">EQUITY</MenuItem>
+              <MenuItem value="revenue">REVENUE</MenuItem>
+              <MenuItem value="expense">EXPENSE</MenuItem>
             </TextField>
             <TextField
               label="Description"
@@ -813,6 +841,60 @@ const JournalEntries = () => {
               rows={2}
               placeholder="Optional description"
             />
+            <Autocomplete
+              options={parentAccountOptions}
+              value={parentValue}
+              onChange={(_, newValue) => {
+                handleNewAccountChange('parentAccountId', newValue?.id || '');
+              }}
+              isOptionEqualToValue={(option, value) => option.id === value.id}
+              getOptionLabel={(option) => option.label}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Parent Account"
+                  helperText="Select a parent account, or 'None' for a root account"
+                  size="small"
+                  fullWidth
+                />
+              )}
+              renderOption={(props, option) => (
+                <li {...props} key={option.id}>
+                  <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                    {option.id ? (
+                      <>
+                        <Chip label={option.code} size="small" variant="outlined" sx={{ fontWeight: 600, minWidth: 50 }} />
+                        <Typography>{option.name}</Typography>
+                        <Chip label={option.type} size="small" color="default" sx={{ textTransform: 'capitalize', fontSize: '0.7rem' }} />
+                      </>
+                    ) : (
+                      <Typography fontStyle="italic" color="text.secondary">{option.label}</Typography>
+                    )}
+                  </Box>
+                </li>
+              )}
+              disableClearable
+              fullWidth
+            />
+            <TextField
+              label="Opening Balance"
+              type="number"
+              value={newAccountForm.openingBalance}
+              onChange={(e) => handleNewAccountChange('openingBalance', e.target.value)}
+              inputProps={{ step: '0.01' }}
+              helperText="Initial balance for this account"
+              size="small"
+              fullWidth
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={newAccountForm.isActive}
+                  onChange={(e) => handleNewAccountChange('isActive', e.target.checked)}
+                />
+              }
+              label="Active"
+            />
           </Stack>
         </DialogContent>
         <DialogActions>
@@ -823,7 +905,7 @@ const JournalEntries = () => {
             disabled={newAccountSaving}
             startIcon={newAccountSaving ? <CircularProgress size={16} /> : <Add />}
           >
-            {newAccountSaving ? 'Creating...' : 'Create Account'}
+            {newAccountSaving ? 'Creating...' : 'Create'}
           </Button>
         </DialogActions>
       </Dialog>

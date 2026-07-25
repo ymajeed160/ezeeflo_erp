@@ -4,6 +4,33 @@ import { ExpandMore, ExpandLess, NewReleases } from '@mui/icons-material';
 
 const RELEASES = [
   {
+    version: 'v3.0.0',
+    date: '2026-07-26',
+    title: 'POS Module & Enhanced Accounting',
+    tag: 'Major',
+    tagColor: 'primary',
+    changes: [
+      { type: 'New', text: 'POS Dashboard — KPIs, daily sales, terminal status overview' },
+      { type: 'New', text: 'POS Register — Main cash register screen for walk-in sales with barcode/item search' },
+      { type: 'New', text: 'POS Terminals — Create and manage POS terminals with warehouse, cash account, bank account defaults' },
+      { type: 'New', text: 'POS Sessions — Open/close cash register sessions with opening cash, expected vs actual reconciliation, manager approval' },
+      { type: 'New', text: 'POS Sales — Complete sale transactions with multi-payment support (cash, card, bank transfer, credit — split tenders)' },
+      { type: 'New', text: 'POS Held Orders — Park and retrieve orders with JSON cart state preservation' },
+      { type: 'New', text: 'POS Cash Management — Record cash in/out, adjustments, and transfers with mandatory reason tracking' },
+      { type: 'New', text: 'POS Returns — Full sale return/refund workflow with original sale linking and refund method selection' },
+      { type: 'New', text: 'POS End of Day — Session closing with cash count, variance calculation, and summary breakdown' },
+      { type: 'New', text: 'POS Reports — Sales by cashier, terminal, item, category, customer; cashier session and cash variance reports' },
+      { type: 'New', text: 'POS Subscription Usage Tracking — Daily transaction/terminal/user/session counts per tenant for billing' },
+      { type: 'New', text: 'POS Accounting Integration — Auto journal entries for sales, returns, and cash movements' },
+      { type: 'New', text: '11 POS database tables: pos_terminals, pos_terminal_users, pos_sessions, pos_sales, pos_sale_lines, pos_payments, pos_held_orders, pos_cash_movements, pos_returns, pos_return_lines, pos_subscription_usage' },
+      { type: 'New', text: '10 POS RBAC permissions: pos.view, pos.manage_terminals, pos.open_session, pos.close_session, pos.create_sale, pos.cancel_sale, pos.hold_sale, pos.return, pos.cash_in, pos.view_reports' },
+      { type: 'New', text: 'Journal Entry Quick-Add Account form now includes all 7 fields: Account Name, Account Code, Account Type, Description, Parent Account (searchable autocomplete), Opening Balance, Active toggle' },
+      { type: 'Changed', text: 'PDF preview dialog buttons now display icons only (no text labels) for cleaner UI' },
+      { type: 'Fixed', text: 'Node.js v24 compatibility — switched to v20.19.0 for react-scripts 5.0.1 compatibility' },
+      { type: 'Fixed', text: 'Front-end production build refreshed from latest source code (July 26)' },
+    ],
+  },
+  {
     version: 'v2.1.0',
     date: '2026-07-22',
     title: 'Audit Trail & History System',
@@ -96,7 +123,7 @@ const ReleaseNotes = () => {
           <Typography variant="body2" color="text.secondary">Version history and changelog for EzeeFlo ERP</Typography>
         </Box>
         <Box sx={{ flex: 1 }} />
-        <Chip label="Current: v2.1.0" color="primary" />
+        <Chip label="Current: v3.0.0" color="primary" />
       </Box>
 
       {RELEASES.map((release) => {
