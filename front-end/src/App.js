@@ -46,6 +46,7 @@ import PaymentVouchers from './pages/PaymentVouchers';
 import BankReconciliation from './pages/BankReconciliation';
 import ReportsCenter from './pages/Reports/ReportsCenter';
 import ReportViewer from './pages/Reports/ReportViewer';
+import BalanceSheet from './pages/Reports/BalanceSheet';
 import SalesDashboard from './pages/BI/SalesDashboard';
 import PurchaseDashboard from './pages/BI/PurchaseDashboard';
 import InventoryDashboard from './pages/BI/InventoryDashboard';
@@ -375,6 +376,7 @@ const App = () => {
 
             {/* Reports */}
             <Route path="/app/reports" element={<ReportsCenter />} />
+            <Route path="/app/reports/balance-sheet" element={<BalanceSheet />} />
             <Route path="/app/reports/:reportName" element={<ReportViewer />} />
 
             {/* BI Dashboards */}
@@ -388,6 +390,7 @@ const App = () => {
             <Route path="/app/purchases/*" element={<Dashboard />} />
             <Route path="/app/accounting/trial-balance" element={<TrialBalance />} />
             <Route path="/app/accounting/profit-loss" element={<ProfitLoss />} />
+            <Route path="/app/accounting/balance-sheet" element={<Navigate to="/app/reports/balance-sheet" replace />} />
             <Route path="/app/accounting/*" element={<Dashboard />} />
             <Route path="/app/banks/*" element={<Dashboard />} />
             <Route path="/app/settings/company" element={<CompanyProfile />} />

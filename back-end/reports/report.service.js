@@ -55,7 +55,7 @@ class ReportService {
 
     const result = await reportRepository.executeReport(config.procedure, spParams, tenantId);
 
-    return {
+    const response = {
       reportName: config.title,
       route: reportRoute,
       category: config.category,
@@ -64,6 +64,14 @@ class ReportService {
       data: result.data,
       pagination: result.pagination,
     };
+
+    // Balance Sheet v2: pass structured assets/liabilitiesEquity
+    if (result.isStructured) {
+      response.assets = result.assets;
+      response.liabilitiesEquity = result.liabilitiesEquity;
+    }
+
+    return response;
   }
 }
 

@@ -1,6 +1,6 @@
 const mysql = require('mysql2/promise');
 (async () => {
-  const c = await mysql.createConnection({ host: 'localhost', user: 'root', password: 'Memits@396', database: 'erp_mt_suite' });
+  const c = await mysql.createConnection({ host: 'localhost', user: 'ezeefloc_proderp', password: 'Memits@396', database: 'erp_mt_suite' });
   await c.execute('SET FOREIGN_KEY_CHECKS = 0');
   await c.execute('DROP TABLE IF EXISTS customer_payment_allocations');
   await c.execute('DROP TABLE IF EXISTS customer_payments');

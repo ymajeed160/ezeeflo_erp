@@ -18,6 +18,20 @@ class ReportRepository {
   async executeReport(procedureName, params = {}, tenantId) {
     const results = await executeReportProcedure(procedureName, params, { tenantId });
 
+    // Balance Sheet v2: returns [summary, assets, liabilitiesEquity]
+    if (procedureName === 'sp_Report_BalanceSheet_v2') {
+      const summary = Array.isArray(results[0]) && results[0].length > 0 ? results[0][0] : null;
+      const assets = Array.isArray(results[1]) ? results[1].map((r) => this._parseNumeric(r)) : [];
+      const liabilitiesEquity = Array.isArray(results[2]) ? results[2].map((r) => this._parseNumeric(r)) : [];
+      return {
+        summary: summary ? this._parseNumeric(summary) : null,
+        assets,
+        liabilitiesEquity,
+        pagination: null,
+        isStructured: true,
+      };
+    }
+
     // MySQL CALL returns multiple result sets
     // Convention: result[0] = summary, result[1] = data, result[2] = pagination
     const summary = Array.isArray(results[0]) && results[0].length > 0 ? results[0][0] : null;
@@ -36,6 +50,7 @@ class ReportRepository {
             totalPages: parseInt(paginationRow.total_pages || 0, 10),
           }
         : { page: 1, pageSize: 50, totalRecords: data.length, totalPages: 1 },
+      isStructured: false,
     };
   }
 

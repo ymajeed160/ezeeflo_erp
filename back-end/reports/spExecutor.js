@@ -34,6 +34,7 @@ const ALLOWED_PROCEDURES = new Set([
   'sp_Report_ProfitAndLoss',
   'sp_Report_TrialBalance',
   'sp_Report_BalanceSheet',
+  'sp_Report_BalanceSheet_v2',
   'sp_Report_CashFlow',
   'sp_Report_GrossProfit',
   'sp_Report_ProfitabilityAnalysis',

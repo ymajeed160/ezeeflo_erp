@@ -96,7 +96,7 @@ const menuItems = [
       { text: 'General Ledger', path: '/app/accounting/general-ledger' },
       { text: 'Trial Balance', path: '/app/accounting/trial-balance' },
       { text: 'Profit & Loss', path: '/app/accounting/profit-loss' },
-      { text: 'Balance Sheet', path: '/app/accounting/balance-sheet' },
+      { text: 'Balance Sheet', path: '/app/reports/balance-sheet' },
     ],
   },
   {

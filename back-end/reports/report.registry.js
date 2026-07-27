@@ -182,11 +182,11 @@ const reportRegistry = {
     params: ['p_AsOfDate', 'p_DateFrom', 'p_DateTo', 'p_IncludeZeroBalance', 'p_Page', 'p_PageSize'],
   },
   'balance-sheet': {
-    procedure: 'sp_Report_BalanceSheet',
+    procedure: 'sp_Report_BalanceSheet_v2',
     permission: 'reports.financial.view',
     title: 'Balance Sheet',
     category: 'financial',
-    params: ['p_AsOfDate', 'p_DateFrom', 'p_DateTo', 'p_IncludeZeroBalance', 'p_Page', 'p_PageSize'],
+    params: ['p_AsOfDate'],
   },
   'cash-flow': {
     procedure: 'sp_Report_CashFlow',
