@@ -37,13 +37,20 @@ class ItemService {
   }
 
   async getItems(tenantId, query = {}) {
-    const { page = 1, limit = 20, itemType, categoryId, isActive, search, isInventoryTracked } = query;
+    const { page = 1, limit = 20, itemType, categoryId, isActive, search, isInventoryTracked, model, size, ram, processor, ssd, generation, colour } = query;
     const filters = {};
 
     if (itemType) filters.itemType = itemType;
     if (categoryId) filters.categoryId = categoryId;
     if (isActive !== undefined && isActive !== '') filters.isActive = isActive === 'true' || isActive === true;
     if (isInventoryTracked !== undefined && isInventoryTracked !== '') filters.isInventoryTracked = isInventoryTracked === 'true' || isInventoryTracked === true;
+    if (model) filters.model = model;
+    if (size) filters.size = size;
+    if (ram) filters.ram = ram;
+    if (processor) filters.processor = processor;
+    if (ssd) filters.ssd = ssd;
+    if (generation) filters.generation = generation;
+    if (colour) filters.colour = colour;
 
     return await itemRepository.findAndCountAll(tenantId, {
       page: parseInt(page, 10),

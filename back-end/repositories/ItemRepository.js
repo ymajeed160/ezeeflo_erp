@@ -42,13 +42,32 @@ class ItemRepository extends BaseRepository {
    * Find items with pagination, filtering, and category include
    */
   async findAndCountAll(tenantId, { page = 1, limit = 20, filters = {}, order = [['item_code', 'ASC']], search = '' } = {}) {
-    const where = { tenantId, ...filters };
+    const where = { tenantId };
 
-    // Apply search across item_code and name
+    // Apply exact-match filters
+    if (filters.itemType) where.itemType = filters.itemType;
+    if (filters.categoryId) where.categoryId = filters.categoryId;
+    if (filters.isActive !== undefined) where.isActive = filters.isActive;
+    if (filters.isInventoryTracked !== undefined) where.isInventoryTracked = filters.isInventoryTracked;
+
+    // Apply partial-match filters for spec fields
+    const specFields = ['model', 'size', 'ram', 'processor', 'ssd', 'generation', 'colour'];
+    specFields.forEach(field => {
+      if (filters[field]) where[field] = { [Op.like]: `%${filters[field]}%` };
+    });
+
+    // Apply search across item_code, name, and spec fields
     if (search) {
       where[Op.or] = [
         { itemCode: { [Op.like]: `%${search}%` } },
         { name: { [Op.like]: `%${search}%` } },
+        { model: { [Op.like]: `%${search}%` } },
+        { size: { [Op.like]: `%${search}%` } },
+        { ram: { [Op.like]: `%${search}%` } },
+        { processor: { [Op.like]: `%${search}%` } },
+        { ssd: { [Op.like]: `%${search}%` } },
+        { generation: { [Op.like]: `%${search}%` } },
+        { colour: { [Op.like]: `%${search}%` } },
       ];
     }
 
