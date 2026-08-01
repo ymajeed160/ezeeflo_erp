@@ -1,0 +1,45 @@
+{
+  "development": {
+    "username": "root",
+    "password": "Memits@396",
+    "database": "ezeeflo_hr_payroll",
+    "host": "127.0.0.1",
+    "port": 3306,
+    "dialect": "mysql",
+    "define": {
+      "underscored": true
+    },
+    "timezone": "+04:00"
+  },
+  "test": {
+    "username": "ezeefloc_erp",
+    "password": "Memits@396",
+    "database": "ezeeflo_hr_payroll_test",
+    "host": "c28.eelserver.com",
+    "port": 3306,
+    "dialect": "mysql",
+    "define": {
+      "underscored": true
+    },
+    "timezone": "+04:00"
+  },
+  "production": {
+    "username": "ezeefloc_erp",
+    "password": "Memits@396",
+    "database": "ezeeflo_hr_payroll",
+    "host": "c28.eelserver.com",
+    "port": 3306,
+    "dialect": "mysql",
+    "define": {
+      "underscored": true
+    },
+    "timezone": "+04:00",
+    "logging": false,
+    "pool": {
+      "max": 5,
+      "min": 0,
+      "acquire": 30000,
+      "idle": 10000
+    }
+  }
+}
