@@ -50,11 +50,33 @@ class AttendanceRepository {
   async delete(id, tenantId) { const a = await Attendance.findOne({ where: { id, tenantId } }); if (!a) return null; return a.destroy(); }
 
   /**
-   * Get today's attendance summary for dashboard.
+   * Get today's attendance — summary or per-employee detail.
+   * If employeeId is provided, returns that employee's today record.
    */
-  async getTodaySummary(tenantId) {
+  async getTodaySummary(tenantId, employeeId = null) {
     const today = new Date().toISOString().split('T')[0];
     const { sequelize } = Attendance;
+
+    // If employeeId provided, return that employee's today record
+    if (employeeId) {
+      const record = await Attendance.findOne({
+        where: { tenantId, employeeId, attendanceDate: today },
+        include: [{ model: Employee, as: 'employee', attributes: ['id','employeeCode','firstName','lastName'] }],
+        raw: false,
+      });
+      if (!record) return { isCheckedIn: false, isCheckedOut: false, record: null };
+      const r = record.toJSON();
+      return {
+        isCheckedIn: !!r.checkInTime,
+        isCheckedOut: !!r.checkOutTime,
+        isOnBreak: false,
+        checkInTime: r.checkInTime ? new Date(r.checkInTime).toTimeString().slice(0, 5) : null,
+        checkOutTime: r.checkOutTime ? new Date(r.checkOutTime).toTimeString().slice(0, 5) : null,
+        status: r.status,
+        record: { ...r, totalHours: r.totalWorkedMinutes ? (r.totalWorkedMinutes / 60).toFixed(1) : null },
+        shift: null,
+      };
+    }
 
     const [statusRows] = await sequelize.query(
       `SELECT status, COUNT(*) as count FROM attendances

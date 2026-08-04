@@ -1,0 +1,54 @@
+{
+  "expo": {
+    "name": "EzeeFlo Employee",
+    "slug": "ezeeflo-employee-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0f172a"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ezeeflo.employee",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Face ID is used to securely log in to your EzeeFlo account.",
+        "NSLocationWhenInUseUsageDescription": "Location is used for attendance check-in validation.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Location is used for attendance check-in validation.",
+        "NSCameraUsageDescription": "Camera is used for document upload and QR code attendance.",
+        "NSPhotoLibraryUsageDescription": "Photo library access is used to upload profile pictures and documents."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0f172a"
+      },
+      "package": "com.ezeeflo.employee",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-local-authentication",
+      "expo-location",
+      "expo-notifications",
+      "expo-document-picker",
+      "expo-image-picker"
+    ],
+
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    }
+  }
+}

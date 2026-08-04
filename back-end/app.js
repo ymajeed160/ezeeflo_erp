@@ -1,4 +1,5 @@
 const path = require('path');
+const fs = require('fs');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -331,6 +332,57 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+// ═══════════════════════════════════════════════════════
+// Serve React SPA build (production)
+// If the front-end build exists, serve it for all non-API routes.
+// This allows the back-end to run standalone in production
+// without needing a separate hosting server.
+// ═══════════════════════════════════════════════════════
+const BUILD_PATH = path.resolve(__dirname, './front-end/build');
+if (fs.existsSync(BUILD_PATH)) {
+  // Serve static files with long-term caching
+  app.use(express.static(BUILD_PATH, {
+    maxAge: '1y',
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      }
+    },
+  }));
+
+  // SPA fallback — any non-API route serves index.html
+  app.get('*', (req, res) => {
+    if (!req.path.startsWith('/api')) {
+      res.sendFile(path.join(BUILD_PATH, 'index.html'));
+    }
+  });
+
+  logger.info(`Frontend build served from: ${BUILD_PATH}`);
+} else {
+  // No build found — show a helpful message at root
+  app.get('/', (req, res) => {
+    res.status(200).send(`
+      <!DOCTYPE html>
+      <html>
+      <head><title>ERP MT Suite</title>
+      <style>body{font-family:Arial,sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#f5f5f5}
+      .card{background:#fff;padding:40px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1);text-align:center;max-width:500px}
+      h1{color:#333}code{background:#eee;padding:2px 6px;border-radius:3px;font-size:14px}</style>
+      </head>
+      <body>
+      <div class="card">
+        <h1>🚀 ERP MT Suite API</h1>
+        <p>The API server is running. The frontend build was not found.</p>
+        <p>To build the frontend, run:</p>
+        <p><code>cd front-end &amp;&amp; npm run build</code></p>
+        <p>API available at: <a href="/api">/api</a> | <a href="/api/docs">/api/docs</a></p>
+      </div>
+      </body>
+      </html>
+    `);
+  });
+}
 
 // Global error handler
 app.use(errorHandler);

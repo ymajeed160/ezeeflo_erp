@@ -93,6 +93,33 @@ class SystemConfigApi {
     const response = await api.delete(`/settings/vat-codes/${id}`);
     return response.data;
   }
+
+  /**
+   * Get all item definitions (model, size, ram, etc.)
+   */
+  static async getItemDefinitions() {
+    const response = await api.get('/settings/definitions');
+    return response.data;
+  }
+
+  /**
+   * Create or update an item definition
+   * @param {object} data - { id?, category, name, sortOrder }
+   */
+  static async saveItemDefinition(data) {
+    const method = data.id ? 'put' : 'post';
+    const response = await api[method]('/settings/definitions', data);
+    return response.data;
+  }
+
+  /**
+   * Delete an item definition
+   * @param {number} id
+   */
+  static async deleteItemDefinition(id) {
+    const response = await api.delete(`/settings/definitions/${id}`);
+    return response.data;
+  }
 }
 
 export default SystemConfigApi;

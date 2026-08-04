@@ -10,6 +10,7 @@ const CostCenter = require('./CostCenter');
 // ── Employee ──
 const Employee = require('./Employee');
 const EmployeeDocument = require('./EmployeeDocument');
+const EmployeeAsset = require('./EmployeeAsset');
 
 // ── Attendance & Shift ──
 const Shift = require('./Shift');
@@ -65,6 +66,18 @@ const { GeneralSetting, CompanyProfile, LocalizationSetting, WorkingHourSetting,
 
 // ── Master Data ──
 const { MasterCountry, MasterState, MasterData, MasterDataAudit } = require('./MasterData');
+
+// ── Super Admin ──
+const SuperAdmin = require('./SuperAdmin');
+const SuperAdminCompany = require('./SuperAdminCompany');
+const SuperAdminLoginHistory = require('./SuperAdminLoginHistory');
+const SuperAdminAuditLog = require('./SuperAdminAuditLog');
+
+// ── Subscription & Modules ──
+const SubscriptionPlan = require('./SubscriptionPlan');
+const CompanyModule = require('./CompanyModule');
+const Announcement = require('./Announcement');
+const Notification = require('./Notification');
 
 // ═══════════════════════════════════════════
 // SECURITY ASSOCIATIONS
@@ -126,6 +139,10 @@ Employee.hasMany(Employee, { as: 'subordinates', foreignKey: 'reporting_manager_
 // Employee — Documents
 Employee.hasMany(EmployeeDocument, { as: 'documents', foreignKey: 'employee_id' });
 EmployeeDocument.belongsTo(Employee, { as: 'employee', foreignKey: 'employee_id' });
+
+// Employee — Assets
+Employee.hasMany(EmployeeAsset, { as: 'assets', foreignKey: 'employee_id' });
+EmployeeAsset.belongsTo(Employee, { as: 'employee', foreignKey: 'employee_id' });
 
 // ── Attendance & Shift Associations ──
 
@@ -291,6 +308,18 @@ ExitInterview.belongsTo(Employee, { as: 'employee', foreignKey: 'employee_id' })
 Employee.hasMany(ExitInterview, { as: 'exitInterviews', foreignKey: 'employee_id' });
 
 // ═══════════════════════════════════════════
+// SUPER ADMIN ASSOCIATIONS
+// ═══════════════════════════════════════════
+
+// SuperAdmin ↔ LoginHistory
+SuperAdmin.hasMany(SuperAdminLoginHistory, { as: 'loginHistory', foreignKey: 'super_admin_id' });
+SuperAdminLoginHistory.belongsTo(SuperAdmin, { as: 'superAdmin', foreignKey: 'super_admin_id' });
+
+// SuperAdmin ↔ AuditLog
+SuperAdmin.hasMany(SuperAdminAuditLog, { as: 'auditLogs', foreignKey: 'super_admin_id' });
+SuperAdminAuditLog.belongsTo(SuperAdmin, { as: 'superAdmin', foreignKey: 'super_admin_id' });
+
+// ═══════════════════════════════════════════
 // EXPORTS
 // ═══════════════════════════════════════════
 
@@ -308,6 +337,7 @@ const db = {
   // Employee
   Employee,
   EmployeeDocument,
+  EmployeeAsset,
 
   // Attendance & Shift
   Shift,
@@ -358,6 +388,15 @@ const db = {
   // Master Data
   User, UserCompany, Role, Permission, RolePermission, UserRole,
   MasterCountry, MasterData, MasterDataAudit,
+  // Super Admin
+  SuperAdmin,
+  SuperAdminCompany,
+  SuperAdminLoginHistory,
+  SuperAdminAuditLog,
+  SubscriptionPlan,
+  CompanyModule,
+  Announcement,
+  Notification,
 };
 
 module.exports = db;

@@ -4,6 +4,80 @@ import { NewReleases } from '@mui/icons-material';
 
 const releases = [
   {
+    version: 'v1.5.0',
+    date: 'August 4, 2026',
+    highlights: ['Employee Assets', 'Notification System', 'Mobile App Redesign', 'Master Data'],
+    sections: [
+      {
+        title: 'Employee Asset Management',
+        items: [
+          'Assign assets (laptops, phones, vehicles, etc.) to employees with tracking codes, serial numbers, and status',
+          'Full CRUD API at /api/hr/employee-assets with pagination, search, and employee filtering',
+          'My Assets screen on mobile app — employees see only their own assigned assets',
+          'Asset assignment form on web app with employee selection, brand, model, and dates',
+        ],
+      },
+      {
+        title: 'Notification System',
+        items: [
+          'New notifications infrastructure — model, repository, service, controller, and routes',
+          'Notification bell icon in web app top bar with unread badge count',
+          'Popover dropdown showing last 10 notifications with mark-as-read',
+          'Auto-polling every 30 seconds for new notifications',
+          'Leave submission notifies employee: "Your leave application has been submitted"',
+          'Leave submission notifies manager: "John Doe submitted a leave for your approval"',
+          'Leave approval/rejection notifies employee with status update',
+          'Click notification to navigate to relevant page (Leave, Payroll, Attendance)',
+        ],
+      },
+      {
+        title: 'Mobile App — Dashboard Redesign',
+        items: [
+          'Completely redesigned dashboard with layered gradient header and decorative elements',
+          'Circular progress indicator for leave usage (green/yellow/red color coding)',
+          'Refined attendance status card with pulse indicator and elapsed time',
+          'Elegant leave balance cards with "See All" link and progress bars',
+          'Upcoming holidays in a grouped card with "View" button and date badges',
+          'Payroll status card with net salary display in AED',
+          'Dashboard auto-refreshes on tab focus (useFocusEffect)',
+        ],
+      },
+      {
+        title: 'Mobile App — Navigation & UX Improvements',
+        items: [
+          'Back buttons added to Attendance, Leave, Payroll, and Apply Leave screens',
+          'Date picker calendar on Apply Leave screen with range highlighting',
+          'After check-in/check-out, app navigates back to Dashboard with auto-refresh',
+          'Fixed leave balance display — uses correct backend field names (availableBalance)',
+          'Fixed payroll net salary calculation — now computed from basic + allowances - deductions',
+          'Fixed employee profile lookup — each user sees only their own data',
+          'Bottom tab bar redesigned with filled/outline icon toggle and elevated shadow',
+        ],
+      },
+      {
+        title: 'Master Data & Localization',
+        items: [
+          'Seeded 195 ISO 3166-1 countries with Alpha-2/Alpha-3 codes, proper flag emojis, nationalities, phone codes, and currencies',
+          'Fixed flag emoji storage — column converted to utf8mb4 for 4-byte Unicode support',
+          'Country/nationality dropdowns on Add/Edit Employee with flag + name display',
+          'Nationality column added to Employees list table',
+        ],
+      },
+      {
+        title: 'Bug Fixes',
+        items: [
+          'Leave balance creation — fixed year field not being sent, causing validation error',
+          'My Assets screen — now filters by authenticated user instead of returning first employee',
+          'Dashboard attendance status — now matches the logged-in user\'s employee record',
+          'Payroll salary breakdown — fetches allowances and deductions from separate endpoints',
+          'Holiday date parsing — handles recurring holidays and MM-DD format gracefully',
+          'Leave balance type definition — aligned TypeScript types with backend DTO',
+          'Leave application validation — employeeId now included in mobile app requests',
+        ],
+      },
+    ],
+  },
+  {
     version: 'v1.0.0',
     date: 'July 2026',
     highlights: ['HR & Payroll Module', 'Multi-Tenant Architecture', 'Role-Based Access Control'],

@@ -19,6 +19,24 @@ import ReportsPage from './pages/Reports/ReportsPage';
 import SecurityPage from './pages/Security/SecurityPage';
 import ReleaseNotes from './pages/ReleaseNotes/ReleaseNotes';
 
+// Super Admin Imports
+import SuperAdminProtectedRoute from './components/SuperAdmin/SuperAdminProtectedRoute';
+import SuperAdminLayout from './components/SuperAdmin/SuperAdminLayout';
+import SuperAdminLogin from './pages/SuperAdmin/SuperAdminLogin';
+import SuperAdminDashboard from './pages/SuperAdmin/SuperAdminDashboard';
+import Companies from './pages/SuperAdmin/Companies';
+import CompanyForm from './pages/SuperAdmin/CompanyForm';
+import CompanyView from './pages/SuperAdmin/CompanyView';
+import Subscriptions from './pages/SuperAdmin/Subscriptions';
+import Modules from './pages/SuperAdmin/Modules';
+import AuditLogs from './pages/SuperAdmin/AuditLogs';
+import Announcements from './pages/SuperAdmin/Announcements';
+import Reports from './pages/SuperAdmin/Reports';
+import CompanyAdmins from './pages/SuperAdmin/CompanyAdmins';
+import Settings from './pages/SuperAdmin/Settings';
+import EmailTemplates from './pages/SuperAdmin/EmailTemplates';
+import Licenses from './pages/SuperAdmin/Licenses';
+
 const App = () => {
   const mode = useSelector((state) => state.theme.mode);
 
@@ -94,6 +112,33 @@ const App = () => {
           <Route path="release-notes" element={<ReleaseNotes />} />
         </Route>
 
+        {/* Super Admin Routes — completely isolated from HR routes */}
+        <Route path="/superadmin/login" element={<SuperAdminLogin />} />
+        <Route
+          path="/superadmin"
+          element={
+            <SuperAdminProtectedRoute>
+              <SuperAdminLayout />
+            </SuperAdminProtectedRoute>
+          }
+        >
+          <Route path="dashboard" element={<SuperAdminDashboard />} />
+          <Route path="companies" element={<Companies />} />
+          <Route path="companies/create" element={<CompanyForm />} />
+          <Route path="companies/:id" element={<CompanyView />} />
+          <Route path="companies/:id/edit" element={<CompanyForm />} />
+          <Route path="admins" element={<CompanyAdmins />} />
+          <Route path="subscriptions" element={<Subscriptions />} />
+          <Route path="licenses" element={<Licenses />} />
+          <Route path="modules" element={<Modules />} />
+          <Route path="security" element={<Settings />} />
+          <Route path="audit-logs" element={<AuditLogs />} />
+          <Route path="announcements" element={<Announcements />} />
+          <Route path="email-templates" element={<EmailTemplates />} />
+          <Route path="reports" element={<Reports />} />
+          <Route path="settings" element={<Settings />} />
+        </Route>
+
         {/* 404 */}
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
@@ -109,15 +154,11 @@ const NotFoundPage = () => (
   </div>
 );
 
-/** Placeholder page for modules not yet implemented */
-const PlaceholderPage = ({ title }) => (
-  <div style={{
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    minHeight: '60vh', flexDirection: 'column', gap: 16,
-  }}>
-    <span style={{ fontSize: 64 }}>🚧</span>
-    <h2 style={{ color: '#666' }}>{title}</h2>
-    <p style={{ color: '#999' }}>This module is under development and will be available soon.</p>
+/** Placeholder for Super Admin pages (to be implemented in future phases) */
+const SuperAdminPlaceholder = ({ title }) => (
+  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, flexDirection: 'column', gap: 16 }}>
+    <h2>{title || 'Coming Soon'}</h2>
+    <p style={{ color: '#666' }}>This module will be implemented in a future phase.</p>
   </div>
 );
 

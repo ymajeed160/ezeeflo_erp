@@ -134,6 +134,7 @@ lbRoutes.post('/initialize', leaveBalanceValidator.initialize, leaveBalanceCtrl.
 lbRoutes.get('/:id', leaveBalanceValidator.validateId, leaveBalanceCtrl.getById);
 lbRoutes.put('/:id', leaveBalanceValidator.validateId, leaveBalanceCtrl.update);
 lbRoutes.delete('/:id', leaveBalanceValidator.validateId, leaveBalanceCtrl.delete);
+lbRoutes.post('/:id/void', leaveBalanceValidator.validateId, leaveBalanceCtrl.void);
 
 // Holidays
 const holidayRoutes = express.Router();

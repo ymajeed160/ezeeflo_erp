@@ -5,6 +5,49 @@ const hRepo = require('../repositories/HolidayRepository');
 const { ConflictError, NotFoundError, BadRequestError } = require('../utils/appError');
 const logger = require('../utils/logger');
 
+// ── Notification helper ──
+const notifyUser = async (employeeId, tenantId, type, title, message, data = null) => {
+  try {
+    const { User, UserCompany, Employee } = require('../models');
+    const emp = await Employee.findByPk(employeeId, { attributes: ['id', 'workEmail', 'personalEmail', 'firstName', 'lastName'] });
+    if (!emp) return;
+
+    // Try to find the user by email first, then by name match
+    let userId = null;
+    const email = emp.workEmail || emp.personalEmail;
+    if (email) {
+      const uc = await UserCompany.findOne({
+        where: { companyId: tenantId },
+        include: [{ model: User, as: 'user', where: { email }, attributes: ['id'] }],
+      });
+      userId = uc?.user?.id || null;
+    }
+
+    // Fallback: match by name (firstName + lastName) within the same company
+    if (!userId && emp.firstName && emp.lastName) {
+      const uc = await UserCompany.findOne({
+        where: { companyId: tenantId },
+        include: [{
+          model: User, as: 'user',
+          where: { firstName: emp.firstName, lastName: emp.lastName },
+          attributes: ['id'],
+        }],
+      });
+      userId = uc?.user?.id || null;
+    }
+
+    if (!userId) {
+      logger.warn(`No user found for employee ${employeeId} (email=${email || 'none'}, name=${emp.firstName} ${emp.lastName})`);
+      return;
+    }
+
+    const notifSvc = require('./NotificationService');
+    await notifSvc.create({ tenantId, userId, employeeId, type, title, message, data });
+  } catch (e) {
+    logger.warn('Notification creation failed (non-fatal):', e.message);
+  }
+};
+
 // ── LeaveType Service ──
 const leaveTypeToDTO = (l) => l ? { id: l.id, tenantId: l.tenantId, code: l.code, name: l.name, nameAr: l.nameAr, leaveCategory: l.leaveCategory, isPaid: l.isPaid, maxDaysPerYear: l.maxDaysPerYear, maxDaysPerRequest: l.maxDaysPerRequest, minDaysPerRequest: l.minDaysPerRequest, requiresApproval: l.requiresApproval, requiresDocuments: l.requiresDocuments, allowNegativeBalance: l.allowNegativeBalance, isActive: l.isActive, description: l.description, color: l.color, createdAt: l.createdAt, updatedAt: l.updatedAt } : null;
 
@@ -64,6 +107,50 @@ class LeaveApplicationService {
       }
     }
 
+    // 🔔 Notify employee: leave submitted
+    const leaveType = await ltRepo.findById(data.leaveTypeId, tenantId);
+    const leaveTypeName = leaveType?.name || 'Leave';
+    await notifyUser(data.employeeId, tenantId, 'leave_submitted',
+      'Leave Application Submitted',
+      `Your ${leaveTypeName} application (${data.startDate} to ${data.endDate}, ${data.totalDays} days) has been submitted for approval.`,
+      { applicationId: app.id, leaveType: leaveTypeName, startDate: data.startDate, endDate: data.endDate, totalDays: data.totalDays }
+    );
+
+    // 🔔 Notify manager/approver: new leave to approve
+    if (app.status === 'Submitted') {
+      const employee = await require('../models').Employee.findByPk(data.employeeId, {
+        attributes: ['id', 'firstName', 'lastName', 'reportingManagerId']
+      });
+      if (employee) {
+        const empName = `${employee.firstName} ${employee.lastName}`;
+        const msg = `${empName} has submitted a ${leaveTypeName} application (${data.startDate} to ${data.endDate}, ${data.totalDays} days) for your approval.`;
+        const notifData = { applicationId: app.id, leaveType: leaveTypeName, employeeName: empName, startDate: data.startDate, endDate: data.endDate };
+
+        // Notify specific reporting manager (if different from employee)
+        if (employee.reportingManagerId && employee.reportingManagerId !== employee.id) {
+          await notifyUser(employee.reportingManagerId, tenantId, 'leave_submitted', 'New Leave Request', msg, notifData);
+        } else {
+          // No distinct manager — notify all other users in the company
+          const { User, UserCompany } = require('../models');
+          const empUser = await UserCompany.findOne({
+            where: { companyId: tenantId },
+            include: [{ model: User, as: 'user', where: { firstName: employee.firstName, lastName: employee.lastName }, attributes: ['id'] }],
+          });
+          const skipUserId = empUser?.user?.id || null;
+          const allUCs = await UserCompany.findAll({
+            where: { companyId: tenantId },
+            include: [{ model: User, as: 'user', attributes: ['id'] }],
+          });
+          for (const uc of allUCs) {
+            if (uc.user?.id && uc.user.id !== skipUserId) {
+              const notifSvc = require('./NotificationService');
+              await notifSvc.create({ tenantId, userId: uc.user.id, employeeId: employee.id, type: 'leave_submitted', title: 'New Leave Request', message: msg, data: notifData });
+            }
+          }
+        }
+      }
+    }
+
     return appToDTO(await laRepo.findById(app.id, tenantId));
   }
 
@@ -81,7 +168,7 @@ class LeaveApplicationService {
     const { LeaveApproval } = require('../models');
     await LeaveApproval.update({ status: 'Approved', comments: 'Approved', decidedAt: new Date() }, { where: { leaveApplicationId: id, approverId: userId, status: 'Pending' } });
     // Update application status
-    await laRepo.update(id, tenantId, { status: 'Approved', updatedBy: userId });
+    const updatedApp = await laRepo.update(id, tenantId, { status: 'Approved', updatedBy: userId });
     // Deduct from balance
     const year = new Date(a.startDate).getFullYear();
     const balance = await lbRepo.findByEmployeeAndType(a.employeeId, a.leaveTypeId, year, tenantId);
@@ -90,6 +177,13 @@ class LeaveApplicationService {
       const newAvailable = parseFloat(balance.openingBalance) + parseFloat(balance.accruedDays) - newUsed;
       await lbRepo.update(balance.id, tenantId, { usedDays: newUsed, pendingDays: Math.max(0, parseFloat(balance.pendingDays) - parseFloat(a.totalDays)), availableBalance: newAvailable, updatedBy: userId });
     }
+    // 🔔 Notify employee
+    const leaveTypeName = a.leaveType?.name || 'Leave';
+    await notifyUser(a.employeeId, tenantId, 'leave_approved',
+      'Leave Approved ✅',
+      `Your ${leaveTypeName} application (${a.startDate} to ${a.endDate}) has been approved.`,
+      { applicationId: a.id, leaveType: leaveTypeName, startDate: a.startDate, endDate: a.endDate }
+    );
     return appToDTO(await laRepo.findById(id, tenantId));
   }
 
@@ -98,6 +192,13 @@ class LeaveApplicationService {
     const { LeaveApproval } = require('../models');
     await LeaveApproval.update({ status: 'Rejected', comments: reason || 'Rejected', decidedAt: new Date() }, { where: { leaveApplicationId: id, approverId: userId, status: 'Pending' } });
     await laRepo.update(id, tenantId, { status: 'Rejected', updatedBy: userId });
+    // 🔔 Notify employee
+    const leaveTypeName = a.leaveType?.name || 'Leave';
+    await notifyUser(a.employeeId, tenantId, 'leave_rejected',
+      'Leave Rejected',
+      `Your ${leaveTypeName} application (${a.startDate} to ${a.endDate}) was rejected.${reason ? ` Reason: ${reason}` : ''}`,
+      { applicationId: a.id, leaveType: leaveTypeName, reason: reason || null }
+    );
     return appToDTO(await laRepo.findById(id, tenantId));
   }
 
@@ -105,7 +206,7 @@ class LeaveApplicationService {
 }
 
 // ── LeaveBalance Service ──
-const balToDTO = (b) => b ? { id: b.id, tenantId: b.tenantId, employeeId: b.employeeId, leaveTypeId: b.leaveTypeId, year: b.year, openingBalance: parseFloat(b.openingBalance), accruedDays: parseFloat(b.accruedDays), usedDays: parseFloat(b.usedDays), pendingDays: parseFloat(b.pendingDays), availableBalance: parseFloat(b.availableBalance), carryForwardDays: parseFloat(b.carryForwardDays), notes: b.notes, employee: b.employee ? { id: b.employee.id, employeeCode: b.employee.employeeCode, name: `${b.employee.firstName} ${b.employee.lastName}` } : null, leaveType: b.leaveType ? { id: b.leaveType.id, code: b.leaveType.code, name: b.leaveType.name, leaveCategory: b.leaveType.leaveCategory, isPaid: b.leaveType.isPaid, color: b.leaveType.color } : null, createdAt: b.createdAt, updatedAt: b.updatedAt } : null;
+const balToDTO = (b) => b ? { id: b.id, tenantId: b.tenantId, employeeId: b.employeeId, leaveTypeId: b.leaveTypeId, year: b.year, openingBalance: parseFloat(b.openingBalance), accruedDays: parseFloat(b.accruedDays), usedDays: parseFloat(b.usedDays), pendingDays: parseFloat(b.pendingDays), availableBalance: parseFloat(b.availableBalance), carryForwardDays: parseFloat(b.carryForwardDays), notes: b.notes, status: b.status || 'active', voidReason: b.voidReason || null, employee: b.employee ? { id: b.employee.id, employeeCode: b.employee.employeeCode, name: `${b.employee.firstName} ${b.employee.lastName}` } : null, leaveType: b.leaveType ? { id: b.leaveType.id, code: b.leaveType.code, name: b.leaveType.name, leaveCategory: b.leaveType.leaveCategory, isPaid: b.leaveType.isPaid, color: b.leaveType.color } : null, createdAt: b.createdAt, updatedAt: b.updatedAt } : null;
 
 class LeaveBalanceService {
   async getAll(tenantId, query) { const r = await lbRepo.findAll({ tenantId, query }); r.data = r.data.map(balToDTO); return r; }
@@ -122,6 +223,23 @@ class LeaveBalanceService {
     return balToDTO(await lbRepo.findById(id, tenantId));
   }
   async delete(id, tenantId) { const b = await lbRepo.findById(id, tenantId); if (!b) throw new NotFoundError('Leave balance not found'); await lbRepo.delete(id, tenantId); return { success: true }; }
+
+  async voidBalance(id, tenantId, userId, reason) {
+    const b = await lbRepo.findById(id, tenantId);
+    if (!b) throw new NotFoundError('Leave balance not found');
+    if (b.status === 'voided') throw new BadRequestError('Balance already voided');
+    await lbRepo.update(id, tenantId, { status: 'voided', voidReason: reason || 'Voided by admin', updatedBy: userId });
+    // Audit trail
+    try {
+      const { sequelize } = require('../models');
+      await sequelize.query(
+        `INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id, old_values, new_values, created_at)
+         VALUES (?, ?, 'VOID', 'leave_balance', ?, ?, ?, NOW())`,
+        { replacements: [tenantId, userId, id, JSON.stringify({ status: b.status }), JSON.stringify({ status: 'voided', reason: reason })] }
+      );
+    } catch(e) { /* audit fail is non-fatal */ }
+    return balToDTO(await lbRepo.findById(id, tenantId));
+  }
 
   async initializeForEmployee(employeeId, tenantId, userId) {
     // Create leave balances for all active leave types for the current year

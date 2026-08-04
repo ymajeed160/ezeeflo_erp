@@ -7,4 +7,7 @@ const LeaveApplicationApi = {
   reject: (id, reason) => hrApi.post(`/leave-applications/${id}/reject`, { reason }),
   summary: () => hrApi.get('/leave-applications/summary'),
 };
+export const LeaveBalanceApi = {
+  voidBalance: (id, reason) => hrApi.post(`/leave-balances/${id}/void`, { reason }),
+};
 export default LeaveApplicationApi;

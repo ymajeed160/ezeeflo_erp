@@ -15,6 +15,7 @@ const holidayCtrl = makeCtrl(HolidayService);
 const leaveBalanceCtrl = {
   ...makeCtrl(LeaveBalanceService),
   initializeForEmployee: async (req, res, next) => { try { const d = await LeaveBalanceService.initializeForEmployee(req.body.employeeId, req.tenantId, req.userId); return ApiResponse.created(res, { data: d }); } catch (e) { next(e); } },
+  void: async (req, res, next) => { try { const d = await LeaveBalanceService.voidBalance(req.params.id, req.tenantId, req.userId, req.body.reason); return ApiResponse.success(res, { data: d, message: 'Balance voided' }); } catch (e) { next(e); } },
 };
 
 const leaveAppCtrl = {

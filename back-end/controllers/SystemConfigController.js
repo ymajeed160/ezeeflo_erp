@@ -5,7 +5,7 @@ const ApiResponse = require('../utils/apiResponse');
 const EmailService = require('../services/EmailService');
 const logger = require('../utils/logger');
 
-const { SystemConfig, NumberSeries, EmailSetting, TaxRate, Account, Warehouse, Customer, Supplier, VatCategoryCode } = db;
+const { SystemConfig, NumberSeries, EmailSetting, TaxRate, Account, Warehouse, Customer, Supplier, VatCategoryCode, ItemDefinition } = db;
 
 /**
  * SystemConfigController — Manages global system settings grouped by category.
@@ -239,6 +239,68 @@ class SystemConfigController {
       const { id } = req.params;
       await VatCategoryCode.destroy({ where: { id, tenantId } });
       return ApiResponse.success(res, { message: 'Code deleted successfully' });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  // ─── ITEM DEFINITIONS ───
+  async getItemDefinitions(req, res, next) {
+    try {
+      const { tenantId } = req.user;
+      const definitions = await ItemDefinition.findAll({
+        where: { tenantId },
+        order: [['category', 'ASC'], ['sortOrder', 'ASC'], ['name', 'ASC']],
+      });
+      return ApiResponse.success(res, { data: definitions });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async saveItemDefinition(req, res, next) {
+    try {
+      const { tenantId } = req.user;
+      const { id, category, name, sortOrder } = req.body;
+
+      if (!category || !name) {
+        return ApiResponse.error(res, { message: 'Category and Name are required' });
+      }
+
+      let record;
+      if (id) {
+        await ItemDefinition.update(
+          { category, name, sortOrder: sortOrder ?? 0, updatedBy: req.user.id },
+          { where: { id, tenantId } }
+        );
+        record = await ItemDefinition.findByPk(id);
+      } else {
+        record = await ItemDefinition.create({
+          tenantId,
+          category,
+          name,
+          sortOrder: sortOrder ?? 0,
+          isActive: true,
+          createdBy: req.user.id,
+          updatedBy: req.user.id,
+        });
+      }
+
+      return ApiResponse.success(res, { data: record, message: id ? 'Definition updated' : 'Definition created' });
+    } catch (err) {
+      if (err.name === 'SequelizeUniqueConstraintError') {
+        return ApiResponse.error(res, { message: `"${req.body.name}" already exists in category "${req.body.category}"` });
+      }
+      next(err);
+    }
+  }
+
+  async deleteItemDefinition(req, res, next) {
+    try {
+      const { tenantId } = req.user;
+      const { id } = req.params;
+      await ItemDefinition.destroy({ where: { id, tenantId } });
+      return ApiResponse.success(res, { message: 'Definition deleted successfully' });
     } catch (err) {
       next(err);
     }

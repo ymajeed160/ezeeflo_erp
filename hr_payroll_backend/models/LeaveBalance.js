@@ -14,6 +14,8 @@ const LeaveBalance = sequelize.define('LeaveBalance', {
   availableBalance: { type: DataTypes.DECIMAL(5, 1), defaultValue: 0, field: 'available_balance' },
   carryForwardDays: { type: DataTypes.DECIMAL(5, 1), defaultValue: 0, field: 'carry_forward_days' },
   notes: { type: DataTypes.TEXT, allowNull: true },
+  status: { type: DataTypes.ENUM('active', 'voided'), defaultValue: 'active' },
+  voidReason: { type: DataTypes.TEXT, allowNull: true, field: 'void_reason' },
   createdBy: { type: DataTypes.UUID, allowNull: true, field: 'created_by' },
   updatedBy: { type: DataTypes.UUID, allowNull: true, field: 'updated_by' },
 }, {

@@ -37,6 +37,7 @@ const TABS = [
   { label: 'Audit', icon: <Security />, key: 'audit' },
   { label: 'Reporting', icon: <Report />, key: 'reporting' },
   { label: 'Integration', icon: <IntegrationInstructions />, key: 'integration' },
+  { label: 'Definitions', icon: <Inventory2 />, key: 'definitions' },
 ];
 
 const ConfigSelect = ({ label, value, options, onChange, fullWidth = true, disabled = false }) => (
@@ -93,6 +94,11 @@ const SystemConfigPage = () => {
   const [vatCodes, setVatCodes] = useState([]);
   const [vatCodeDialog, setVatCodeDialog] = useState({ open: false, editItem: null });
   const [vatCodeForm, setVatCodeForm] = useState({ code: '', name: '', description: '' });
+  const [itemDefs, setItemDefs] = useState([]);
+  const [defDialog, setDefDialog] = useState({ open: false, editItem: null });
+  const [defForm, setDefForm] = useState({ category: 'model', name: '', sortOrder: 0 });
+
+  const CATEGORIES = ['model', 'size', 'ram', 'processor', 'ssd', 'generation', 'colour'];
 
   const showMsg = (message, severity = 'success') => setSnackbar({ open: true, message, severity });
 
@@ -246,6 +252,66 @@ const SystemConfigPage = () => {
   useEffect(() => {
     if (tab === 6) loadVatCodes();
   }, [tab, loadVatCodes]);
+
+  // ─── Item Definitions ───
+  const loadItemDefs = useCallback(async () => {
+    try {
+      const res = await SystemConfigApi.getItemDefinitions();
+      if (res.success) setItemDefs(res.data || []);
+    } catch (err) {
+      showMsg('Error loading item definitions', 'error');
+    }
+  }, []);
+
+  const handleOpenDefDialog = (item = null, defaultCategory = 'model') => {
+    setDefForm(item
+      ? { category: item.category, name: item.name, sortOrder: item.sortOrder || 0 }
+      : { category: defaultCategory, name: '', sortOrder: 0 });
+    setDefDialog({ open: true, editItem: item });
+  };
+
+  const handleCloseDefDialog = () => {
+    setDefDialog({ open: false, editItem: null });
+    setDefForm({ category: 'model', name: '', sortOrder: 0 });
+  };
+
+  const handleSaveDef = async () => {
+    if (!defForm.name.trim()) {
+      showMsg('Name is required', 'warning');
+      return;
+    }
+    try {
+      const payload = {
+        ...(defDialog.editItem?.id && { id: defDialog.editItem.id }),
+        category: defForm.category,
+        name: defForm.name.trim(),
+        sortOrder: defForm.sortOrder || 0,
+      };
+      await SystemConfigApi.saveItemDefinition(payload);
+      showMsg(defDialog.editItem ? 'Definition updated' : 'Definition created');
+      handleCloseDefDialog();
+      await loadItemDefs();
+    } catch (err) {
+      showMsg(err.response?.data?.message || 'Error saving definition', 'error');
+    }
+  };
+
+  const handleDeleteDef = async (id) => {
+    try {
+      await SystemConfigApi.deleteItemDefinition(id);
+      showMsg('Definition deleted');
+      await loadItemDefs();
+    } catch (err) {
+      showMsg('Error deleting definition', 'error');
+    }
+  };
+
+  // Load definitions when switching to Definitions tab
+  useEffect(() => {
+    if (tab === 19) loadItemDefs();
+  }, [tab, loadItemDefs]);
+
+  const getDefsByCategory = (cat) => itemDefs.filter(d => d.category === cat);
 
   const { accounts, warehouses, customers, suppliers, taxRates } = refData;
   const accountOptions = accounts.map(a => ({ value: a.id, label: `${a.code} - ${a.name}` }));
@@ -779,7 +845,126 @@ const SystemConfigPage = () => {
             </Grid>
           </SectionCard>
         )}
+
+        {/* ═══ 21. DEFINITIONS ═══ */}
+        {tab === 19 && (
+          <Box>
+            {CATEGORIES.map(cat => {
+              const defs = getDefsByCategory(cat);
+              const label = cat.charAt(0).toUpperCase() + cat.slice(1);
+              return (
+                <SectionCard key={cat} title={`${label} Options`} icon={<Inventory2 />}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      Manage values for {label}
+                    </Typography>
+                    <Button variant="contained" size="small" startIcon={<AddCircleOutline />}
+                      onClick={() => handleOpenDefDialog(null, cat)}>
+                      Add {label}
+                    </Button>
+                  </Box>
+                  <TableContainer component={Paper} variant="outlined">
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell><strong>#</strong></TableCell>
+                          <TableCell><strong>Name</strong></TableCell>
+                          <TableCell align="center" width={100}><strong>Actions</strong></TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {defs.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={3} align="center">
+                              <Typography variant="body2" color="text.secondary" sx={{ py: 3 }}>
+                                No {label} values defined. Click "Add {label}" to create one.
+                              </Typography>
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          defs.map((d, idx) => (
+                            <TableRow key={d.id}>
+                              <TableCell width={50}>
+                                <Chip label={idx + 1} size="small" color="primary" variant="outlined" />
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" fontWeight={600}>{d.name}</Typography>
+                              </TableCell>
+                              <TableCell align="center">
+                                <Tooltip title="Edit">
+                                  <IconButton size="small" onClick={() => handleOpenDefDialog(d)}>
+                                    <Edit fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title="Delete">
+                                  <IconButton size="small" color="error" onClick={() => handleDeleteDef(d.id)}>
+                                    <Delete fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </SectionCard>
+              );
+            })}
+          </Box>
+        )}
       </Box>
+
+      {/* Item Definition Dialog */}
+      <Dialog open={defDialog.open} onClose={handleCloseDefDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {defDialog.editItem
+            ? `Edit ${defForm.category.charAt(0).toUpperCase() + defForm.category.slice(1)} Option`
+            : `Add ${defForm.category.charAt(0).toUpperCase() + defForm.category.slice(1)} Option`}
+        </DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 0.5 }}>
+            <Grid item xs={12} sm={4}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Category *</InputLabel>
+                <Select
+                  value={defForm.category}
+                  label="Category *"
+                  onChange={(e) => setDefForm(p => ({ ...p, category: e.target.value }))}
+                  disabled={!!defDialog.editItem}
+                >
+                  {CATEGORIES.map(c => (
+                    <MenuItem key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth size="small" label="Name / Value *"
+                value={defForm.name}
+                onChange={(e) => setDefForm(p => ({ ...p, name: e.target.value }))}
+                placeholder="e.g. 16GB, Intel i7, Black"
+                autoFocus
+              />
+            </Grid>
+            <Grid item xs={12} sm={2}>
+              <TextField
+                fullWidth size="small" label="Sort"
+                type="number"
+                value={defForm.sortOrder}
+                onChange={(e) => setDefForm(p => ({ ...p, sortOrder: parseInt(e.target.value) || 0 }))}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDefDialog}>Cancel</Button>
+          <Button variant="contained" onClick={handleSaveDef}>
+            {defDialog.editItem ? 'Update' : 'Create'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* VAT Category Code Dialog */}
       <Dialog open={vatCodeDialog.open} onClose={handleCloseVatDialog} maxWidth="sm" fullWidth>

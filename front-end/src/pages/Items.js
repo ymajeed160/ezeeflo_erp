@@ -17,6 +17,7 @@ import {
 } from '../store/slices/itemSlice';
 import { fetchItemCategories } from '../store/slices/itemCategorySlice';
 import accountApi from '../services/accountApi';
+import SystemConfigApi from '../services/systemConfigApi';
 
 const ITEM_TYPES = [
   { value: 'product', label: 'Product' },
@@ -54,7 +55,7 @@ const Items = () => {
 
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const [filters, setFilters] = useState({ categoryId: '', itemType: '', isActive: '' });
+  const [filters, setFilters] = useState({ categoryId: '', itemType: '', isActive: '', model: '', size: '', ram: '', processor: '', ssd: '', generation: '', colour: '' });
   const [showFilters, setShowFilters] = useState(false);
   const [page, setPage] = useState(1);
   const perPage = 20;
@@ -63,12 +64,22 @@ const Items = () => {
   const [accounts, setAccounts] = useState([]);
   const [accountsLoading, setAccountsLoading] = useState(false);
 
+  // Item definitions (model, size, ram, etc.)
+  const [itemDefinitions, setItemDefinitions] = useState([]);
+
   // Form state
   const [form, setForm] = useState({
     categoryId: '',
     itemCode: '',
     name: '',
     description: '',
+    model: '',
+    size: '',
+    ram: '',
+    processor: '',
+    ssd: '',
+    generation: '',
+    colour: '',
     itemType: 'product',
     unitOfMeasure: 'Each',
     costPrice: '',
@@ -87,6 +98,7 @@ const Items = () => {
     if (isNew) {
       setForm({
         categoryId: '', itemCode: '', name: '', description: '',
+        model: '', size: '', ram: '', processor: '', ssd: '', generation: '', colour: '',
         itemType: 'product', unitOfMeasure: 'Each',
         costPrice: '', sellingPrice: '', taxPercentage: '',
         isInventoryTracked: true,
@@ -101,6 +113,13 @@ const Items = () => {
         itemCode: currentItem.itemCode || '',
         name: currentItem.name || '',
         description: currentItem.description || '',
+        model: currentItem.model || '',
+        size: currentItem.size || '',
+        ram: currentItem.ram || '',
+        processor: currentItem.processor || '',
+        ssd: currentItem.ssd || '',
+        generation: currentItem.generation || '',
+        colour: currentItem.colour || '',
         itemType: currentItem.itemType || 'product',
         unitOfMeasure: currentItem.unitOfMeasure || 'Each',
         costPrice: currentItem.costPrice != null ? String(currentItem.costPrice) : '',
@@ -149,6 +168,20 @@ const Items = () => {
     loadAccounts();
   }, []);
 
+  // Load item definitions for dropdowns
+  useEffect(() => {
+    const loadDefs = async () => {
+      try {
+        const res = await SystemConfigApi.getItemDefinitions();
+        if (res.success) setItemDefinitions(res.data || []);
+      } catch (err) {
+        console.error('Failed to load item definitions:', err);
+        setItemDefinitions([]);
+      }
+    };
+    loadDefs();
+  }, []);
+
   // Load current item for edit/view
   useEffect(() => {
     if (id && !isNew) {
@@ -190,6 +223,13 @@ const Items = () => {
       itemCode: form.itemCode.trim(),
       name: form.name.trim(),
       description: form.description?.trim() || null,
+      model: form.model?.trim() || null,
+      size: form.size?.trim() || null,
+      ram: form.ram?.trim() || null,
+      processor: form.processor?.trim() || null,
+      ssd: form.ssd?.trim() || null,
+      generation: form.generation?.trim() || null,
+      colour: form.colour?.trim() || null,
       itemType: form.itemType,
       unitOfMeasure: form.unitOfMeasure,
       costPrice: form.costPrice ? Number(form.costPrice) : null,
@@ -255,6 +295,22 @@ const Items = () => {
 
   const itemTypeOption = (type) => ITEM_TYPES.find((t) => t.value === type) || null;
   const uomOption = UOM_OPTIONS.find((u) => u.value === form.unitOfMeasure) || UOM_OPTIONS[0];
+
+  // Definition options for each category
+  const getDefOptions = (cat) => {
+    return itemDefinitions
+      .filter(d => d.category === cat && d.isActive)
+      .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+      .map(d => ({ value: d.name, label: d.name }));
+  };
+
+  const modelOptions = useMemo(() => getDefOptions('model'), [itemDefinitions]);
+  const sizeOptions = useMemo(() => getDefOptions('size'), [itemDefinitions]);
+  const ramOptions = useMemo(() => getDefOptions('ram'), [itemDefinitions]);
+  const processorOptions = useMemo(() => getDefOptions('processor'), [itemDefinitions]);
+  const ssdOptions = useMemo(() => getDefOptions('ssd'), [itemDefinitions]);
+  const generationOptions = useMemo(() => getDefOptions('generation'), [itemDefinitions]);
+  const colourOptions = useMemo(() => getDefOptions('colour'), [itemDefinitions]);
 
   // Detail view content
   const renderDetailContent = (item) => (
@@ -367,6 +423,83 @@ const Items = () => {
             multiline
             rows={2}
             fullWidth
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Autocomplete
+            freeSolo
+            options={modelOptions}
+            value={modelOptions.find(o => o.value === form.model) || null}
+            inputValue={form.model || ''}
+            onInputChange={(_, v) => setForm({ ...form, model: v })}
+            onChange={(_, v) => setForm({ ...form, model: v?.value || '' })}
+            renderInput={(params) => <TextField {...params} label="Model" fullWidth />}
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Autocomplete
+            freeSolo
+            options={sizeOptions}
+            value={sizeOptions.find(o => o.value === form.size) || null}
+            inputValue={form.size || ''}
+            onInputChange={(_, v) => setForm({ ...form, size: v })}
+            onChange={(_, v) => setForm({ ...form, size: v?.value || '' })}
+            renderInput={(params) => <TextField {...params} label="Size" fullWidth />}
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Autocomplete
+            freeSolo
+            options={ramOptions}
+            value={ramOptions.find(o => o.value === form.ram) || null}
+            inputValue={form.ram || ''}
+            onInputChange={(_, v) => setForm({ ...form, ram: v })}
+            onChange={(_, v) => setForm({ ...form, ram: v?.value || '' })}
+            renderInput={(params) => <TextField {...params} label="RAM" fullWidth placeholder="e.g. 16GB" />}
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Autocomplete
+            freeSolo
+            options={processorOptions}
+            value={processorOptions.find(o => o.value === form.processor) || null}
+            inputValue={form.processor || ''}
+            onInputChange={(_, v) => setForm({ ...form, processor: v })}
+            onChange={(_, v) => setForm({ ...form, processor: v?.value || '' })}
+            renderInput={(params) => <TextField {...params} label="Processor" fullWidth placeholder="e.g. Intel i7" />}
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Autocomplete
+            freeSolo
+            options={ssdOptions}
+            value={ssdOptions.find(o => o.value === form.ssd) || null}
+            inputValue={form.ssd || ''}
+            onInputChange={(_, v) => setForm({ ...form, ssd: v })}
+            onChange={(_, v) => setForm({ ...form, ssd: v?.value || '' })}
+            renderInput={(params) => <TextField {...params} label="SSD" fullWidth placeholder="e.g. 512GB" />}
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Autocomplete
+            freeSolo
+            options={generationOptions}
+            value={generationOptions.find(o => o.value === form.generation) || null}
+            inputValue={form.generation || ''}
+            onInputChange={(_, v) => setForm({ ...form, generation: v })}
+            onChange={(_, v) => setForm({ ...form, generation: v?.value || '' })}
+            renderInput={(params) => <TextField {...params} label="Generation" fullWidth placeholder="e.g. 12th Gen" />}
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Autocomplete
+            freeSolo
+            options={colourOptions}
+            value={colourOptions.find(o => o.value === form.colour) || null}
+            inputValue={form.colour || ''}
+            onInputChange={(_, v) => setForm({ ...form, colour: v })}
+            onChange={(_, v) => setForm({ ...form, colour: v?.value || '' })}
+            renderInput={(params) => <TextField {...params} label="Colour" fullWidth />}
           />
         </Grid>
         <Grid item xs={12} sm={6}>
@@ -580,6 +713,76 @@ const Items = () => {
                 <MenuItem value="false">Inactive</MenuItem>
               </Select>
             </FormControl>
+            <Autocomplete
+              size="small"
+              options={modelOptions}
+              value={modelOptions.find(o => o.value === filters.model) || null}
+              inputValue={filters.model || ''}
+              onInputChange={(_, v) => handleFilterChange('model', v)}
+              onChange={(_, v) => handleFilterChange('model', v?.value || '')}
+              renderInput={(params) => <TextField {...params} label="Model" />}
+              sx={{ minWidth: 140 }}
+            />
+            <Autocomplete
+              size="small"
+              options={sizeOptions}
+              value={sizeOptions.find(o => o.value === filters.size) || null}
+              inputValue={filters.size || ''}
+              onInputChange={(_, v) => handleFilterChange('size', v)}
+              onChange={(_, v) => handleFilterChange('size', v?.value || '')}
+              renderInput={(params) => <TextField {...params} label="Size" />}
+              sx={{ minWidth: 120 }}
+            />
+            <Autocomplete
+              size="small"
+              options={ramOptions}
+              value={ramOptions.find(o => o.value === filters.ram) || null}
+              inputValue={filters.ram || ''}
+              onInputChange={(_, v) => handleFilterChange('ram', v)}
+              onChange={(_, v) => handleFilterChange('ram', v?.value || '')}
+              renderInput={(params) => <TextField {...params} label="RAM" />}
+              sx={{ minWidth: 110 }}
+            />
+            <Autocomplete
+              size="small"
+              options={processorOptions}
+              value={processorOptions.find(o => o.value === filters.processor) || null}
+              inputValue={filters.processor || ''}
+              onInputChange={(_, v) => handleFilterChange('processor', v)}
+              onChange={(_, v) => handleFilterChange('processor', v?.value || '')}
+              renderInput={(params) => <TextField {...params} label="Processor" />}
+              sx={{ minWidth: 140 }}
+            />
+            <Autocomplete
+              size="small"
+              options={ssdOptions}
+              value={ssdOptions.find(o => o.value === filters.ssd) || null}
+              inputValue={filters.ssd || ''}
+              onInputChange={(_, v) => handleFilterChange('ssd', v)}
+              onChange={(_, v) => handleFilterChange('ssd', v?.value || '')}
+              renderInput={(params) => <TextField {...params} label="SSD" />}
+              sx={{ minWidth: 110 }}
+            />
+            <Autocomplete
+              size="small"
+              options={generationOptions}
+              value={generationOptions.find(o => o.value === filters.generation) || null}
+              inputValue={filters.generation || ''}
+              onInputChange={(_, v) => handleFilterChange('generation', v)}
+              onChange={(_, v) => handleFilterChange('generation', v?.value || '')}
+              renderInput={(params) => <TextField {...params} label="Generation" />}
+              sx={{ minWidth: 130 }}
+            />
+            <Autocomplete
+              size="small"
+              options={colourOptions}
+              value={colourOptions.find(o => o.value === filters.colour) || null}
+              inputValue={filters.colour || ''}
+              onInputChange={(_, v) => handleFilterChange('colour', v)}
+              onChange={(_, v) => handleFilterChange('colour', v?.value || '')}
+              renderInput={(params) => <TextField {...params} label="Colour" />}
+              sx={{ minWidth: 120 }}
+            />
           </Box>
         )}
       </Paper>

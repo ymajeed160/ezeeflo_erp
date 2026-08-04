@@ -9,6 +9,7 @@ const NumberSeries = require('./NumberSeries');
 const EmailSetting = require('./EmailSetting');
 const TaxRate = require('./TaxRate');
 const VatCategoryCode = require('./VatCategoryCode');
+const ItemDefinition = require('./ItemDefinition');
 const UserRole = require('./UserRole');
 const RolePermission = require('./RolePermission');
 const RefreshToken = require('./RefreshToken');
@@ -1599,6 +1600,7 @@ module.exports = {
   BankReconciliation,
   BankReconciliationLine,
   UserTenant,
+  ItemDefinition,
   AssetCategory,
   Asset,
   AssetAcquisition,

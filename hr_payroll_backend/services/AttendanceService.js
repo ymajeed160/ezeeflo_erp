@@ -99,7 +99,7 @@ class AttendanceService {
 
   async delete(id, tenantId) { const a = await attendanceRepo.findById(id, tenantId); if (!a) throw new NotFoundError('Attendance record not found'); await attendanceRepo.delete(id, tenantId); return { success: true }; }
 
-  async getTodaySummary(tenantId) { return attendanceRepo.getTodaySummary(tenantId); }
+  async getTodaySummary(tenantId, employeeId = null) { return attendanceRepo.getTodaySummary(tenantId, employeeId); }
 
   async bulkMark(records, tenantId, userId) {
     return attendanceRepo.bulkCreate(records.map(r => ({ ...r, tenantId, createdBy: userId, updatedBy: userId })));

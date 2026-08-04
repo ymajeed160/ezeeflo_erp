@@ -11,7 +11,9 @@ import { payrollReducers } from './slices/payrollSlices';
 import { benefitsReducers } from './slices/benefitsSlices';
 import { hrModulesReducers } from './slices/hrModulesSlices';
 import userReducer from './slices/userSlice';
+import employeeAssetReducer from './slices/employeeAssetSlice';
 import hrAuthReducer from './hrAuthSlice';
+import superAdminAuthReducer from './superAdminAuthSlice';
 
 const persistConfig = {
   key: 'hr_payroll',
@@ -22,6 +24,7 @@ const persistConfig = {
 const appReducer = combineReducers({
   theme: themeReducer,
   hrAuth: hrAuthReducer,
+  superAdminAuth: superAdminAuthReducer,
   dashboard: dashboardReducer,
   employees: employeeReducer,
   ...orgReducers,
@@ -30,6 +33,7 @@ const appReducer = combineReducers({
   ...payrollReducers,
   ...benefitsReducers,
   ...hrModulesReducers,
+  employeeAssets: employeeAssetReducer,
   users: userReducer,
 });
 

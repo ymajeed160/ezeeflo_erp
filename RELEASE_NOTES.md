@@ -1,6 +1,69 @@
 # ERPMTSuite Release Notes
 
-## Version 3.0.0 — July 26, 2026
+## Version 1.5.0 — August 4, 2026
+
+---
+
+## 🆕 New Features
+
+### Employee Asset Management
+- Assign assets (laptops, phones, vehicles, equipment, etc.) to employees with full tracking
+- Asset tracking with codes, serial numbers, brand, model, assigned/return dates, and status
+- Backend: Model, Repository, Service, Controller, Routes at `/api/hr/employee-assets`
+- Web app: Asset assignment form on Employees page with employee selector
+- Mobile app: My Assets screen showing only the logged-in user's assigned assets
+
+### Notification System — Full Infrastructure
+- New `notifications` table with model, repository, service, controller, and routes
+- Web app: Bell icon in top navigation bar with unread badge count
+- Popover dropdown showing last 10 notifications with click-to-read
+- Auto-polls every 30 seconds for new notifications
+- Click notification to navigate to relevant page (Leave, Payroll, Attendance)
+- **Leave workflow notifications:**
+  - Employee submits leave → notifies employee + manager/approver
+  - Leave approved → notifies employee: "Your leave has been approved ✅"
+  - Leave rejected → notifies employee with reason
+- Smart user-to-employee matching via email (primary) and name (fallback)
+- When no distinct manager exists, notifies all other company users
+
+### Mobile App — Dashboard Redesign
+- Completely redesigned dashboard with layered gradient header and decorative circles
+- Circular progress indicators for leave usage with green/yellow/red color coding
+- Refined attendance status card with pulse indicator and live elapsed time
+- Enhanced quick actions, leave balances, upcoming holidays, and payroll status cards
+- Dashboard auto-refreshes every time the tab gains focus (`useFocusEffect`)
+
+### Mobile App — UX Improvements
+- Back buttons added to Attendance, Leave, Payroll, and Apply Leave screens
+- Calendar date picker on Apply Leave with range highlighting and day count
+- After check-in/check-out, auto-navigates to Dashboard with refresh
+- Bottom tab bar with filled/outline icon toggle and elevated shadow
+
+### Master Data — Countries & Nationalities
+- Seeded 195 ISO 3166-1 countries with Alpha-2/Alpha-3 codes, flag emojis, nationalities, phone codes, and currencies
+- Flag emoji column charset fixed to `utf8mb4` for proper Unicode storage
+- Country/nationality dropdowns on Add/Edit Employee forms with flag + name
+- Nationality column added to Employees list table
+
+---
+
+## 🐛 Bug Fixes
+
+| Issue | Fix |
+|-------|-----|
+| Leave balance creation validation error | Year field now properly initialized with current year |
+| My Assets showing wrong employee's assets | Now filters by authenticated user via email/name matching |
+| Dashboard showing wrong attendance status | `getMe` endpoint now matches employee to logged-in user |
+| Payroll net salary mismatch | Now computed as `basicSalary + allowances - deductions` |
+| Leave balance showing 0 on dashboard | Fixed to use correct backend fields (`availableBalance`, `openingBalance`) |
+| Holiday "New Year" showing `?` icon | Improved date parsing for recurring holidays + calendar-star fallback icon |
+| Leave application missing `employeeId` | Mobile app now fetches employee profile and includes ID in request |
+| `getMyAssets` returning first employee only | Now matches authenticated user to their employee record |
+| `getMe` returning first employee only | Same fix — matched by email or name |
+
+---
+
+## Version 1.0.0 — July 2026
 
 ---
 

@@ -35,4 +35,10 @@ router.post('/vat-codes', authorize('settings.update'), configController.saveVat
 router.put('/vat-codes', authorize('settings.update'), configController.saveVatCategoryCode.bind(configController));
 router.delete('/vat-codes/:id', authorize('settings.update'), configController.deleteVatCategoryCode.bind(configController));
 
+// Item Definitions
+router.get('/definitions', authorize('settings.read'), configController.getItemDefinitions.bind(configController));
+router.post('/definitions', authorize('settings.update'), configController.saveItemDefinition.bind(configController));
+router.put('/definitions', authorize('settings.update'), configController.saveItemDefinition.bind(configController));
+router.delete('/definitions/:id', authorize('settings.update'), configController.deleteItemDefinition.bind(configController));
+
 module.exports = router;

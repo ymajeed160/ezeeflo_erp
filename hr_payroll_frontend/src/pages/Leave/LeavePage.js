@@ -9,7 +9,7 @@ import {
 import {
   Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Refresh as RefreshIcon,
   EventNote, AccountBalanceWallet, Category, BeachAccess,
-  CheckCircle as ApproveIcon, Cancel as RejectIcon,
+  CheckCircle as ApproveIcon, Cancel as RejectIcon, Block as BlockIcon,
 } from '@mui/icons-material';
 import {
   fetchLeaveTypes, createLeaveType, updateLeaveType, deleteLeaveType,
@@ -18,7 +18,7 @@ import {
   fetchLeaveBalances, createLeaveBalance,
   fetchHolidays, createHoliday, updateHoliday, deleteHoliday,
 } from '../../store/slices/leaveSlices';
-import LeaveApplicationApi from '../../services/leaveApplicationApi';
+import LeaveApplicationApi, { LeaveBalanceApi } from '../../services/leaveApplicationApi';
 import { showSuccess, showError } from '../../utils/toast';
 import EmployeeSelect from '../../components/Shared/EmployeeSelect';
 import LeaveTypeSelect from '../../components/Shared/LeaveTypeSelect';
@@ -45,6 +45,8 @@ const LeavePage = () => {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
+  const [voidOpen, setVoidOpen] = useState(false);
+  const [voidReason, setVoidReason] = useState('');
   const [rejectId, setRejectId] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [formData, setFormData] = useState({});
@@ -71,7 +73,11 @@ const LeavePage = () => {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const handleCreate = () => { setFormData({ isActive: true }); setEditMode(false); setDialogOpen(true); };
+  const handleCreate = () => {
+    const defs = { isActive: true };
+    if (tabKey === 'balances') defs.year = new Date().getFullYear();
+    setFormData(defs); setEditMode(false); setDialogOpen(true);
+  };
   const handleEdit = (item) => { setFormData({ ...item }); setEditMode(true); setSelectedId(item.id); setDialogOpen(true); };
   const handleDeleteConfirm = (id) => { setSelectedId(id); setDeleteOpen(true); };
 
@@ -120,6 +126,15 @@ const LeavePage = () => {
     } catch (e) { showError('Rejection failed'); }
   };
 
+  const handleVoid = async () => {
+    try {
+      await LeaveBalanceApi.voidBalance(selectedId, voidReason || 'Voided');
+      showSuccess('Balance voided');
+      setVoidOpen(false);
+      loadData();
+    } catch (e) { showError('Void failed'); }
+  };
+
   const { list = [], loading, saving } = sliceState;
   const pagination = sliceState.pagination || { total: 0 };
 
@@ -150,10 +165,10 @@ const LeavePage = () => {
 
   const renderBalanceTable = () => (
     <Table size="small">
-      <TableHead><TableRow><TableCell>Employee</TableCell><TableCell>Leave Type</TableCell><TableCell>Year</TableCell><TableCell>Opening</TableCell><TableCell>Accrued</TableCell><TableCell>Used</TableCell><TableCell>Pending</TableCell><TableCell>Available</TableCell></TableRow></TableHead>
-      <TableBody>{list.length === 0 ? <TableRow><TableCell colSpan={8} align="center" sx={{ py: 6 }}><Typography color="text.secondary">No balances</Typography></TableCell></TableRow> :
+      <TableHead><TableRow><TableCell>Employee</TableCell><TableCell>Leave Type</TableCell><TableCell>Year</TableCell><TableCell>Opening</TableCell><TableCell>Accrued</TableCell><TableCell>Used</TableCell><TableCell>Pending</TableCell><TableCell>Available</TableCell><TableCell>Status</TableCell><TableCell align="right">Actions</TableCell></TableRow></TableHead>
+      <TableBody>{list.length === 0 ? <TableRow><TableCell colSpan={10} align="center" sx={{ py: 6 }}><Typography color="text.secondary">No balances</Typography></TableCell></TableRow> :
         list.map(b => (
-          <TableRow key={b.id} hover>
+          <TableRow key={b.id} hover sx={{ opacity: b.status === 'voided' ? 0.5 : 1 }}>
             <TableCell><Typography fontWeight={600}>{b.employee?.name || '—'}</Typography></TableCell>
             <TableCell>{b.leaveType?.name || '—'}</TableCell>
             <TableCell>{b.year}</TableCell>
@@ -162,6 +177,16 @@ const LeavePage = () => {
             <TableCell>{b.usedDays}</TableCell>
             <TableCell>{b.pendingDays}</TableCell>
             <TableCell><Chip label={b.availableBalance} size="small" color={b.availableBalance > 0 ? 'success' : 'error'} /></TableCell>
+            <TableCell><Chip label={b.status || 'active'} size="small" color={b.status === 'voided' ? 'default' : 'success'} /></TableCell>
+            <TableCell align="right">
+              {b.status !== 'voided' && (
+                <>
+                  <Tooltip title="Edit"><IconButton size="small" color="primary" onClick={() => handleEdit(b)}><EditIcon fontSize="small" /></IconButton></Tooltip>
+                  <Tooltip title="Void"><IconButton size="small" color="warning" onClick={() => { setSelectedId(b.id); setVoidOpen(true); }}><BlockIcon fontSize="small" /></IconButton></Tooltip>
+                </>
+              )}
+              <Tooltip title="Delete"><IconButton size="small" color="error" onClick={() => handleDeleteConfirm(b.id)}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
+            </TableCell>
           </TableRow>
         ))}</TableBody>
     </Table>
@@ -328,6 +353,26 @@ const LeavePage = () => {
         <DialogActions>
           <Button onClick={() => setRejectOpen(false)}>Cancel</Button>
           <Button color="error" variant="contained" onClick={handleRejectConfirm}>Reject</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={voidOpen} onClose={() => setVoidOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Void Leave Balance</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>This will mark the balance as voided. It will still appear in records but won't be counted.</Typography>
+          <TextField
+            autoFocus
+            fullWidth
+            multiline
+            rows={2}
+            label="Reason for voiding"
+            value={voidReason}
+            onChange={(e) => setVoidReason(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setVoidOpen(false)}>Cancel</Button>
+          <Button color="warning" variant="contained" onClick={handleVoid}>Void Balance</Button>
         </DialogActions>
       </Dialog>
     </Box>

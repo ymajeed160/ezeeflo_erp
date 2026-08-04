@@ -13,13 +13,21 @@ async function startServer() {
     await db.sequelize.authenticate();
     logger.info('HR Database connection established successfully');
 
-    // Sync models — skip alter in dev to avoid FK constraint issues with existing tables
+    // Sync models
     const forceSync = process.env.FORCE_SYNC === 'true';
     if (NODE_ENV === 'development' && forceSync) {
       await db.sequelize.sync({ force: true });
       logger.info('HR Database models synchronized (force mode)');
     } else {
       logger.info('HR Database sync skipped (tables already exist)');
+    }
+
+    // Ensure new models have their tables (fine-grained sync for Notification only)
+    try {
+      await db.Notification.sync();
+      logger.info('Notification table synced');
+    } catch (e) {
+      logger.warn('Notification table sync skipped (may already exist):', e.message);
     }
 
     // Run seeders if needed

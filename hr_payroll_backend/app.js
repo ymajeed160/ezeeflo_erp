@@ -47,6 +47,14 @@ const generalLimiter = rateLimit({
 });
 app.use('/api/hr', generalLimiter);
 
+// ── Super Admin Rate Limiting ──
+const superAdminLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
+  message: { success: false, message: 'Too many requests, please try again later.' },
+});
+app.use('/api/superadmin', superAdminLimiter);
+
 // ── Body Parsing ──
 app.use(express.json({ limit: '10mb', strict: true }));
 app.use(express.urlencoded({ extended: false, limit: '1mb', parameterLimit: 1000 }));
@@ -409,6 +417,17 @@ const { login, me } = require('./controllers/HRAuthController');
 app.post('/api/hr/auth/login', login);
 app.get('/api/hr/auth/me', me);
 
+// ── Super Admin Auth Routes (no middleware required for login/refresh) ──
+const superAdminAuthRoutes = require('./routes/superAdminAuthRoutes');
+const superAdminDashboardRoutes = require('./routes/superAdminDashboardRoutes');
+const superAdminCompanyRoutes = require('./routes/superAdminCompanyRoutes');
+app.use('/api/superadmin/auth', superAdminAuthRoutes);
+app.use('/api/superadmin/dashboard', superAdminDashboardRoutes);
+app.use('/api/superadmin/companies', superAdminCompanyRoutes);
+app.use('/api/superadmin/subscriptions', require('./routes/superAdminSubscriptionRoutes'));
+app.use('/api/superadmin', require('./routes/superAdminPhase4Routes'));
+app.use('/api/superadmin', require('./routes/superAdminPhase5Routes'));
+
 // ── Routes ──
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const employeeRoutes = require('./routes/employeeRoutes');
@@ -486,11 +505,13 @@ app.use('/api/hr/offboarding-checklists', hrMiddlewareChain, ofcRoutes);
 app.use('/api/hr/offboarding-progress', hrMiddlewareChain, ofpRoutes);
 app.use('/api/hr/exit-interviews', hrMiddlewareChain, eiRoutes);
 app.use('/api/hr/reports', hrMiddlewareChain, reportRoutes);
+app.use('/api/hr/employee-assets', hrMiddlewareChain, require('./routes/employeeAssetRoutes'));
 app.use('/api/hr/users', hrMiddlewareChain, userRoutes);
 app.use('/api/hr/roles', hrMiddlewareChain, roleRoutes);
 app.use('/api/hr/permissions', hrMiddlewareChain, permRoutes);
 app.use('/api/hr/settings', hrMiddlewareChain, require('./routes/settingsRoutes'));
 app.use('/api/hr/master-data', hrMiddlewareChain, require('./routes/masterDataRoutes'));
+app.use('/api/hr/notifications', hrMiddlewareChain, require('./routes/notificationRoutes'));
 
 // ── 404 Handler ──
 app.use('/api/hr/*', (req, res) => {

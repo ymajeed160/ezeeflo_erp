@@ -100,6 +100,8 @@ const employeeValidator = require('../validators/employeeValidator');
 
 router.get('/', employeeController.getAll);
 router.post('/', employeeValidator.create, employeeController.create);
+router.get('/me', employeeController.getMe);  // Must be before /:id
+router.get('/directory', employeeController.getDirectory);  // Must be before /:id
 router.get('/:id', employeeValidator.validateId, employeeController.getById);
 router.put('/:id', employeeValidator.validateId, employeeValidator.update, employeeController.update);
 router.delete('/:id', employeeValidator.validateId, employeeController.delete);

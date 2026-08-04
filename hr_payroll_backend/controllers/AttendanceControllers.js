@@ -32,7 +32,7 @@ const attendanceCtrl = {
   markAttendance: async (req, res, next) => { try { const d = await attendanceService.markAttendance(req.body, req.tenantId, req.userId); return ApiResponse.success(res, { data: d, message: 'Attendance marked' }); } catch (e) { next(e); } },
   update: async (req, res, next) => { try { const d = await attendanceService.update(req.params.id, req.body, req.tenantId, req.userId); return ApiResponse.success(res, { data: d }); } catch (e) { next(e); } },
   delete: async (req, res, next) => { try { const r = await attendanceService.delete(req.params.id, req.tenantId); return ApiResponse.success(res, { data: r }); } catch (e) { next(e); } },
-  getTodaySummary: async (req, res, next) => { try { const d = await attendanceService.getTodaySummary(req.tenantId); return ApiResponse.success(res, { data: d }); } catch (e) { next(e); } },
+  getTodaySummary: async (req, res, next) => { try { const d = await attendanceService.getTodaySummary(req.tenantId, req.query.employeeId); return ApiResponse.success(res, { data: d }); } catch (e) { next(e); } },
   bulkMark: async (req, res, next) => { try { const d = await attendanceService.bulkMark(req.body.records, req.tenantId, req.userId); return ApiResponse.created(res, { data: d }); } catch (e) { next(e); } },
 };
 

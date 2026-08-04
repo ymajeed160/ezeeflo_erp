@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { clearAuth } from '../../store/hrAuthSlice';
 import {
   AppBar, Toolbar, Typography, Drawer, List, ListItemButton, ListItemIcon,
   ListItemText, Box, IconButton, Avatar, Chip, Divider, useMediaQuery, useTheme,
+  Badge, Popover,
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
@@ -22,8 +23,11 @@ import {
   Menu as MenuIcon,
   ChevronLeft as ChevronLeftIcon,
   Logout as LogoutIcon,
+  Notifications as NotificationsIcon,
+  Circle as CircleIcon,
   NewReleases as ReleaseIcon,
 } from '@mui/icons-material';
+import hrApi from '../../services/hrApi';
 import { getUser } from '../../utils/auth';
 
 const DRAWER_WIDTH = 260;
@@ -56,6 +60,55 @@ const MainLayout = () => {
   const activeCompanyId = useSelector((state) => state.hrAuth?.activeCompanyId);
   const activeTenant = tenants.find(t => t.id === activeCompanyId);
 
+  // Notification state
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notifications, setNotifications] = useState([]);
+  const [notifAnchor, setNotifAnchor] = useState(null);
+  const notifOpen = Boolean(notifAnchor);
+
+  const fetchUnreadCount = useCallback(async () => {
+    try {
+      const res = await hrApi.get('/notifications/unread-count');
+      if (res.data?.success) setUnreadCount(res.data.data?.count || 0);
+    } catch (_) { /* notifications optional */ }
+  }, []);
+
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const res = await hrApi.get('/notifications', { params: { limit: 10 } });
+      if (res.data?.success && Array.isArray(res.data.data)) setNotifications(res.data.data);
+    } catch (_) { /* notifications optional */ }
+  }, []);
+
+  useEffect(() => { fetchUnreadCount(); const t = setInterval(fetchUnreadCount, 30000); return () => clearInterval(t); }, [fetchUnreadCount]);
+  useEffect(() => { if (notifOpen) fetchNotifications(); }, [notifOpen, fetchNotifications]);
+
+  const handleNotifClick = (event) => {
+    setNotifAnchor(event.currentTarget);
+    fetchNotifications();
+  };
+
+  const handleNotifNavigate = async (notification) => {
+    // Close popover
+    setNotifAnchor(null);
+    // Mark as read
+    if (!notification.isRead) {
+      try {
+        await hrApi.patch(`/notifications/${notification.id}/read`);
+        setUnreadCount(prev => Math.max(0, prev - 1));
+      } catch (_) {}
+    }
+    // Navigate based on type
+    const type = notification.type;
+    if (type?.startsWith('leave_')) {
+      navigate('/hr/leave');
+    } else if (type?.startsWith('payroll_')) {
+      navigate('/hr/payroll');
+    } else if (type?.startsWith('attendance_')) {
+      navigate('/hr/attendance');
+    }
+  };
+
   const handleLogout = () => {
     dispatch(clearAuth());
     localStorage.removeItem('persist:root');
@@ -84,6 +137,12 @@ const MainLayout = () => {
               sx={{ mr: 2, borderColor: 'rgba(255,255,255,0.5)', color: 'white', fontWeight: 500 }}
             />
           )}
+          {/* Notification Bell */}
+          <IconButton color="inherit" onClick={handleNotifClick} title="Notifications">
+            <Badge badgeContent={unreadCount} color="error" overlap="circular">
+              <NotificationsIcon />
+            </Badge>
+          </IconButton>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             {user && (
               <>
@@ -179,6 +238,59 @@ const MainLayout = () => {
       >
         <Outlet />
       </Box>
+
+      {/* Notification Popover */}
+      <Popover
+        open={notifOpen}
+        anchorEl={notifAnchor}
+        onClose={() => setNotifAnchor(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        PaperProps={{ sx: { width: 380, maxHeight: 450, mt: 1 } }}
+      >
+        <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography variant="subtitle1" fontWeight={700}>Notifications</Typography>
+          {unreadCount > 0 && (
+            <Chip label={`${unreadCount} new`} size="small" color="primary" />
+          )}
+        </Box>
+        {notifications.length === 0 ? (
+          <Box sx={{ p: 4, textAlign: 'center' }}>
+            <NotificationsIcon sx={{ fontSize: 40, color: 'text.disabled', mb: 1 }} />
+            <Typography color="text.secondary">No notifications yet</Typography>
+          </Box>
+        ) : (
+          <List dense sx={{ py: 0 }}>
+            {notifications.map((n) => (
+              <ListItemButton
+                key={n.id}
+                sx={{
+                  py: 1.5, px: 2,
+                  bgcolor: n.isRead ? 'transparent' : 'action.hover',
+                  borderBottom: 1, borderColor: 'divider',
+                  cursor: 'pointer',
+                }}
+                onClick={() => handleNotifNavigate(n)}
+              >
+                <Box sx={{ width: '100%' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                    {!n.isRead && <CircleIcon sx={{ fontSize: 8, color: 'primary.main' }} />}
+                    <Typography variant="body2" fontWeight={n.isRead ? 400 : 700} sx={{ flex: 1 }}>
+                      {n.title}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {new Date(n.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    </Typography>
+                  </Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ fontSize: 12 }}>
+                    {n.message}
+                  </Typography>
+                </Box>
+              </ListItemButton>
+            ))}
+          </List>
+        )}
+      </Popover>
     </Box>
   );
 };
