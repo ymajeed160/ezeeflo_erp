@@ -82,9 +82,9 @@ app.get('/api/hr/docs.json', (req, res) => {
   res.send(swaggerSpec);
 });
 
-// ── Root redirect to Swagger ──
+// ── Root redirect to Login ──
 app.get('/', (req, res) => {
-  res.redirect('/api/hr/docs');
+  res.redirect('/login');
 });
 
 // ── API Root ──

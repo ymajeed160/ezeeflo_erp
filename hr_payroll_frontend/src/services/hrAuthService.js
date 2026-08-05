@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE = 'http://localhost:5001/api/hr';
+const API_BASE = '/api/hr';
 
 /**
  * Login against HR backend

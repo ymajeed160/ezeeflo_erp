@@ -7,7 +7,7 @@ import {
 import { Search, LockReset, Lock, LockOpen, Block, CheckCircle, VpnKey } from '@mui/icons-material';
 import axios from 'axios';
 
-const API = 'http://localhost:5001/api/superadmin';
+const API = '/api/superadmin';
 const tk = () => { try { return JSON.parse(localStorage.getItem('persist:sa_auth')).accessToken; } catch { return null; } };
 const h = () => ({ headers: { Authorization: `Bearer ${tk()}` } });
 

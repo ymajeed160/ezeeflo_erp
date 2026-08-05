@@ -1,6 +1,12 @@
 const { Sequelize } = require('sequelize');
 const path = require('path');
-require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
+const fs = require('fs');
+
+// Load .env only if it exists (local dev). On TezHost, env vars are set in cPanel.
+const envPath = path.resolve(__dirname, '..', '.env');
+if (fs.existsSync(envPath)) {
+  try { require('dotenv').config({ path: envPath }); } catch (e) { /* dotenv not installed */ }
+}
 
 const sequelize = new Sequelize(
   process.env.HR_DB_NAME || 'ezeeflo_hr_payroll',

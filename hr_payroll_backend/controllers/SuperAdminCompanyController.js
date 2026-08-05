@@ -85,7 +85,8 @@ const createCompany = async (req, res) => {
     if (!adminFirstName || !adminLastName) return ApiResponse.badRequest(res, { message: 'Admin first and last name are required' });
     if (!adminEmail) return ApiResponse.badRequest(res, { message: 'Admin email is required' });
 
-    // Check duplicate company
+    // Sanitize dates — convert empty/invalid to null
+    const cleanDate = (d) => (d && d !== '' && d !== 'Invalid date' && !isNaN(Date.parse(d))) ? d : null;
     if (email) {
       const existing = await superAdminRepo.findAllCompanies({ search: email, limit: 1 });
       if (existing.data.length > 0) {
@@ -102,7 +103,8 @@ const createCompany = async (req, res) => {
       financialYearStart: financialYearStart || '01-01',
       status: status || 'pending_activation',
       subscriptionPlan: subscriptionPlan || 'starter',
-      subscriptionStartDate, subscriptionExpiryDate,
+      subscriptionStartDate: cleanDate(subscriptionStartDate),
+      subscriptionExpiryDate: cleanDate(subscriptionExpiryDate),
       maxEmployees: maxEmployees || 50, maxUsers: maxUsers || 10,
       maxBranches: maxBranches || 5, maxDepartments: maxDepartments || 10,
       maxPayrollRuns: maxPayrollRuns || 12, storageLimitMb: storageLimitMb || 1024,
@@ -160,11 +162,16 @@ const createCompany = async (req, res) => {
       },
     });
   } catch (error) {
-    logger.error('Create company error:', { error: error.message, stack: error.stack });
+    logger.error('Create company error:', { error: error.message, stack: error.stack?.split('\n').slice(0, 5).join('\n') });
     if (error.name === 'SequelizeUniqueConstraintError') {
-      return ApiResponse.badRequest(res, { message: 'A company or admin with these details already exists' });
+      const fields = error.errors?.map(e => e.path).join(', ') || 'unknown';
+      return ApiResponse.badRequest(res, { message: `Duplicate entry: ${fields}` });
     }
-    return ApiResponse.error(res, { message: 'Failed to create company' });
+    if (error.name === 'SequelizeValidationError') {
+      const msgs = error.errors?.map(e => e.message).join('; ') || 'validation failed';
+      return ApiResponse.badRequest(res, { message: msgs });
+    }
+    return ApiResponse.error(res, { message: `Failed to create company: ${error.message}` });
   }
 };
 

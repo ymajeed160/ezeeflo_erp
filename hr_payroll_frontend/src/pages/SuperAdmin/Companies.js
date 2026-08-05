@@ -92,7 +92,7 @@ const Companies = () => {
     try {
       setImpersonateDialog(prev => ({ ...prev, loading: true }));
       const tk = JSON.parse(localStorage.getItem('persist:sa_auth')).accessToken;
-      const { data } = await axios.post('http://localhost:5001/api/superadmin/impersonate',
+      const { data } = await axios.post('/api/superadmin/impersonate',
         { companyId: impersonateDialog.company.id },
         { headers: { Authorization: `Bearer ${tk}` } }
       );

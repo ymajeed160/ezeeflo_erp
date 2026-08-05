@@ -6,7 +6,7 @@ const userRepo = require('../repositories/UserRepository');
 
 /**
  * POST /api/hr/auth/login
- * Authenticates against HR users table (primary) with ERP fallback
+ * Authenticates against HR users table only
  */
 const login = async (req, res) => {
   try {
@@ -15,54 +15,25 @@ const login = async (req, res) => {
       return ApiResponse.badRequest(res, { message: 'Email and password required' });
     }
 
-    // 1. Try HR users table first (by email, then by username)
+    // Find user in HR users table (by email, then by username)
     let user = await userRepo.findByEmail(email);
     if (!user) user = await userRepo.findByUsername(email);
-    let source = 'hr';
-
-    // 2. Fallback to ERP database if not found in HR
-    if (!user) {
-      try {
-        const { Sequelize } = require('sequelize');
-        const erpDb = new Sequelize(
-          process.env.ERP_DB_NAME || 'erp_mt_suite',
-          process.env.HR_DB_USER || 'root',
-          process.env.HR_DB_PASSWORD || 'Memits@396',
-          { host: process.env.HR_DB_HOST || '127.0.0.1', port: process.env.HR_DB_PORT || 3306, dialect: 'mysql', logging: false }
-        );
-        const [erpUsers] = await erpDb.query(
-          'SELECT id, username, email, password, first_name, last_name, is_active, tenant_id FROM users WHERE (email = ? OR username = ?) AND is_active = 1 LIMIT 1',
-          { replacements: [email, email], type: Sequelize.QueryTypes.SELECT }
-        );
-        const erpUser = Array.isArray(erpUsers) ? erpUsers[0] : erpUsers;
-        if (erpUser) {
-          const valid = await bcrypt.compare(password, erpUser.password);
-          if (valid) {
-            // Auto-create HR user from ERP (with tenant/company association)
-            user = await userRepo.create({
-              username: erpUser.username || erpUser.email,
-              email: erpUser.email,
-              password: password,
-              firstName: erpUser.first_name || '',
-              lastName: erpUser.last_name || '',
-              role: 'super_admin',
-              companyIds: erpUser.tenant_id ? [erpUser.tenant_id] : [],
-            });
-            source = 'erp_sync';
-          }
-        }
-        await erpDb.close();
-      } catch (e) { logger.warn('ERP fallback failed:', e.message || e, e.stack?.split('\n')[0]); }
-    }
 
     if (!user) {
+      logger.warn('HR Login: user not found', { email });
       return ApiResponse.unauthorized(res, { message: 'Invalid credentials' });
     }
 
     // Verify password
+    if (!user.password) {
+      logger.error('HR Login: user has no password field', { userId: user.id, email });
+      return ApiResponse.unauthorized(res, { message: 'Invalid credentials' });
+    }
+
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) {
       await userRepo.incrementLoginAttempts(user.id);
+      logger.warn('HR Login: invalid password', { userId: user.id, email });
       return ApiResponse.unauthorized(res, { message: 'Invalid credentials' });
     }
 
@@ -78,27 +49,31 @@ const login = async (req, res) => {
 
     // Record login
     const ip = req.ip || req.connection?.remoteAddress || 'unknown';
-    await userRepo.recordLogin(user.id, ip);
+    await userRepo.recordLogin(user.id, ip).catch(e => logger.warn('Login record failed:', e.message));
 
-    // Get user's companies (from user_companies, look up names in ERP)
-    const companies = (user.companies || []).map(c => c.companyId);
+    // Get companies from user_companies, lookup names from super_admin_companies
     let tenants = [];
-    if (companies.length > 0) {
-      try {
-        const { Sequelize } = require('sequelize');
-        const erpDb = new Sequelize(
-          process.env.ERP_DB_NAME || 'erp_mt_suite',
-          process.env.HR_DB_USER || 'root',
-          process.env.HR_DB_PASSWORD || 'Memits@396',
-          { host: process.env.HR_DB_HOST || '127.0.0.1', port: process.env.HR_DB_PORT || 3306, dialect: 'mysql', logging: false }
-        );
-        const comps = await erpDb.query(
-          'SELECT id, name FROM tenants WHERE id IN (?)',
-          { replacements: [companies], type: Sequelize.QueryTypes.SELECT }
-        );
-        tenants = (comps || []).map(c => ({ id: c.id, name: c.name }));
-        await erpDb.close();
-      } catch (e) { logger.warn('Company lookup failed:', e.message); }
+    try {
+      const companies = user.companies || [];
+      if (companies.length > 0) {
+        const companyIds = companies.map(c => c.companyId || c.company_id);
+        // Try to look up names from super_admin_companies table in HR DB
+        const db = require('../models');
+        const sac = await db.SuperAdminCompany.findAll({
+          where: { id: companyIds },
+          attributes: ['id', 'name'],
+          raw: true,
+        }).catch(() => []);
+        const nameMap = {};
+        (sac || []).forEach(c => { nameMap[c.id] = c.name; });
+
+        tenants = companyIds.map(cid => ({
+          id: cid,
+          name: nameMap[cid] || `Company (${cid.substring(0, 8)}...)`,
+        }));
+      }
+    } catch (e) {
+      logger.warn('Company lookup skipped:', e.message);
     }
 
     // Sign JWT with role
@@ -114,6 +89,8 @@ const login = async (req, res) => {
       { expiresIn: '7d' }
     );
 
+    logger.info('HR Login: success', { userId: user.id, email, role: user.role });
+
     return ApiResponse.success(res, {
       message: 'Login successful',
       data: {
@@ -128,7 +105,7 @@ const login = async (req, res) => {
       },
     });
   } catch (error) {
-    logger.error('HR Login error:', { error: error.message });
+    logger.error('HR Login error:', { error: error.message, stack: error.stack?.split('\n').slice(0, 3).join('\n') });
     return ApiResponse.error(res, { message: 'Login failed' });
   }
 };

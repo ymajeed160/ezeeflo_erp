@@ -6,6 +6,7 @@ import {
   IconButton, Divider,
 } from '@mui/material';
 import { ArrowBack, Save, Business, PersonAdd } from '@mui/icons-material';
+import WorkingDaysPicker from '../../components/Shared/WorkingDaysPicker';
 import { createCompany, updateCompany, getCompany } from '../../services/superAdminCompanyService';
 
 const STATUS_OPTIONS = [
@@ -81,6 +82,19 @@ const CompanyForm = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true); setError(''); setSuccess('');
+
+    // Validate required fields
+    if (!form.subscriptionStartDate) {
+      setError('Subscription Start Date is required');
+      setSaving(false);
+      return;
+    }
+    if (!form.subscriptionExpiryDate) {
+      setError('Subscription Expiry Date is required');
+      setSaving(false);
+      return;
+    }
+
     try {
       const payload = { ...form };
       // Convert numeric fields
@@ -141,7 +155,12 @@ const CompanyForm = () => {
           <Grid item xs={12} sm={3}><TextField select fullWidth label="Currency" value={form.currency} onChange={handleChange('currency')}>{CURRENCY_OPTIONS.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}</TextField></Grid>
           <Grid item xs={12} sm={3}><TextField fullWidth label="Language" value={form.language} onChange={handleChange('language')} /></Grid>
           <Grid item xs={12} sm={3}><TextField fullWidth label="Financial Year Start" value={form.financialYearStart} onChange={handleChange('financialYearStart')} placeholder="MM-DD" /></Grid>
-          <Grid item xs={12} sm={4}><TextField fullWidth label="Working Days" value={form.workingDays} onChange={handleChange('workingDays')} /></Grid>
+          <Grid item xs={12} sm={4}>
+            <WorkingDaysPicker
+              value={form.workingDays || 'Mon,Tue,Wed,Thu,Fri'}
+              onChange={(v) => setForm({ ...form, workingDays: v })}
+            />
+          </Grid>
           <Grid item xs={12} sm={4}>
             <TextField select fullWidth label="Status" value={form.status} onChange={handleChange('status')}>
               {STATUS_OPTIONS.map(s => <MenuItem key={s.value} value={s.value}>{s.label}</MenuItem>)}

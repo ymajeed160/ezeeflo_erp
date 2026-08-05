@@ -18,12 +18,55 @@ $srcDirs = Get-ChildItem $srcBackend -Directory | Where-Object { $_.Name -notin 
 foreach ($dir in $srcDirs) {
     Copy-Item $dir.FullName -Destination "$deployDir\" -Recurse -Force
 }
-$srcFiles = Get-ChildItem $srcBackend -File
+$excludeFiles = @('.env', '.env.local', '.env.production', '.env.development')
+$srcFiles = Get-ChildItem $srcBackend -File | Where-Object { $_.Name -notin $excludeFiles }
 foreach ($file in $srcFiles) {
     Copy-Item $file.FullName -Destination "$deployDir\" -Force
 }
 $backendCount = (Get-ChildItem $deployDir -Recurse -File).Count
 Write-Host "Backend files: $backendCount"
+
+# 2.5. Copy shared/ folder (workspace-level dependency) and fix paths
+Write-Host "=== Copying shared/ folder ==="
+$srcShared = "c:\Yasir\ERPMultiTenant\ERPMTSuite\shared"
+if (Test-Path $srcShared) {
+    $excludeShared = @('node_modules')
+    Get-ChildItem $srcShared -Directory | Where-Object { $_.Name -notin $excludeShared } | ForEach-Object {
+        Copy-Item $_.FullName -Destination "$deployDir\shared\" -Recurse -Force
+    }
+    Get-ChildItem $srcShared -File | ForEach-Object {
+        Copy-Item $_.FullName -Destination "$deployDir\shared\" -Force
+    }
+    Write-Host "Shared files: $((Get-ChildItem "$deployDir\shared" -Recurse -File).Count)"
+}
+
+# Fix require paths: ../../shared/ → ../shared/ (deploy structure)
+$fixFiles = @(
+    "$deployDir\middleware\hrAuthMiddleware.js",
+    "$deployDir\services\BranchService.js",
+    "$deployDir\services\CostCenterService.js",
+    "$deployDir\services\DepartmentService.js",
+    "$deployDir\services\DesignationService.js",
+    "$deployDir\services\EmployeeService.js"
+)
+foreach ($f in $fixFiles) {
+    if (Test-Path $f) {
+        $content = Get-Content $f -Raw
+        $content = $content.Replace("require('../../shared/", "require('../shared/")
+        Set-Content $f -Value $content -NoNewline
+        $leaf = Split-Path $f -Leaf
+        Write-Host "  [OK] Fixed paths in $leaf"
+    }
+}
+
+# Fix cross-references inside shared/ → ../../hr_payroll_backend/ → ../
+$sharedErpFile = "$deployDir\shared\services\erpIntegration.js"
+if (Test-Path $sharedErpFile) {
+    $content = Get-Content $sharedErpFile -Raw
+    $content = $content.Replace("require('../../hr_payroll_backend/", "require('../../")
+    Set-Content $sharedErpFile -Value $content -NoNewline
+    Write-Host "  [OK] Fixed cross-refs in shared/services/erpIntegration.js"
+}
 
 # 3. Copy frontend build to front-end/build/
 Write-Host "=== Copying frontend build ==="

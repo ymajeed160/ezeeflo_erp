@@ -1,4 +1,9 @@
-require('dotenv').config({ path: __dirname + '/.env' });
+// Load .env only if it exists (local dev). On TezHost, env vars are set in cPanel.
+const fs = require('fs');
+const envPath = __dirname + '/.env';
+if (fs.existsSync(envPath)) {
+  try { require('dotenv').config({ path: envPath }); } catch (e) { /* dotenv not installed */ }
+}
 
 const app = require('./app');
 const db = require('./models');

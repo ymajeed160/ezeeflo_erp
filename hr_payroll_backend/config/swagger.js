@@ -14,7 +14,9 @@ const options = {
       description: 'Independent HR & Payroll system.\n\n## Auth\nJWT via ERP SSO. Include Authorization: Bearer <token> and X-Company-Id headers.',
       contact: { name: 'EzeeFlo' },
     },
-    servers: [{ url: 'http://localhost:5001', description: 'Dev' }],
+    servers: [
+      { url: process.env.API_URL || 'http://localhost:5001', description: process.env.API_URL ? 'Production' : 'Dev' },
+    ],
     components: {
       securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
     },

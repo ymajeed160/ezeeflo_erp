@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE = 'http://localhost:5001/api/superadmin/companies';
+const API_BASE = '/api/superadmin/companies';
 
 const getToken = () => {
   const stored = localStorage.getItem('persist:sa_auth');

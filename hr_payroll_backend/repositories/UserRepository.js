@@ -32,11 +32,11 @@ class UserRepository {
   }
 
   async findByEmail(email) {
-    return User.scope('withPassword').findOne({ where: { email }, include: [{ model: UserCompany, as: 'companies', required: false }] });
+    return User.unscoped().findOne({ where: { email }, include: [{ model: UserCompany, as: 'companies', required: false }] });
   }
 
   async findByUsername(username) {
-    return User.scope('withPassword').findOne({ where: { username }, include: [{ model: UserCompany, as: 'companies', required: false }] });
+    return User.unscoped().findOne({ where: { username }, include: [{ model: UserCompany, as: 'companies', required: false }] });
   }
 
   async create(data) {

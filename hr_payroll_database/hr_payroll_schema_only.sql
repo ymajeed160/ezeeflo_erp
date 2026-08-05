@@ -1,10 +1,10 @@
-﻿-- EzeeFlo HR & Payroll -- Complete Schema (74 tables)
+-- EzeeFlo HR & Payroll -- Complete Schema (74 tables)
 -- MariaDB 10.11 Compatible
 
-CREATE DATABASE IF NOT EXISTS ezeeflo_hr_payroll CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE ezeeflo_hr_payroll;
+CREATE DATABASE IF NOT EXISTS ezeefloc_hrms CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE ezeefloc_hrms;
 
-CREATE TABLE `allowance_types` (
+CREATE TABLE IF NOT EXISTS `allowance_types` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `code` varchar(20) NOT NULL,
@@ -22,7 +22,7 @@ CREATE TABLE `allowance_types` (
   KEY `allowance_types_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `attendances` (
+CREATE TABLE IF NOT EXISTS `attendances` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `employee_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
@@ -56,7 +56,7 @@ CREATE TABLE `attendances` (
   KEY `attendances_shift_id` (`shift_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `benefit_types` (
+CREATE TABLE IF NOT EXISTS `benefit_types` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `code` varchar(20) NOT NULL,
@@ -75,7 +75,7 @@ CREATE TABLE `benefit_types` (
   KEY `benefit_types_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `branches` (
+CREATE TABLE IF NOT EXISTS `branches` (
   `id` char(36) COLLATE utf8mb4_unicode_ci NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
   `code` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -101,7 +101,7 @@ CREATE TABLE `branches` (
   KEY `branches_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE `cost_centers` (
+CREATE TABLE IF NOT EXISTS `cost_centers` (
   `id` char(36) COLLATE utf8mb4_unicode_ci NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
   `code` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -125,7 +125,7 @@ CREATE TABLE `cost_centers` (
   CONSTRAINT `cost_centers_ibfk_1` FOREIGN KEY (`department_id`) REFERENCES `departments` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE `deduction_types` (
+CREATE TABLE IF NOT EXISTS `deduction_types` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `code` varchar(20) NOT NULL,
@@ -142,7 +142,7 @@ CREATE TABLE `deduction_types` (
   KEY `deduction_types_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `departments` (
+CREATE TABLE IF NOT EXISTS `departments` (
   `id` char(36) COLLATE utf8mb4_unicode_ci NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
   `code` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -174,7 +174,7 @@ CREATE TABLE `departments` (
   CONSTRAINT `departments_ibfk_3` FOREIGN KEY (`manager_id`) REFERENCES `employees` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE `designations` (
+CREATE TABLE IF NOT EXISTS `designations` (
   `id` char(36) COLLATE utf8mb4_unicode_ci NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
   `code` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -200,7 +200,7 @@ CREATE TABLE `designations` (
   CONSTRAINT `designations_ibfk_1` FOREIGN KEY (`department_id`) REFERENCES `departments` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE `employee_allowances` (
+CREATE TABLE IF NOT EXISTS `employee_allowances` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `employee_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
@@ -220,7 +220,7 @@ CREATE TABLE `employee_allowances` (
   KEY `employee_allowances_allowance_type_id` (`allowance_type_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `employee_benefits` (
+CREATE TABLE IF NOT EXISTS `employee_benefits` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `employee_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
@@ -243,7 +243,7 @@ CREATE TABLE `employee_benefits` (
   KEY `employee_benefits_benefit_type_id` (`benefit_type_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `employee_deductions` (
+CREATE TABLE IF NOT EXISTS `employee_deductions` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `employee_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
@@ -264,7 +264,7 @@ CREATE TABLE `employee_deductions` (
   KEY `employee_deductions_deduction_type_id` (`deduction_type_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `employee_documents` (
+CREATE TABLE IF NOT EXISTS `employee_documents` (
   `id` char(36) COLLATE utf8mb4_unicode_ci NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
   `employee_id` char(36) COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -292,7 +292,7 @@ CREATE TABLE `employee_documents` (
   KEY `employee_documents_expiry_date` (`expiry_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE `employee_loans` (
+CREATE TABLE IF NOT EXISTS `employee_loans` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `loan_number` varchar(30) NOT NULL,
@@ -320,7 +320,7 @@ CREATE TABLE `employee_loans` (
   KEY `employee_loans_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `employee_salaries` (
+CREATE TABLE IF NOT EXISTS `employee_salaries` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `employee_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
@@ -349,7 +349,7 @@ CREATE TABLE `employee_salaries` (
   KEY `employee_salaries_effective_from` (`effective_from`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `employees` (
+CREATE TABLE IF NOT EXISTS `employees` (
   `id` char(36) COLLATE utf8mb4_unicode_ci NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
   `employee_code` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -453,7 +453,7 @@ CREATE TABLE `employees` (
   CONSTRAINT `employees_ibfk_5` FOREIGN KEY (`reporting_manager_id`) REFERENCES `employees` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE `eosb_calculations` (
+CREATE TABLE IF NOT EXISTS `eosb_calculations` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `employee_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
@@ -478,7 +478,7 @@ CREATE TABLE `eosb_calculations` (
   KEY `eosb_calculations_employee_id` (`employee_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `eosb_settlements` (
+CREATE TABLE IF NOT EXISTS `eosb_settlements` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `settlement_number` varchar(30) NOT NULL,
@@ -507,7 +507,7 @@ CREATE TABLE `eosb_settlements` (
   KEY `eosb_settlements_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `ess_submissions` (
+CREATE TABLE IF NOT EXISTS `ess_submissions` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `employee_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
@@ -531,7 +531,7 @@ CREATE TABLE `ess_submissions` (
   KEY `ess_submissions_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `exit_interviews` (
+CREATE TABLE IF NOT EXISTS `exit_interviews` (
   `id` char(36) NOT NULL,
   `tenant_id` char(36) NOT NULL,
   `employee_id` char(36) NOT NULL,
@@ -555,7 +555,7 @@ CREATE TABLE `exit_interviews` (
   KEY `exit_interviews_employee_id` (`employee_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `holidays` (
+CREATE TABLE IF NOT EXISTS `holidays` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `name` varchar(150) NOT NULL,
@@ -577,7 +577,7 @@ CREATE TABLE `holidays` (
   KEY `holidays_holiday_type` (`holiday_type`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `interviews` (
+CREATE TABLE IF NOT EXISTS `interviews` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `applicant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
@@ -600,7 +600,7 @@ CREATE TABLE `interviews` (
   KEY `interviews_interview_date` (`interview_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `job_applicants` (
+CREATE TABLE IF NOT EXISTS `job_applicants` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `position_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
@@ -628,7 +628,7 @@ CREATE TABLE `job_applicants` (
   KEY `job_applicants_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `job_positions` (
+CREATE TABLE IF NOT EXISTS `job_positions` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `position_code` varchar(30) NOT NULL,
@@ -655,7 +655,7 @@ CREATE TABLE `job_positions` (
   KEY `job_positions_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `leave_applications` (
+CREATE TABLE IF NOT EXISTS `leave_applications` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `application_number` varchar(30) NOT NULL,
@@ -682,7 +682,7 @@ CREATE TABLE `leave_applications` (
   KEY `leave_applications_start_date_end_date` (`start_date`,`end_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `leave_approvals` (
+CREATE TABLE IF NOT EXISTS `leave_approvals` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `leave_application_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
@@ -702,7 +702,7 @@ CREATE TABLE `leave_approvals` (
   KEY `leave_approvals_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `leave_balances` (
+CREATE TABLE IF NOT EXISTS `leave_balances` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `employee_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
@@ -727,7 +727,7 @@ CREATE TABLE `leave_balances` (
   KEY `leave_balances_leave_type_id` (`leave_type_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `leave_types` (
+CREATE TABLE IF NOT EXISTS `leave_types` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `code` varchar(20) NOT NULL,
@@ -755,7 +755,7 @@ CREATE TABLE `leave_types` (
   KEY `leave_types_leave_category` (`leave_category`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `loan_repayments` (
+CREATE TABLE IF NOT EXISTS `loan_repayments` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `loan_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
@@ -780,7 +780,7 @@ CREATE TABLE `loan_repayments` (
   KEY `loan_repayments_payroll_run_id` (`payroll_run_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `master_cities` (
+CREATE TABLE IF NOT EXISTS `master_cities` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `state_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
@@ -803,7 +803,7 @@ CREATE TABLE `master_cities` (
   CONSTRAINT `master_cities_ibfk_2` FOREIGN KEY (`country_id`) REFERENCES `master_countries` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `master_countries` (
+CREATE TABLE IF NOT EXISTS `master_countries` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `code` varchar(5) NOT NULL COMMENT 'ISO 3166-1 alpha-2',
@@ -828,7 +828,7 @@ CREATE TABLE `master_countries` (
   KEY `master_countries_is_active` (`is_active`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `master_data` (
+CREATE TABLE IF NOT EXISTS `master_data` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `type` varchar(50) NOT NULL COMMENT 'Entity type: employment_type, leave_type, skill, etc.',
@@ -854,7 +854,7 @@ CREATE TABLE `master_data` (
   KEY `master_data_type_name` (`type`,`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `master_data_audit` (
+CREATE TABLE IF NOT EXISTS `master_data_audit` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `record_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
@@ -872,7 +872,7 @@ CREATE TABLE `master_data_audit` (
   KEY `master_data_audit_record_id` (`record_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `master_states` (
+CREATE TABLE IF NOT EXISTS `master_states` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `country_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
@@ -893,7 +893,7 @@ CREATE TABLE `master_states` (
   CONSTRAINT `master_states_ibfk_1` FOREIGN KEY (`country_id`) REFERENCES `master_countries` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `offboarding_checklists` (
+CREATE TABLE IF NOT EXISTS `offboarding_checklists` (
   `id` char(36) NOT NULL,
   `tenant_id` char(36) NOT NULL,
   `task_name` varchar(200) NOT NULL,
@@ -909,7 +909,7 @@ CREATE TABLE `offboarding_checklists` (
   KEY `offboarding_checklists_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `offboarding_progress` (
+CREATE TABLE IF NOT EXISTS `offboarding_progress` (
   `id` char(36) NOT NULL,
   `tenant_id` char(36) NOT NULL,
   `employee_id` char(36) NOT NULL,
@@ -929,7 +929,7 @@ CREATE TABLE `offboarding_progress` (
   KEY `offboarding_progress_employee_id` (`employee_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `offer_letters` (
+CREATE TABLE IF NOT EXISTS `offer_letters` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `offer_number` varchar(30) NOT NULL,
@@ -952,7 +952,7 @@ CREATE TABLE `offer_letters` (
   KEY `offer_letters_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `onboarding_checklists` (
+CREATE TABLE IF NOT EXISTS `onboarding_checklists` (
   `id` char(36) NOT NULL,
   `tenant_id` char(36) NOT NULL,
   `task_name` varchar(200) NOT NULL,
@@ -968,7 +968,7 @@ CREATE TABLE `onboarding_checklists` (
   KEY `onboarding_checklists_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `onboarding_progress` (
+CREATE TABLE IF NOT EXISTS `onboarding_progress` (
   `id` char(36) NOT NULL,
   `tenant_id` char(36) NOT NULL,
   `employee_id` char(36) NOT NULL,
@@ -988,7 +988,7 @@ CREATE TABLE `onboarding_progress` (
   KEY `onboarding_progress_employee_id` (`employee_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `overtime_entries` (
+CREATE TABLE IF NOT EXISTS `overtime_entries` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `employee_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
@@ -1015,7 +1015,7 @@ CREATE TABLE `overtime_entries` (
   KEY `overtime_entries_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `payroll_details` (
+CREATE TABLE IF NOT EXISTS `payroll_details` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `payroll_run_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
@@ -1044,7 +1044,7 @@ CREATE TABLE `payroll_details` (
   KEY `payroll_details_employee_id` (`employee_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `payroll_periods` (
+CREATE TABLE IF NOT EXISTS `payroll_periods` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `period_code` varchar(30) NOT NULL,
@@ -1066,7 +1066,7 @@ CREATE TABLE `payroll_periods` (
   KEY `payroll_periods_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `payroll_runs` (
+CREATE TABLE IF NOT EXISTS `payroll_runs` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `run_number` varchar(30) NOT NULL,
@@ -1094,7 +1094,7 @@ CREATE TABLE `payroll_runs` (
   KEY `payroll_runs_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `payslips` (
+CREATE TABLE IF NOT EXISTS `payslips` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `payslip_number` varchar(30) NOT NULL,
@@ -1121,7 +1121,7 @@ CREATE TABLE `payslips` (
   KEY `payslips_payslip_number` (`payslip_number`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `performance_appraisals` (
+CREATE TABLE IF NOT EXISTS `performance_appraisals` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `employee_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
@@ -1146,7 +1146,7 @@ CREATE TABLE `performance_appraisals` (
   KEY `performance_appraisals_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `performance_goals` (
+CREATE TABLE IF NOT EXISTS `performance_goals` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `employee_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
@@ -1171,7 +1171,7 @@ CREATE TABLE `performance_goals` (
   KEY `performance_goals_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `performance_kpis` (
+CREATE TABLE IF NOT EXISTS `performance_kpis` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `code` varchar(20) NOT NULL,
@@ -1193,7 +1193,7 @@ CREATE TABLE `performance_kpis` (
   KEY `performance_kpis_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `permissions` (
+CREATE TABLE IF NOT EXISTS `permissions` (
   `id` char(36) NOT NULL,
   `code` varchar(100) NOT NULL,
   `name` varchar(200) NOT NULL,
@@ -1212,7 +1212,7 @@ CREATE TABLE `permissions` (
   KEY `idx_module` (`module`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE `role_permissions` (
+CREATE TABLE IF NOT EXISTS `role_permissions` (
   `id` char(36) NOT NULL,
   `role_id` char(36) NOT NULL,
   `permission_id` char(36) NOT NULL,
@@ -1226,7 +1226,7 @@ CREATE TABLE `role_permissions` (
   CONSTRAINT `role_permissions_ibfk_2` FOREIGN KEY (`permission_id`) REFERENCES `permissions` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE `roles` (
+CREATE TABLE IF NOT EXISTS `roles` (
   `id` char(36) NOT NULL,
   `name` varchar(100) NOT NULL,
   `code` varchar(50) NOT NULL,
@@ -1245,7 +1245,7 @@ CREATE TABLE `roles` (
   KEY `idx_system` (`is_system`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE `rosters` (
+CREATE TABLE IF NOT EXISTS `rosters` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `employee_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
@@ -1267,7 +1267,7 @@ CREATE TABLE `rosters` (
   KEY `rosters_roster_date` (`roster_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `salary_components` (
+CREATE TABLE IF NOT EXISTS `salary_components` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `structure_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
@@ -1291,7 +1291,7 @@ CREATE TABLE `salary_components` (
   KEY `salary_components_component_type` (`component_type`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `salary_structures` (
+CREATE TABLE IF NOT EXISTS `salary_structures` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `code` varchar(20) NOT NULL,
@@ -1308,7 +1308,7 @@ CREATE TABLE `salary_structures` (
   KEY `salary_structures_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `settings_attendance` (
+CREATE TABLE IF NOT EXISTS `settings_attendance` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `overtime_enabled` tinyint(1) DEFAULT '1',
@@ -1335,7 +1335,7 @@ CREATE TABLE `settings_attendance` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `settings_audit_logs` (
+CREATE TABLE IF NOT EXISTS `settings_audit_logs` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `user_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
@@ -1354,7 +1354,7 @@ CREATE TABLE `settings_audit_logs` (
   KEY `settings_audit_logs_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `settings_company_profile` (
+CREATE TABLE IF NOT EXISTS `settings_company_profile` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `profile_type` enum('branch','business_unit','location','cost_center') NOT NULL,
@@ -1376,7 +1376,7 @@ CREATE TABLE `settings_company_profile` (
   KEY `settings_company_profile_tenant_id_profile_type` (`tenant_id`,`profile_type`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `settings_email` (
+CREATE TABLE IF NOT EXISTS `settings_email` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `smtp_host` varchar(255) DEFAULT NULL,
@@ -1396,7 +1396,7 @@ CREATE TABLE `settings_email` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `settings_general` (
+CREATE TABLE IF NOT EXISTS `settings_general` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `company_name` varchar(200) DEFAULT NULL,
@@ -1428,7 +1428,7 @@ CREATE TABLE `settings_general` (
   UNIQUE KEY `settings_general_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `settings_leave` (
+CREATE TABLE IF NOT EXISTS `settings_leave` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `leave_year_start` varchar(5) DEFAULT '01-01',
@@ -1453,13 +1453,13 @@ CREATE TABLE `settings_leave` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `settings_localization` (
+CREATE TABLE IF NOT EXISTS `settings_localization` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `language` varchar(10) DEFAULT 'en',
   `languages_supported` json DEFAULT NULL COMMENT '["en","ar"]',
   `currency` varchar(5) DEFAULT 'AED',
-  `currency_symbol` varchar(5) DEFAULT 'Ø¯.Ø¥',
+  `currency_symbol` varchar(5) DEFAULT 'د.إ',
   `date_format` varchar(20) DEFAULT 'DD/MM/YYYY',
   `number_format` varchar(20) DEFAULT '#,###.##',
   `timezone` varchar(50) DEFAULT 'Asia/Dubai',
@@ -1474,7 +1474,7 @@ CREATE TABLE `settings_localization` (
   UNIQUE KEY `settings_localization_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `settings_notifications` (
+CREATE TABLE IF NOT EXISTS `settings_notifications` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `email_notifications` tinyint(1) DEFAULT '1',
@@ -1495,7 +1495,7 @@ CREATE TABLE `settings_notifications` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `settings_payroll` (
+CREATE TABLE IF NOT EXISTS `settings_payroll` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `payroll_frequency` enum('monthly','bi-weekly','weekly') DEFAULT NULL,
@@ -1524,7 +1524,7 @@ CREATE TABLE `settings_payroll` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `settings_security` (
+CREATE TABLE IF NOT EXISTS `settings_security` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `password_min_length` int(11) DEFAULT '8',
@@ -1548,7 +1548,7 @@ CREATE TABLE `settings_security` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `settings_sms` (
+CREATE TABLE IF NOT EXISTS `settings_sms` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `provider` enum('twilio','nexmo','infobip','custom') DEFAULT NULL,
@@ -1566,7 +1566,7 @@ CREATE TABLE `settings_sms` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `settings_working_hours` (
+CREATE TABLE IF NOT EXISTS `settings_working_hours` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `working_days` varchar(50) DEFAULT 'Mon,Tue,Wed,Thu,Fri',
@@ -1595,7 +1595,7 @@ CREATE TABLE `settings_working_hours` (
   UNIQUE KEY `settings_working_hours_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `shift_assignments` (
+CREATE TABLE IF NOT EXISTS `shift_assignments` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `employee_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
@@ -1617,7 +1617,7 @@ CREATE TABLE `shift_assignments` (
   KEY `shift_assignments_effective_from_effective_to` (`effective_from`,`effective_to`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `shifts` (
+CREATE TABLE IF NOT EXISTS `shifts` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `code` varchar(20) NOT NULL,
@@ -1649,7 +1649,7 @@ CREATE TABLE `shifts` (
   KEY `shifts_is_active` (`is_active`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `training_attendees` (
+CREATE TABLE IF NOT EXISTS `training_attendees` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `session_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
@@ -1668,7 +1668,7 @@ CREATE TABLE `training_attendees` (
   KEY `training_attendees_employee_id` (`employee_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `training_courses` (
+CREATE TABLE IF NOT EXISTS `training_courses` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `code` varchar(20) NOT NULL,
@@ -1691,7 +1691,7 @@ CREATE TABLE `training_courses` (
   KEY `training_courses_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `training_sessions` (
+CREATE TABLE IF NOT EXISTS `training_sessions` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `course_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
@@ -1717,7 +1717,7 @@ CREATE TABLE `training_sessions` (
   KEY `training_sessions_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `user_companies` (
+CREATE TABLE IF NOT EXISTS `user_companies` (
   `id` char(36) NOT NULL,
   `user_id` char(36) NOT NULL,
   `company_id` char(36) NOT NULL,
@@ -1732,7 +1732,7 @@ CREATE TABLE `user_companies` (
   CONSTRAINT `user_companies_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE `user_roles` (
+CREATE TABLE IF NOT EXISTS `user_roles` (
   `id` char(36) NOT NULL,
   `user_id` char(36) NOT NULL,
   `role_id` char(36) NOT NULL,
@@ -1747,7 +1747,248 @@ CREATE TABLE `user_roles` (
   CONSTRAINT `user_roles_ibfk_2` FOREIGN KEY (`role_id`) REFERENCES `roles` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE `users` (
+-- ============================================================================
+-- NEW TABLES (added: announcements, company_modules, notifications,
+--   subscription_plans, employee_assets, super_admins, super_admin_companies,
+--   super_admin_audit_logs, super_admin_login_history)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS `announcements` (
+  `id` char(36) NOT NULL,
+  `title` varchar(300) NOT NULL,
+  `content` text NOT NULL,
+  `type` enum('general','maintenance','feature','downtime','security','urgent') DEFAULT 'general',
+  `priority` enum('low','normal','high','critical') DEFAULT 'normal',
+  `target_companies` json DEFAULT NULL,
+  `is_published` tinyint(1) DEFAULT '0',
+  `publish_at` datetime DEFAULT NULL,
+  `expires_at` datetime DEFAULT NULL,
+  `created_by` char(36) DEFAULT NULL,
+  `updated_by` char(36) DEFAULT NULL,
+  `created_at` datetime NOT NULL,
+  `updated_at` datetime NOT NULL,
+  `deleted_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_type` (`type`),
+  KEY `idx_published` (`is_published`),
+  KEY `idx_publish_at` (`publish_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `company_modules` (
+  `id` char(36) NOT NULL,
+  `company_id` char(36) NOT NULL,
+  `module_code` varchar(50) NOT NULL,
+  `module_name` varchar(100) NOT NULL,
+  `is_enabled` tinyint(1) DEFAULT '1',
+  `created_by` char(36) DEFAULT NULL,
+  `updated_by` char(36) DEFAULT NULL,
+  `created_at` datetime NOT NULL,
+  `updated_at` datetime NOT NULL,
+  `deleted_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_company_module` (`company_id`,`module_code`),
+  KEY `idx_company` (`company_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `notifications` (
+  `id` char(36) NOT NULL,
+  `tenant_id` char(36) NOT NULL,
+  `user_id` char(36) NOT NULL,
+  `employee_id` char(36) DEFAULT NULL,
+  `type` enum('attendance_reminder','leave_approved','leave_rejected','leave_submitted','payroll_released','document_expiry','birthday','work_anniversary','announcement','training_reminder','holiday_reminder','request_status') NOT NULL,
+  `title` varchar(300) NOT NULL,
+  `message` text NOT NULL,
+  `data` json DEFAULT NULL,
+  `is_read` tinyint(1) DEFAULT '0',
+  `read_at` datetime DEFAULT NULL,
+  `created_by` char(36) DEFAULT NULL,
+  `created_at` datetime NOT NULL,
+  `updated_at` datetime NOT NULL,
+  `deleted_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_tenant` (`tenant_id`),
+  KEY `idx_user` (`user_id`),
+  KEY `idx_employee` (`employee_id`),
+  KEY `idx_read` (`is_read`),
+  KEY `idx_type` (`type`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `subscription_plans` (
+  `id` char(36) NOT NULL,
+  `name` varchar(100) NOT NULL,
+  `code` varchar(50) NOT NULL,
+  `description` text DEFAULT NULL,
+  `price` decimal(10,2) DEFAULT '0.00',
+  `billing_cycle` enum('monthly','quarterly','biannually','annually') DEFAULT 'annually',
+  `max_employees` int(11) DEFAULT '50',
+  `max_users` int(11) DEFAULT '10',
+  `max_branches` int(11) DEFAULT '5',
+  `max_departments` int(11) DEFAULT '10',
+  `max_payroll_runs` int(11) DEFAULT '12',
+  `storage_limit_mb` int(11) DEFAULT '1024',
+  `max_api_requests` int(11) DEFAULT '10000',
+  `grace_period_days` int(11) DEFAULT '15',
+  `enabled_modules` json DEFAULT NULL,
+  `is_active` tinyint(1) DEFAULT '1',
+  `sort_order` int(11) DEFAULT '0',
+  `created_by` char(36) DEFAULT NULL,
+  `updated_by` char(36) DEFAULT NULL,
+  `created_at` datetime NOT NULL,
+  `updated_at` datetime NOT NULL,
+  `deleted_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_code` (`code`),
+  KEY `idx_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `employee_assets` (
+  `id` char(36) NOT NULL,
+  `tenant_id` char(36) NOT NULL,
+  `employee_id` char(36) NOT NULL,
+  `asset_code` varchar(50) DEFAULT NULL,
+  `asset_name` varchar(200) NOT NULL,
+  `asset_type` enum('laptop','mobile_phone','sim_card','access_card','vehicle','equipment','other') DEFAULT 'other',
+  `serial_number` varchar(100) DEFAULT NULL,
+  `brand` varchar(100) DEFAULT NULL,
+  `model` varchar(100) DEFAULT NULL,
+  `assigned_date` date NOT NULL,
+  `return_date` date DEFAULT NULL,
+  `status` enum('assigned','returned','lost','damaged') DEFAULT 'assigned',
+  `remarks` text DEFAULT NULL,
+  `created_by` char(36) DEFAULT NULL,
+  `updated_by` char(36) DEFAULT NULL,
+  `created_at` datetime NOT NULL,
+  `updated_at` datetime NOT NULL,
+  `deleted_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_tenant` (`tenant_id`),
+  KEY `idx_employee` (`employee_id`),
+  KEY `idx_asset_code` (`asset_code`),
+  KEY `idx_asset_type` (`asset_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `super_admins` (
+  `id` char(36) NOT NULL,
+  `username` varchar(100) NOT NULL,
+  `email` varchar(150) NOT NULL,
+  `password` varchar(255) NOT NULL,
+  `first_name` varchar(100) NOT NULL,
+  `last_name` varchar(100) NOT NULL,
+  `phone` varchar(30) DEFAULT NULL,
+  `profile_picture` varchar(500) DEFAULT NULL,
+  `is_active` tinyint(1) DEFAULT '1',
+  `is_locked` tinyint(1) DEFAULT '0',
+  `locked_at` datetime DEFAULT NULL,
+  `login_attempts` int(11) DEFAULT '0',
+  `last_login_at` datetime DEFAULT NULL,
+  `last_login_ip` varchar(45) DEFAULT NULL,
+  `password_changed_at` datetime DEFAULT NULL,
+  `must_change_password` tinyint(1) DEFAULT '0',
+  `refresh_token` varchar(500) DEFAULT NULL,
+  `created_by` char(36) DEFAULT NULL,
+  `updated_by` char(36) DEFAULT NULL,
+  `created_at` datetime NOT NULL,
+  `updated_at` datetime NOT NULL,
+  `deleted_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_username` (`username`),
+  UNIQUE KEY `uk_email` (`email`),
+  KEY `idx_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `super_admin_companies` (
+  `id` char(36) NOT NULL,
+  `name` varchar(200) NOT NULL,
+  `legal_name` varchar(300) DEFAULT NULL,
+  `trade_license_number` varchar(100) DEFAULT NULL,
+  `tax_registration_number` varchar(100) DEFAULT NULL,
+  `country` varchar(100) DEFAULT NULL,
+  `city` varchar(100) DEFAULT NULL,
+  `address` text DEFAULT NULL,
+  `phone` varchar(30) DEFAULT NULL,
+  `email` varchar(150) DEFAULT NULL,
+  `website` varchar(255) DEFAULT NULL,
+  `logo_url` varchar(500) DEFAULT NULL,
+  `timezone` varchar(50) DEFAULT 'Asia/Dubai',
+  `currency` varchar(5) DEFAULT 'AED',
+  `language` varchar(10) DEFAULT 'en',
+  `working_days` varchar(50) DEFAULT 'Mon,Tue,Wed,Thu,Fri',
+  `financial_year_start` varchar(5) DEFAULT '01-01',
+  `status` enum('active','inactive','suspended','expired','pending_activation','archived') DEFAULT 'pending_activation',
+  `subscription_plan` varchar(100) DEFAULT NULL,
+  `subscription_start_date` date DEFAULT NULL,
+  `subscription_expiry_date` date DEFAULT NULL,
+  `max_employees` int(11) DEFAULT '50',
+  `max_users` int(11) DEFAULT '10',
+  `max_branches` int(11) DEFAULT '5',
+  `max_departments` int(11) DEFAULT '10',
+  `max_payroll_runs` int(11) DEFAULT '12',
+  `storage_limit_mb` int(11) DEFAULT '1024',
+  `max_api_requests` int(11) DEFAULT '10000',
+  `grace_period_days` int(11) DEFAULT '15',
+  `notes` text DEFAULT NULL,
+  `created_by` char(36) DEFAULT NULL,
+  `updated_by` char(36) DEFAULT NULL,
+  `created_at` datetime NOT NULL,
+  `updated_at` datetime NOT NULL,
+  `deleted_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_name` (`name`),
+  KEY `idx_email` (`email`),
+  KEY `idx_status` (`status`),
+  KEY `idx_expiry` (`subscription_expiry_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `super_admin_audit_logs` (
+  `id` char(36) NOT NULL,
+  `super_admin_id` char(36) NOT NULL,
+  `action` varchar(100) NOT NULL,
+  `entity_type` varchar(100) DEFAULT NULL,
+  `entity_id` char(36) DEFAULT NULL,
+  `description` text DEFAULT NULL,
+  `old_values` json DEFAULT NULL,
+  `new_values` json DEFAULT NULL,
+  `ip_address` varchar(45) DEFAULT NULL,
+  `user_agent` varchar(500) DEFAULT NULL,
+  `metadata` json DEFAULT NULL,
+  `created_at` datetime NOT NULL,
+  `updated_at` datetime NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_super_admin` (`super_admin_id`),
+  KEY `idx_action` (`action`),
+  KEY `idx_entity` (`entity_type`,`entity_id`),
+  KEY `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `super_admin_login_history` (
+  `id` char(36) NOT NULL,
+  `super_admin_id` char(36) NOT NULL,
+  `ip_address` varchar(45) DEFAULT NULL,
+  `user_agent` varchar(500) DEFAULT NULL,
+  `login_at` datetime DEFAULT NULL,
+  `logout_at` datetime DEFAULT NULL,
+  `is_success` tinyint(1) DEFAULT '1',
+  `failure_reason` varchar(255) DEFAULT NULL,
+  `session_duration` int(11) DEFAULT NULL,
+  `created_at` datetime NOT NULL,
+  `updated_at` datetime NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_super_admin` (`super_admin_id`),
+  KEY `idx_login_at` (`login_at`),
+  KEY `idx_success` (`is_success`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -------------------------------------------------------
+-- End of new tables
+-- -------------------------------------------------------
+
+
+  CONSTRAINT `user_roles_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `user_roles_ibfk_2` FOREIGN KEY (`role_id`) REFERENCES `roles` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `users` (
   `id` char(36) NOT NULL,
   `username` varchar(100) NOT NULL,
   `email` varchar(150) NOT NULL,
@@ -1779,7 +2020,7 @@ CREATE TABLE `users` (
   KEY `idx_active` (`is_active`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE `wps_configurations` (
+CREATE TABLE IF NOT EXISTS `wps_configurations` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `config_name` varchar(100) NOT NULL,
@@ -1798,7 +2039,7 @@ CREATE TABLE `wps_configurations` (
   KEY `wps_configurations_tenant_id` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `wps_exports` (
+CREATE TABLE IF NOT EXISTS `wps_exports` (
   `id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `tenant_id` char(36) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
   `export_number` varchar(30) NOT NULL,

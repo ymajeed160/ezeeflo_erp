@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE = 'http://localhost:5001/api/superadmin';
+const API_BASE = '/api/superadmin';
 
 /**
  * Super Admin login

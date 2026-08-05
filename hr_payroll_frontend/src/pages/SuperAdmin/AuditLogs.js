@@ -6,7 +6,7 @@ import {
 } from '@mui/material';
 import axios from 'axios';
 
-const API_BASE = 'http://localhost:5001/api/superadmin';
+const API_BASE = '/api/superadmin';
 
 const getToken = () => { try { return JSON.parse(localStorage.getItem('persist:sa_auth')).accessToken; } catch { return null; } };
 
