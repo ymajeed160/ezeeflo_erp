@@ -1,5 +1,233 @@
 # ERPMTSuite Release Notes
 
+## Version 3.5.0 — August 7, 2026
+
+---
+
+## 🆕 New Features
+
+### Cash Payment Voucher (CPV) — Complete Module
+
+A full Cash Payment Voucher module for recording cash payments against expenses. Integrates with the Chart of Accounts, Journal Entries, and General Ledger.
+
+**Backend (8 files):**
+
+| Layer      | File                                                                                |
+| ---------- | ----------------------------------------------------------------------------------- |
+| Migration  | `20260807000001-create-cash-payment-vouchers.js`                                    |
+| Model      | `CashPaymentVoucher.js`                                                             |
+| Model      | `CashPaymentVoucherLine.js`                                                         |
+| Repository | `CashPaymentVoucherRepository.js` — `CPV-YYYY-NNNNNN` auto-numbering                |
+| Service    | `CashPaymentVoucherService.js` — Create / Update / Post / Reverse / Cancel / Delete |
+| Controller | `CashPaymentVoucherController.js` — 8 REST endpoints                                |
+| Validator  | `cashPaymentVoucherValidator.js`                                                    |
+| DTO        | `CashPaymentVoucherDTO.js`                                                          |
+
+**API Endpoints:**
+
+| Method | Route                                    | Description                                       |
+| ------ | ---------------------------------------- | ------------------------------------------------- |
+| GET    | `/api/cash-payment-vouchers`             | List CPVs (search, filter by status/date/account) |
+| GET    | `/api/cash-payment-vouchers/:id`         | Get CPV detail with lines                         |
+| POST   | `/api/cash-payment-vouchers`             | Create new CPV                                    |
+| PUT    | `/api/cash-payment-vouchers/:id`         | Update draft CPV                                  |
+| DELETE | `/api/cash-payment-vouchers/:id`         | Soft-delete CPV                                   |
+| POST   | `/api/cash-payment-vouchers/:id/post`    | Post CPV → creates Journal Entry                  |
+| POST   | `/api/cash-payment-vouchers/:id/reverse` | Reverse posted CPV                                |
+| POST   | `/api/cash-payment-vouchers/:id/cancel`  | Cancel draft CPV                                  |
+
+**Accounting Logic — Posting:**
+
+```
+Dr  Expense Account(s)    (base amount per line)
+Dr  VAT Receivable         (tax amount)
+    Cr  Cash Account           (total amount = base + tax)
+```
+
+**Frontend:**
+
+- `front-end/src/pages/CashPaymentVouchers.js` — Full list/create/edit/view dialogs with multi-line expense entry, tax calculation, auto-calculating totals
+- `front-end/src/services/cpvApi.js` — API service layer
+- Sidebar: "Cash Payment Voucher" under Purchases menu
+- Route: `/app/purchases/cpv`
+
+**CPV Permissions (9):**
+| Code | Description |
+|------|-------------|
+| `cpv.view` | View CPV list and details |
+| `cpv.create` | Create new CPV |
+| `cpv.edit` | Edit draft CPV |
+| `cpv.delete` | Delete draft CPV |
+| `cpv.post` | Post CPV to accounting |
+| `cpv.reverse` | Reverse posted CPV |
+| `cpv.cancel` | Cancel draft CPV |
+| `cpv.print` | Print CPV |
+| `cpv.export` | Export CPV data |
+
+---
+
+### Cash Receipt Voucher (CRV) — Complete Module
+
+A full Cash Receipt Voucher module for recording cash receipts from customers and other sources. Mirrors CPV architecture with reversed accounting direction.
+
+**Backend (8 files):**
+
+| Layer      | File                                                                                |
+| ---------- | ----------------------------------------------------------------------------------- |
+| Migration  | `20260807000002-create-cash-receipt-vouchers.js`                                    |
+| Model      | `CashReceiptVoucher.js`                                                             |
+| Model      | `CashReceiptVoucherLine.js`                                                         |
+| Repository | `CashReceiptVoucherRepository.js` — `CRV-YYYY-NNNNNN` auto-numbering                |
+| Service    | `CashReceiptVoucherService.js` — Create / Update / Post / Reverse / Cancel / Delete |
+| Controller | `CashReceiptVoucherController.js` — 8 REST endpoints                                |
+| Validator  | `cashReceiptVoucherValidator.js`                                                    |
+| DTO        | `CashReceiptVoucherDTO.js`                                                          |
+
+**API Endpoints:**
+
+| Method | Route                                    | Description                      |
+| ------ | ---------------------------------------- | -------------------------------- |
+| GET    | `/api/cash-receipt-vouchers`             | List CRVs                        |
+| GET    | `/api/cash-receipt-vouchers/:id`         | Get CRV detail with lines        |
+| POST   | `/api/cash-receipt-vouchers`             | Create new CRV                   |
+| PUT    | `/api/cash-receipt-vouchers/:id`         | Update draft CRV                 |
+| DELETE | `/api/cash-receipt-vouchers/:id`         | Soft-delete CRV                  |
+| POST   | `/api/cash-receipt-vouchers/:id/post`    | Post CRV → creates Journal Entry |
+| POST   | `/api/cash-receipt-vouchers/:id/reverse` | Reverse posted CRV               |
+| POST   | `/api/cash-receipt-vouchers/:id/cancel`  | Cancel draft CRV                 |
+
+**Accounting Logic — Posting:**
+
+```
+Dr  Cash Account            (total amount = base + tax)
+    Cr  Income Account(s)       (base amount per line)
+    Cr  VAT Payable             (tax amount)
+```
+
+**Frontend:**
+
+- `front-end/src/pages/CashReceiptVouchers.js` — Full list/create/edit/view dialogs with multi-line income entry, payer type selection (Customer/Supplier/Employee/Other), tax calculation, auto-calculating totals
+- `front-end/src/services/crvApi.js` — API service layer
+- Sidebar: "Cash Receipt Voucher" under Sales menu
+- Route: `/app/sales/crv`
+
+**CRV Permissions (9):**
+| Code | Description |
+|------|-------------|
+| `crv.view` | View CRV list and details |
+| `crv.create` | Create new CRV |
+| `crv.edit` | Edit draft CRV |
+| `crv.delete` | Delete draft CRV |
+| `crv.post` | Post CRV to accounting |
+| `crv.reverse` | Reverse posted CRV |
+| `crv.cancel` | Cancel draft CRV |
+| `crv.print` | Print CRV |
+| `crv.export` | Export CRV data |
+
+---
+
+### VAT Integration — VAT Payable & VAT Receivable
+
+Both CPV and CRV now integrate with the centralized VAT configuration in System Settings.
+
+| Voucher               | VAT Account         | Direction                   | Config Key                      |
+| --------------------- | ------------------- | --------------------------- | ------------------------------- |
+| **CPV** (payment out) | VAT Receivable (Dr) | `accounting.vat_receivable` | `1202 - VAT Receivable - Input` |
+| **CRV** (receipt in)  | VAT Payable (Cr)    | `accounting.vat_payable`    | `2501 - VAT Account`            |
+
+**Files Updated:**
+
+- `back-end/services/CashPaymentVoucherService.js` — post() and reverse() now use `vat_receivable`
+- `back-end/services/CashReceiptVoucherService.js` — post() and reverse() now use `vat_payable`
+
+VAT accounts are configured at **Settings → Accounting** and read dynamically per tenant at posting time.
+
+---
+
+### System Configuration — Default Cash Account
+
+- **Settings → Purchase** tab: "Default Cash Account" dropdown — auto-selects in New CPV and New CRV dialogs
+- Config key: `purchase.default_cash_account`
+- Both CPV and CRV frontends read this config and pre-populate the Cash Account field
+
+---
+
+## 🐛 Bug Fixes
+
+| Issue                                                               | Fix                                                                                                                                                                          |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CPV `findById` returns null inside transaction                      | `CashPaymentVoucherRepository.findById()` now accepts optional `transaction` parameter; `create()` and `update()` pass the active transaction so uncommitted data is visible |
+| CPV save fails with "Cannot read properties of null (reading 'id')" | Same transaction fix — repository `create()` now correctly returns the created voucher with all includes                                                                     |
+| CRV post unbalanced — tax not credited                              | post() now reads `vat_payable` from system config and creates a separate VAT Payable credit line; reverse() mirrors this                                                     |
+| CPV tax not posted to proper VAT account                            | post() and reverse() now read `vat_receivable` from system config instead of relying on optional `line.taxId`                                                                |
+| Settings API response format mismatch                               | Frontend `loadAccounts()` now correctly parses nested `data.configs` structure: `cfgRes.data?.data?.configs`                                                                 |
+| CRV permissions not assigned to Admin role                          | Seed script updated to assign CRV permissions to both `super_admin` and `admin` roles across all tenants                                                                     |
+
+---
+
+## 🚀 Deployment Instructions
+
+### 1. Database Migrations
+
+```bash
+cd back-end
+npx sequelize-cli db:migrate --name 20260807000001-create-cash-payment-vouchers.js
+npx sequelize-cli db:migrate --name 20260807000002-create-cash-receipt-vouchers.js
+```
+
+### 2. Seed Permissions
+
+```bash
+cd back-end
+node seed-cpv-permissions.js
+node seed-crv-permissions.js
+```
+
+### 3. Front-end Build
+
+```bash
+cd front-end
+npm run build
+```
+
+---
+
+## 📋 Files Changed
+
+| File                                                                 | Change                                         |
+| -------------------------------------------------------------------- | ---------------------------------------------- |
+| `back-end/models/CashPaymentVoucher.js`                              | New — CPV header model                         |
+| `back-end/models/CashPaymentVoucherLine.js`                          | New — CPV line model                           |
+| `back-end/models/CashReceiptVoucher.js`                              | New — CRV header model                         |
+| `back-end/models/CashReceiptVoucherLine.js`                          | New — CRV line model                           |
+| `back-end/models/index.js`                                           | Added CRV model registrations + associations   |
+| `back-end/migrations/20260807000001-create-cash-payment-vouchers.js` | New — CPV tables with indexes                  |
+| `back-end/migrations/20260807000002-create-cash-receipt-vouchers.js` | New — CRV tables with indexes                  |
+| `back-end/repositories/CashPaymentVoucherRepository.js`              | New — CPV CRUD + auto-numbering                |
+| `back-end/repositories/CashReceiptVoucherRepository.js`              | New — CRV CRUD + auto-numbering                |
+| `back-end/services/CashPaymentVoucherService.js`                     | New — CPV business logic + posting             |
+| `back-end/services/CashReceiptVoucherService.js`                     | New — CRV business logic + posting             |
+| `back-end/controllers/CashPaymentVoucherController.js`               | New — CPV REST endpoints                       |
+| `back-end/controllers/CashReceiptVoucherController.js`               | New — CRV REST endpoints                       |
+| `back-end/validators/cashPaymentVoucherValidator.js`                 | New — CPV validation rules                     |
+| `back-end/validators/cashReceiptVoucherValidator.js`                 | New — CRV validation rules                     |
+| `back-end/dto/CashPaymentVoucherDTO.js`                              | New — CPV data transforms                      |
+| `back-end/dto/CashReceiptVoucherDTO.js`                              | New — CRV data transforms                      |
+| `back-end/routes/cashPaymentVoucher.routes.js`                       | New — CPV route definitions                    |
+| `back-end/routes/cashReceiptVoucher.routes.js`                       | New — CRV route definitions                    |
+| `back-end/app.js`                                                    | Added CPV + CRV route mounts                   |
+| `back-end/seed-cpv-permissions.js`                                   | New — CPV permission seeder                    |
+| `back-end/seed-crv-permissions.js`                                   | New — CRV permission seeder                    |
+| `front-end/src/pages/CashPaymentVouchers.js`                         | New — CPV list/create/edit/view page           |
+| `front-end/src/pages/CashReceiptVouchers.js`                         | New — CRV list/create/edit/view page           |
+| `front-end/src/services/cpvApi.js`                                   | New — CPV API service                          |
+| `front-end/src/services/crvApi.js`                                   | New — CRV API service                          |
+| `front-end/src/App.js`                                               | Added CPV + CRV route definitions              |
+| `front-end/src/components/Layout/Sidebar.js`                         | Added CPV (Purchases) + CRV (Sales) menu items |
+| `front-end/src/pages/SystemConfig.js`                                | Added "Default Cash Account" dropdown          |
+
+---
+
 ## Version 1.5.0 — August 4, 2026
 
 ---

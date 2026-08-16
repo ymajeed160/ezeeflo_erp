@@ -4,6 +4,22 @@ import authApi from '../../services/authApi';
 export const login = createAsyncThunk('auth/login', async (credentials, { rejectWithValue }) => {
   try {
     const response = await authApi.login(credentials);
+    // Immediately persist token to localStorage so subsequent API calls have it
+    // (redux-persist flushes asynchronously, but axiosInstance reads from localStorage)
+    if (response.data?.accessToken) {
+      try {
+        const persistRoot = JSON.parse(localStorage.getItem('persist:root') || '{}');
+        persistRoot.auth = JSON.stringify({
+          accessToken: response.data.accessToken,
+          refreshToken: response.data.refreshToken || null,
+          user: response.data.user || null,
+          isAuthenticated: true,
+          companies: response.data.companies || [],
+          defaultCompanyId: response.data.defaultCompanyId || null,
+        });
+        localStorage.setItem('persist:root', JSON.stringify(persistRoot));
+      } catch { /* ignore */ }
+    }
     return response.data;
   } catch (error) {
     return rejectWithValue(error.response?.data?.message || error.message || 'Login failed');

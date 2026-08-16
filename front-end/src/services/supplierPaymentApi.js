@@ -8,7 +8,7 @@ const supplierPaymentApi = {
   delete: (id) => api.delete(`/supplier-payments/${id}`),
   approve: (id) => api.post(`/supplier-payments/${id}/approve`),
   confirm: (id) => api.post(`/supplier-payments/${id}/confirm`),
-  postToJournal: (id) => api.post(`/supplier-payments/${id}/post-to-journal`),
+  postToJournal: (id, data = {}) => api.post(`/supplier-payments/${id}/post-to-journal`, data),
 };
 
 export default supplierPaymentApi;

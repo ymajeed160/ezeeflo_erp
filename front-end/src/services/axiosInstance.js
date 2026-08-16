@@ -11,17 +11,36 @@ const axiosInstance = axios.create({
   withCredentials: true,
 });
 
+// Store reference — injected from store.js so we can read auth token immediately
+let _store = null;
+export const injectAxiosStore = (store) => { _store = store; };
+
 // Request interceptor - attach access token and active company
 axiosInstance.interceptors.request.use(
   (config) => {
-    const state = JSON.parse(localStorage.getItem('persist:root') || '{}');
+    let accessToken = null;
 
-    // Attach auth token
-    if (state.auth) {
-      const auth = JSON.parse(state.auth);
-      if (auth.accessToken) {
-        config.headers.Authorization = `Bearer ${auth.accessToken}`;
+    // Try Redux store first (immediate after login, before persist flushes)
+    if (_store) {
+      const reduxState = _store.getState();
+      if (reduxState.auth?.accessToken) {
+        accessToken = reduxState.auth.accessToken;
       }
+    }
+
+    // Fall back to persisted localStorage
+    if (!accessToken) {
+      try {
+        const state = JSON.parse(localStorage.getItem('persist:root') || '{}');
+        if (state.auth) {
+          const auth = JSON.parse(state.auth);
+          accessToken = auth.accessToken;
+        }
+      } catch { /* ignore */ }
+    }
+
+    if (accessToken) {
+      config.headers.Authorization = `Bearer ${accessToken}`;
     }
 
     // Attach active company ID — URL param takes priority, falls back to localStorage

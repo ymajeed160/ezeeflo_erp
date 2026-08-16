@@ -79,7 +79,7 @@ class SupplierPaymentService {
     return await this.findById(tenantId, id);
   }
 
-  async postToJournal(tenantId, userId, id) {
+  async postToJournal(tenantId, userId, id, accountData = {}) {
     const record = await SupplierPaymentRepository.findById(tenantId, id);
     if (!record) throw new Error('Supplier Payment not found');
     if (record.status !== 'confirmed') throw new Error('Only Confirmed payments can be posted to journal');
@@ -88,14 +88,13 @@ class SupplierPaymentService {
     const supplier = await db.Supplier.findOne({ where: { id: record.supplierId, tenantId } });
     if (!supplier) throw new Error('Supplier not found');
 
-    // Get the Accounts Payable account from the supplier
-    const accountsPayableAccountId = supplier.apAccountId;
-    if (!accountsPayableAccountId) throw new Error('Supplier does not have an Accounts Payable account configured');
+    // Accounts Payable account (debit): from dialog or supplier's AP account
+    const accountsPayableAccountId = accountData.apAccountId || supplier.apAccountId;
+    if (!accountsPayableAccountId) throw new Error('Accounts Payable account is required. Please select an AP account.');
 
-    // Get the cash/bank account from the payment's bankAccountId
-    let cashAccountId = record.bankAccountId;
+    // Cash/Bank account (credit): from dialog, payment's bankAccountId, or fallback
+    let cashAccountId = accountData.cashAccountId || record.bankAccountId;
     if (!cashAccountId) {
-      // Fallback: find first active asset account with 'Cash' or 'Bank' in name
       const fallbackAccount = await db.Account.findOne({
         where: {
           tenantId,
@@ -104,7 +103,7 @@ class SupplierPaymentService {
           name: { [db.Sequelize.Op.like]: '%Cash%' }
         }
       });
-      if (!fallbackAccount) throw new Error('Cash account not found. Please ensure Chart of Accounts has a cash account.');
+      if (!fallbackAccount) throw new Error('Cash account is required. Please select a Cash/Bank account.');
       cashAccountId = fallbackAccount.id;
     }
 
@@ -132,13 +131,13 @@ class SupplierPaymentService {
     const journalEntry = await JournalEntryService.createEntry(journalEntryData, tenantId, userId);
 
     await SupplierPaymentRepository.update(tenantId, id, {
-      status: 'Approved',
+      status: 'posted',
       journalEntryId: journalEntry.id,
       approvedBy: userId,
       approvedAt: new Date()
     });
 
-    await AuditService.log(tenantId, userId, 'supplier_payments', id, 'approved', { status: 'Approved', journalEntryId: journalEntry.id });
+    await AuditService.log(tenantId, userId, 'supplier_payments', id, 'posted', { status: 'posted', journalEntryId: journalEntry.id });
 
     return await this.findById(tenantId, id);
   }

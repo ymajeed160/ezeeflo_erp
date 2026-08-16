@@ -11,7 +11,7 @@ module.exports = (sequelize, DataTypes) => {
     goodsReceiptId: { type: DataTypes.UUID, allowNull: true },
     warehouseId: { type: DataTypes.UUID, allowNull: true },
     referenceType: { type: DataTypes.ENUM('purchase_invoice', 'goods_receipt'), allowNull: false },
-    status: { type: DataTypes.ENUM('draft', 'approved', 'rejected'), defaultValue: 'draft' },
+    status: { type: DataTypes.ENUM('draft', 'approved', 'rejected', 'posted', 'reversed'), defaultValue: 'draft' },
     totalAmount: { type: DataTypes.DECIMAL(18, 2), defaultValue: 0 },
     notes: { type: DataTypes.TEXT, allowNull: true },
     journalEntryId: { type: DataTypes.UUID, allowNull: true },

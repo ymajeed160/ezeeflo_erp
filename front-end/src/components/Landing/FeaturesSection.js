@@ -49,6 +49,8 @@ const FEATURES = [
   { icon: <Description sx={{ fontSize: 28 }} />, title: 'Document Management', description: 'Attach and manage documents, invoices, receipts, and files across all business transactions.' },
   { icon: <Settings sx={{ fontSize: 28 }} />, title: 'Workflow Automation', description: 'Automate business processes, approvals, notifications, and repetitive tasks for increased efficiency.' },
   { icon: <History sx={{ fontSize: 28 }} />, title: 'Audit Trail', description: 'Complete audit logging with user activity tracking, change history, and compliance reporting.' },
+  { icon: <Groups sx={{ fontSize: 28 }} />, title: 'HR & Payroll', description: 'Complete HR management with employees, attendance, leave, payroll, loans, benefits, EOSB, and WPS export.' },
+  { icon: <PointOfSale sx={{ fontSize: 28 }} />, title: 'POS', description: 'Full point of sale with cash register, multi-payment support, held orders, returns, and end-of-day reconciliation.' },
 ];
 
 const WHY_CHOOSE = [

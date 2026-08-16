@@ -21,6 +21,24 @@ const PosRegister = () => {
   const [amountReceived, setAmountReceived] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Calculator input handler
+  const calcPress = (key) => {
+    if (key === 'C') { setAmountReceived(''); return; }
+    if (key === '⌫') { setAmountReceived(prev => prev.slice(0, -1)); return; }
+    if (key === '.') { if (amountReceived.includes('.')) return; }
+    // Limit to 2 decimal places
+    const parts = amountReceived.split('.');
+    if (parts.length === 2 && parts[1].length >= 2) return;
+    setAmountReceived(prev => prev + key);
+  };
+
+  const calcButtons = [
+    ['7','8','9'],
+    ['4','5','6'],
+    ['1','2','3'],
+    ['0','00','.','⌫'],
+  ];
+
   useEffect(() => {
     loadItems();
     loadActiveSession();
@@ -193,22 +211,43 @@ const PosRegister = () => {
               />
               <Box sx={{ maxHeight: 500, overflow: 'auto' }}>
                 <Grid container spacing={1}>
-                  {filteredItems.map(item => (
+                  {filteredItems.map(item => {
+                    const stockQty = item.stockQuantity ?? item.quantity ?? item.currentStock ?? 0;
+                    const isOutOfStock = stockQty <= 0;
+
+                    return (
                     <Grid item xs={6} sm={4} key={item.id}>
                       <Card 
-                        sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}
-                        onClick={() => addToCart(item)}
+                        sx={{
+                          cursor: isOutOfStock ? 'not-allowed' : 'pointer',
+                          opacity: isOutOfStock ? 0.5 : 1,
+                          position: 'relative',
+                          '&:hover': { bgcolor: isOutOfStock ? 'transparent' : 'action.hover' },
+                        }}
+                        onClick={() => !isOutOfStock && addToCart(item)}
                       >
                         <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
                           <Typography variant="body2" fontWeight="bold" noWrap>{item.name}</Typography>
-                          <Typography variant="caption" color="textSecondary">{item.itemCode}</Typography>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Typography variant="caption" color="textSecondary">{item.itemCode}</Typography>
+                            <Typography variant="caption"
+                              sx={{
+                                fontWeight: 700,
+                                color: isOutOfStock ? 'error.main' : stockQty < 5 ? 'warning.main' : 'success.main',
+                                bgcolor: isOutOfStock ? 'error.light' : stockQty < 5 ? 'warning.light' : 'success.light',
+                                px: 0.8, py: 0.2, borderRadius: 1,
+                              }}>
+                              {isOutOfStock ? '0 left' : stockQty}
+                            </Typography>
+                          </Box>
                           <Typography variant="body2" color="primary" fontWeight="bold">
                             {formatCurrency(parseFloat(item.sellingPrice || 0))}
                           </Typography>
                         </CardContent>
                       </Card>
                     </Grid>
-                  ))}
+                    );
+                  })}
                 </Grid>
               </Box>
             </CardContent>
@@ -286,11 +325,18 @@ const PosRegister = () => {
                   <Button 
                     fullWidth 
                     variant="contained" 
-                    color="primary" 
+                    color="success" 
                     size="large"
                     startIcon={<PointOfSale />}
                     onClick={() => setPaymentDialog(true)}
                     disabled={cart.length === 0 || !session}
+                    sx={{
+                      fontWeight: 700,
+                      fontSize: '1rem',
+                      py: 1.5,
+                      background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                      '&:hover': { background: 'linear-gradient(135deg, #047857 0%, #065f46 100%)' },
+                    }}
                   >
                     Pay ({formatCurrency(totals.grandTotal)})
                   </Button>
@@ -302,48 +348,146 @@ const PosRegister = () => {
       </Grid>
 
       {/* Payment Dialog */}
-      <Dialog open={paymentDialog} onClose={() => setPaymentDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Complete Payment</DialogTitle>
-        <DialogContent>
-          <Typography variant="h3" textAlign="center" fontWeight="bold" color="primary" my={2}>
-            {formatCurrency(totals.grandTotal)}
-          </Typography>
-          
-          <FormControl fullWidth sx={{ mb: 2 }}>
-            <InputLabel>Payment Method</InputLabel>
-            <Select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} label="Payment Method">
-              <MenuItem value="cash">Cash</MenuItem>
-              <MenuItem value="card">Card</MenuItem>
-              <MenuItem value="bank_transfer">Bank Transfer</MenuItem>
-              <MenuItem value="credit">Credit</MenuItem>
-            </Select>
-          </FormControl>
+      <Dialog open={paymentDialog} onClose={() => setPaymentDialog(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ textAlign: 'center', fontWeight: 700, fontSize: '1.2rem', borderBottom: '1px solid', borderColor: 'divider', pb: 1.5 }}>
+          Complete Payment
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          <Grid container spacing={2.5}>
+            {/* Left Column - Info */}
+            <Grid item xs={12} sm={6}>
+              {/* Total Amount */}
+              <Box sx={{
+                textAlign: 'center', mb: 2,
+                background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+                borderRadius: 3, py: 2, px: 2,
+                border: '2px solid #bae6fd',
+              }}>
+                <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1 }}>Total Due</Typography>
+                <Typography variant="h3" fontWeight={800} color="primary.main" sx={{ letterSpacing: -1 }}>
+                  {formatCurrency(totals.grandTotal)}
+                </Typography>
+              </Box>
+              
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>Payment Method</InputLabel>
+                <Select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} label="Payment Method">
+                  <MenuItem value="cash">💵 Cash</MenuItem>
+                  <MenuItem value="card">💳 Card</MenuItem>
+                  <MenuItem value="bank_transfer">🏦 Bank Transfer</MenuItem>
+                  <MenuItem value="credit">📋 Credit</MenuItem>
+                </Select>
+              </FormControl>
 
-          {paymentMethod === 'cash' && (
-            <TextField
-              fullWidth
-              label="Amount Received"
-              type="text"
-              inputMode="decimal"
-              value={amountReceived}
-              onChange={(e) => {
-                const val = e.target.value;
-                if (val === '' || /^\d*\.?\d{0,2}$/.test(val)) {
-                  setAmountReceived(val);
-                }
-              }}
-              sx={{ mb: 2 }}
-            />
-          )}
+              {/* Change / Remaining Due */}
+              {paymentMethod === 'cash' && amountReceived && parseFloat(amountReceived) > 0 ? (
+                <Box sx={{
+                  borderRadius: 3, py: 2.5, px: 2, textAlign: 'center',
+                  background: change > 0
+                    ? 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)'
+                    : 'linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)',
+                  border: change > 0 ? '2px solid #6ee7b7' : '2px solid #fca5a5',
+                }}>
+                  {change > 0 ? (
+                    <>
+                      <Typography variant="overline" sx={{ color: '#065f46', letterSpacing: 1, fontWeight: 600 }}>Change Due</Typography>
+                      <Typography variant="h3" fontWeight={800} sx={{ color: '#059669', letterSpacing: -1 }}>
+                        {formatCurrency(change)}
+                      </Typography>
+                    </>
+                  ) : (
+                    <>
+                      <Typography variant="overline" sx={{ color: '#991b1b', letterSpacing: 1, fontWeight: 600 }}>Remaining</Typography>
+                      <Typography variant="h3" fontWeight={800} sx={{ color: '#dc2626', letterSpacing: -1 }}>
+                        {formatCurrency(Math.max(0, totals.grandTotal - parseFloat(amountReceived || 0)))}
+                      </Typography>
+                    </>
+                  )}
+                </Box>
+              ) : paymentMethod !== 'cash' ? (
+                <Box sx={{ borderRadius: 3, py: 2, textAlign: 'center', bgcolor: 'grey.50', border: '2px solid', borderColor: 'divider' }}>
+                  <Typography variant="body1" color="text.secondary">Swipe / Tap / Enter card details</Typography>
+                </Box>
+              ) : null}
+            </Grid>
 
-          {change > 0 && (
-            <Alert severity="success">Change due: {formatCurrency(change)}</Alert>
-          )}
+            {/* Right Column - Calculator */}
+            <Grid item xs={12} sm={6}>
+              {paymentMethod === 'cash' && (
+                <>
+                  <Box sx={{ mb: 1.5 }}>
+                    <Typography variant="subtitle2" fontWeight={600} gutterBottom>Amount Received</Typography>
+                    <Box sx={{
+                      display: 'flex', alignItems: 'center', gap: 1,
+                      border: '2px solid', borderColor: 'primary.main',
+                      borderRadius: 2, px: 2, py: 1.5,
+                      bgcolor: 'grey.50',
+                    }}>
+                      <Typography variant="h5" fontWeight={700} color="text.primary" sx={{ flex: 1 }}>
+                        {amountReceived ? formatCurrency(parseFloat(amountReceived)) : 'AED 0.00'}
+                      </Typography>
+                      <Button size="small" variant="contained"
+                        onClick={() => setAmountReceived(totals.grandTotal.toFixed(2))}
+                        sx={{ fontWeight: 700, borderRadius: 2 }}>
+                        Exact
+                      </Button>
+                    </Box>
+                  </Box>
+
+                  {/* Touch Calculator */}
+                  <Box>
+                    {calcButtons.map((row, ri) => (
+                      <Box key={ri} sx={{ display: 'flex', gap: 0.8, mb: 0.8 }}>
+                        {row.map(btn => (
+                          <Button
+                            key={btn}
+                            variant="contained"
+                            onClick={() => calcPress(btn)}
+                            sx={{
+                              flex: 1,
+                              py: 1.6,
+                              fontSize: '1.3rem',
+                              fontWeight: 700,
+                              borderRadius: 2,
+                              bgcolor: btn === '⌫' ? 'warning.main' : btn === '.' || btn === '00' ? 'grey.600' : 'grey.700',
+                              '&:hover': {
+                                bgcolor: btn === '⌫' ? 'warning.dark' : btn === '.' || btn === '00' ? 'grey.700' : 'grey.800',
+                              },
+                              minWidth: 0,
+                            }}
+                          >
+                            {btn}
+                          </Button>
+                        ))}
+                      </Box>
+                    ))}
+                    <Box sx={{ display: 'flex', gap: 0.8 }}>
+                      <Button
+                        variant="contained" color="error"
+                        onClick={() => calcPress('C')}
+                        sx={{ flex: 1, py: 1.6, fontSize: '1.1rem', fontWeight: 700, borderRadius: 2 }}
+                      >
+                        Clear
+                      </Button>
+                    </Box>
+                  </Box>
+                </>
+              )}
+            </Grid>
+          </Grid>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setPaymentDialog(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleCompleteSale} disabled={loading}>
-            {loading ? 'Processing...' : 'Complete Sale'}
+        <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
+          <Button onClick={() => { setPaymentDialog(false); setAmountReceived(''); }}
+            variant="outlined" color="inherit" sx={{ flex: 1, py: 1.2, fontWeight: 600 }}>
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={handleCompleteSale} disabled={loading}
+            sx={{
+              flex: 2, py: 1.2, fontWeight: 700, fontSize: '1rem',
+              background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+              '&:hover': { background: 'linear-gradient(135deg, #047857 0%, #065f46 100%)' },
+            }}>
+            {loading ? 'Processing...' : `Complete Sale`}
           </Button>
         </DialogActions>
       </Dialog>

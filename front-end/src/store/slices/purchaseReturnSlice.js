@@ -8,6 +8,7 @@ const initialState = {
   pageSize: 20,
   totalPages: 0,
   selectedItem: null,
+  returnable: null,
   loading: false,
   error: null,
 };
@@ -18,7 +19,7 @@ export const fetchPurchaseReturns = createAsyncThunk(
   async (params = {}, { rejectWithValue }) => {
     try {
       const response = await PurchaseReturnApi.list(params);
-      return response.data || response;
+      return response;
     } catch (error) {
       return rejectWithValue(
         error.response?.data?.message || error.message || 'Failed to fetch purchase returns'
@@ -117,6 +118,36 @@ export const rejectPurchaseReturn = createAsyncThunk(
   }
 );
 
+// Reverse an approved/posted purchase return
+export const reversePurchaseReturn = createAsyncThunk(
+  'purchaseReturns/reverse',
+  async (id, { rejectWithValue }) => {
+    try {
+      const response = await PurchaseReturnApi.reverse(id);
+      return response.data || response;
+    } catch (error) {
+      return rejectWithValue(
+        error.response?.data?.message || error.message || 'Failed to reverse purchase return'
+      );
+    }
+  }
+);
+
+// Fetch returnable lines for a posted invoice
+export const fetchReturnableLines = createAsyncThunk(
+  'purchaseReturns/fetchReturnable',
+  async (invoiceId, { rejectWithValue }) => {
+    try {
+      const response = await PurchaseReturnApi.getReturnable(invoiceId);
+      return response.data || response;
+    } catch (error) {
+      return rejectWithValue(
+        error.response?.data?.message || error.message || 'Failed to fetch returnable lines'
+      );
+    }
+  }
+);
+
 const purchaseReturnSlice = createSlice({
   name: 'purchaseReturns',
   initialState,
@@ -143,10 +174,11 @@ const purchaseReturnSlice = createSlice({
       })
       .addCase(fetchPurchaseReturns.fulfilled, (state, action) => {
         state.loading = false;
-        state.items = action.payload.items || action.payload.rows || [];
-        state.totalItems = action.payload.totalItems || action.payload.count || 0;
-        state.currentPage = action.payload.currentPage || action.payload.page || 1;
-        state.totalPages = action.payload.totalPages || action.payload.pages || 0;
+        const data = action.payload || {};
+        state.items = data.data || data.items || data.rows || [];
+        state.totalItems = data.total || data.totalItems || data.count || 0;
+        state.currentPage = data.page || data.currentPage || 1;
+        state.totalPages = data.totalPages || data.pages || Math.ceil((data.total || 0) / (data.limit || state.pageSize || 1)) || 0;
       })
       .addCase(fetchPurchaseReturns.rejected, (state, action) => {
         state.loading = false;
@@ -247,6 +279,38 @@ const purchaseReturnSlice = createSlice({
         }
       })
       .addCase(rejectPurchaseReturn.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      // Reverse
+      .addCase(reversePurchaseReturn.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(reversePurchaseReturn.fulfilled, (state, action) => {
+        state.loading = false;
+        const index = state.items.findIndex((item) => item.id === action.payload.id);
+        if (index !== -1) {
+          state.items[index] = action.payload;
+        }
+        if (state.selectedItem?.id === action.payload.id) {
+          state.selectedItem = action.payload;
+        }
+      })
+      .addCase(reversePurchaseReturn.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      // Returnable lines
+      .addCase(fetchReturnableLines.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchReturnableLines.fulfilled, (state, action) => {
+        state.loading = false;
+        state.returnable = action.payload;
+      })
+      .addCase(fetchReturnableLines.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       });

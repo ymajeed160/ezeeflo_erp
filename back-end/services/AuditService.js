@@ -341,6 +341,54 @@ class AuditService {
   }
 
   /**
+   * Legacy `log` method — backward-compatible shim.
+   * Supports both:
+   *   1. log({ tenantId, userId, entityType|entity, entityId, action, performedBy, newValues, ... }, transaction)
+   *   2. log(tenantId, userId, entity, entityId, action, data)
+   */
+  async log(...args) {
+    let opts = {};
+
+    if (typeof args[0] === 'object' && args[0] !== null) {
+      opts = args[0];
+    } else {
+      const [tenantId, userId, entity, entityId, action, data] = args;
+      opts = { tenantId, userId, entity, entityId, action, newValues: data };
+    }
+
+    const {
+      tenantId,
+      userId,
+      entityType,
+      entity,
+      entityId,
+      action,
+      performedBy,
+      newValues,
+      oldValues,
+      description,
+      module,
+    } = opts;
+
+    const finalEntity = entityType || entity || 'System';
+    const finalModule = module || 'System';
+    const finalUserId = performedBy || userId || null;
+
+    return this._record({
+      tenantId,
+      userId: finalUserId,
+      action,
+      module: finalModule,
+      entity: finalEntity,
+      entityId,
+      newValues,
+      oldValues,
+      description: description || `${action} ${finalEntity}`,
+      source: 'SYSTEM',
+    });
+  }
+
+  /**
    * Record a settings change
    */
   async recordSettingsChange(req, settingsModule, oldValues, newValues) {

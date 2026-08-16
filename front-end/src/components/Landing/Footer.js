@@ -90,7 +90,7 @@ const Footer = () => {
                 sx={{ height: 36, width: 'auto' }}
               />
               <Typography variant="h6" sx={{ fontWeight: 800, color: 'white' }}>
-                EzeeFlo <span style={{ color: '#a78bfa' }}>ERP</span>
+                EzeeFlo <span style={{ color: '#a78bfa' }}>Platform</span>
               </Typography>
             </Box>
             <Typography variant="body2" sx={{ color: '#64748b', lineHeight: 1.8, mb: 2 }}>
@@ -166,7 +166,7 @@ const Footer = () => {
           variant="body2"
           sx={{ color: '#475569', textAlign: 'center', fontSize: '0.8rem' }}
         >
-          © {new Date().getFullYear()} EzeeFlo ERP. All rights reserved.
+          © {new Date().getFullYear()} EzeeFlo Platform. All rights reserved.
         </Typography>
       </Container>
     </Box>

@@ -67,9 +67,9 @@ export const confirmSupplierPayment = createAsyncThunk('supplierPayment/confirm'
   }
 });
 
-export const postToJournalSupplierPayment = createAsyncThunk('supplierPayment/postToJournal', async (id, { rejectWithValue }) => {
+export const postToJournalSupplierPayment = createAsyncThunk('supplierPayment/postToJournal', async ({ id, data }, { rejectWithValue }) => {
   try {
-    const response = await supplierPaymentApi.postToJournal(id);
+    const response = await supplierPaymentApi.postToJournal(id, data);
     return response.data.data;
   } catch (error) {
     return rejectWithValue(error.response?.data?.message || 'Failed to post supplier payment to journal');

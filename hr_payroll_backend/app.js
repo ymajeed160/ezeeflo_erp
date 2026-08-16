@@ -18,6 +18,7 @@ app.set('trust proxy', 1);
 
 // ── Security ──
 app.use(helmet({
+  xXssProtection: false, // Deprecated, not supported by modern browsers
   crossOriginResourcePolicy: { policy: 'cross-origin' },
   contentSecurityPolicy: {
     directives: {

@@ -69,7 +69,7 @@ class SupplierPaymentRepository {
         paymentMethod: data.paymentMethod,
         amount: data.amount,
         referenceNumber: data.referenceNumber,
-        bankAccountId: data.bankAccountId || data.bankAccount,
+        bankAccountId: data.bankAccountId || data.bankAccount || null,
         notes: data.notes,
         status: data.status || 'draft',
         journalEntryId: data.journalEntryId || null,
@@ -84,6 +84,7 @@ class SupplierPaymentRepository {
           allocatedAmount: a.allocatedAmount
         }));
         await db.SupplierPaymentAllocation.bulkCreate(allocationRecords, { transaction: t });
+        await this._updateInvoiceStatuses(tenantId, data.allocations.map(a => a.purchaseInvoiceId), t);
       }
 
       if (!transaction) await t.commit();
@@ -108,8 +109,8 @@ class SupplierPaymentRepository {
       if (data.paymentMethod !== undefined) updateFields.paymentMethod = data.paymentMethod;
       if (data.amount !== undefined) updateFields.amount = data.amount;
       if (data.referenceNumber !== undefined) updateFields.referenceNumber = data.referenceNumber;
-      if (data.bankAccountId !== undefined) updateFields.bankAccountId = data.bankAccountId;
-      if (data.bankAccount !== undefined) updateFields.bankAccountId = data.bankAccount;
+      if (data.bankAccountId !== undefined) updateFields.bankAccountId = data.bankAccountId || null;
+      if (data.bankAccount !== undefined) updateFields.bankAccountId = data.bankAccount || null;
       if (data.notes !== undefined) updateFields.notes = data.notes;
       if (data.status !== undefined) updateFields.status = data.status;
       if (data.journalEntryId !== undefined) updateFields.journalEntryId = data.journalEntryId;
@@ -117,6 +118,9 @@ class SupplierPaymentRepository {
       await record.update(updateFields, { transaction: t });
 
       if (data.allocations) {
+        const oldAllocations = await db.SupplierPaymentAllocation.findAll({ where: { supplierPaymentId: id, tenantId }, transaction: t });
+        const oldInvoiceIds = oldAllocations.map(a => a.purchaseInvoiceId);
+
         await db.SupplierPaymentAllocation.destroy({ where: { supplierPaymentId: id, tenantId }, transaction: t });
         if (data.allocations.length > 0) {
           const allocationRecords = data.allocations.map(a => ({
@@ -127,6 +131,9 @@ class SupplierPaymentRepository {
           }));
           await db.SupplierPaymentAllocation.bulkCreate(allocationRecords, { transaction: t });
         }
+
+        const affectedInvoiceIds = [...new Set([...oldInvoiceIds, ...data.allocations.map(a => a.purchaseInvoiceId)])];
+        await this._updateInvoiceStatuses(tenantId, affectedInvoiceIds, t);
       }
 
       if (!transaction) await t.commit();
@@ -140,11 +147,41 @@ class SupplierPaymentRepository {
   async delete(tenantId, id) {
     const record = await db.SupplierPayment.findOne({ where: { id, tenantId } });
     if (record) {
+      const allocations = await db.SupplierPaymentAllocation.findAll({ where: { supplierPaymentId: id, tenantId } });
+      const invoiceIds = allocations.map(a => a.purchaseInvoiceId);
       await db.SupplierPaymentAllocation.destroy({ where: { supplierPaymentId: id, tenantId } });
       await record.destroy();
+      await this._updateInvoiceStatuses(tenantId, invoiceIds);
       return true;
     }
     return false;
+  }
+
+  async _updateInvoiceStatuses(tenantId, purchaseInvoiceIds, transaction = null) {
+    const uniqueIds = [...new Set((purchaseInvoiceIds || []).filter(Boolean))];
+    if (uniqueIds.length === 0) return;
+    for (const invoiceId of uniqueIds) {
+      const opts = transaction ? { transaction } : {};
+      const totalAllocated = await db.SupplierPaymentAllocation.sum('allocatedAmount', {
+        where: { purchaseInvoiceId: invoiceId, tenantId },
+        ...opts
+      });
+      const invoice = await db.PurchaseInvoice.findByPk(invoiceId, opts);
+      if (!invoice) continue;
+      const total = parseFloat(invoice.totalAmount || 0);
+      const allocated = parseFloat(totalAllocated || 0);
+      let newStatus = null;
+      if (total > 0 && allocated >= total - 0.009) {
+        newStatus = 'paid';
+      } else if (allocated > 0) {
+        newStatus = 'partially_paid';
+      } else if (['paid', 'partially_paid'].includes(invoice.status)) {
+        newStatus = 'posted';
+      }
+      if (newStatus && newStatus !== invoice.status) {
+        await invoice.update({ status: newStatus }, opts);
+      }
+    }
   }
 
   async getNextPaymentNumber(tenantId) {

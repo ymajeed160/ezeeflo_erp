@@ -76,6 +76,10 @@ const AssetInsurance = require('./AssetInsurance');
 const AssetLocation = require('./AssetLocation');
 const AssetCustodian = require('./AssetCustodian');
 const AssetAudit = require('./AssetAudit');
+const CashPaymentVoucher = require('./CashPaymentVoucher')(sequelize, DataTypes);
+const CashPaymentVoucherLine = require('./CashPaymentVoucherLine')(sequelize, DataTypes);
+const CashReceiptVoucher = require('./CashReceiptVoucher')(sequelize, DataTypes);
+const CashReceiptVoucherLine = require('./CashReceiptVoucherLine')(sequelize, DataTypes);
 
 // ============================================================
 // Super Admin / SaaS Models
@@ -782,6 +786,32 @@ User.hasMany(PurchaseInvoice, { foreignKey: 'updatedBy' });
 PurchaseInvoice.belongsTo(User, { foreignKey: 'updatedBy', as: 'updater' });
 
 // ============================================================
+// Cash Payment Voucher Associations
+// ============================================================
+Tenant.hasMany(CashPaymentVoucher, { foreignKey: 'tenantId', sourceKey: 'id' });
+CashPaymentVoucher.belongsTo(Tenant, { foreignKey: 'tenantId', targetKey: 'id' });
+CashPaymentVoucher.belongsTo(Account, { foreignKey: 'cashAccountId', as: 'cashAccount' });
+CashPaymentVoucher.belongsTo(JournalEntry, { foreignKey: 'journalEntryId', as: 'journalEntry' });
+CashPaymentVoucher.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
+CashPaymentVoucher.belongsTo(User, { foreignKey: 'postedBy', as: 'poster' });
+CashPaymentVoucher.hasMany(CashPaymentVoucherLine, { foreignKey: 'voucherId', as: 'lines' });
+CashPaymentVoucherLine.belongsTo(CashPaymentVoucher, { foreignKey: 'voucherId', as: 'voucher' });
+CashPaymentVoucherLine.belongsTo(Account, { foreignKey: 'accountId', as: 'account' });
+
+// ============================================================
+// Cash Receipt Voucher Associations
+// ============================================================
+Tenant.hasMany(CashReceiptVoucher, { foreignKey: 'tenantId', sourceKey: 'id' });
+CashReceiptVoucher.belongsTo(Tenant, { foreignKey: 'tenantId', targetKey: 'id' });
+CashReceiptVoucher.belongsTo(Account, { foreignKey: 'cashAccountId', as: 'cashAccount' });
+CashReceiptVoucher.belongsTo(JournalEntry, { foreignKey: 'journalEntryId', as: 'journalEntry' });
+CashReceiptVoucher.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
+CashReceiptVoucher.belongsTo(User, { foreignKey: 'postedBy', as: 'poster' });
+CashReceiptVoucher.hasMany(CashReceiptVoucherLine, { foreignKey: 'voucherId', as: 'lines' });
+CashReceiptVoucherLine.belongsTo(CashReceiptVoucher, { foreignKey: 'voucherId', as: 'voucher' });
+CashReceiptVoucherLine.belongsTo(Account, { foreignKey: 'accountId', as: 'account' });
+
+// ============================================================
 // Purchase Return Associations
 // ============================================================
 
@@ -817,6 +847,14 @@ PurchaseReturnDetail.belongsTo(PurchaseReturn, { foreignKey: 'purchaseReturnId',
 Item.hasMany(PurchaseReturnDetail, { foreignKey: 'itemId' });
 PurchaseReturnDetail.belongsTo(Item, { foreignKey: 'itemId', as: 'item' });
 
+// Warehouse - PurchaseReturnDetail
+Warehouse.hasMany(PurchaseReturnDetail, { foreignKey: 'warehouseId' });
+PurchaseReturnDetail.belongsTo(Warehouse, { foreignKey: 'warehouseId', as: 'warehouse' });
+
+// PurchaseInvoiceDetail - PurchaseReturnDetail (invoice-based returns)
+PurchaseInvoiceDetail.hasMany(PurchaseReturnDetail, { foreignKey: 'purchaseInvoiceLineId' });
+PurchaseReturnDetail.belongsTo(PurchaseInvoiceDetail, { foreignKey: 'purchaseInvoiceLineId', as: 'invoiceLine' });
+
 // User - PurchaseReturn (createdBy/updatedBy)
 User.hasMany(PurchaseReturn, { foreignKey: 'createdBy' });
 PurchaseReturn.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
@@ -848,6 +886,8 @@ User.hasMany(DebitNote, { foreignKey: 'createdBy' });
 DebitNote.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
 User.hasMany(DebitNote, { foreignKey: 'updatedBy' });
 DebitNote.belongsTo(User, { foreignKey: 'updatedBy', as: 'updater' });
+User.hasMany(DebitNote, { foreignKey: 'approvedBy' });
+DebitNote.belongsTo(User, { foreignKey: 'approvedBy', as: 'approver' });
 
 // ============================================================
 // Supplier Payment Associations
@@ -1614,6 +1654,10 @@ module.exports = {
   AssetLocation,
   AssetCustodian,
   AssetAudit,
+  CashPaymentVoucher,
+  CashPaymentVoucherLine,
+  CashReceiptVoucher,
+  CashReceiptVoucherLine,
   // Super Admin / SaaS Models
   SubscriptionPlan,
   SubscriptionModule,

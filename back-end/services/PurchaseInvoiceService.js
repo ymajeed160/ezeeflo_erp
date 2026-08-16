@@ -559,6 +559,18 @@ class PurchaseInvoiceService {
     if (!grn) throw new Error('Goods Receipt not found');
     if (grn.status !== 'received') throw new Error('Goods Receipt must be received before generating invoice');
 
+    // Prevent duplicate invoice generation from the same GRN
+    const existingInvoice = await db.PurchaseInvoice.findOne({
+      where: { goodsReceiptId: grn.id, tenantId },
+      paranoid: false,
+    });
+    if (existingInvoice) {
+      throw Object.assign(
+        new Error(`Goods Receipt ${grn.grnNumber} is already converted to invoice ${existingInvoice.invoiceNumber}`),
+        { statusCode: 400, isOperational: true }
+      );
+    }
+
     const invoiceNumber = await purchaseInvoiceRepository.getNextSequence(tenantId);
     const supplier = await db.Supplier.findOne({ where: { id: grn.supplierId, tenantId } });
 
@@ -580,16 +592,17 @@ class PurchaseInvoiceService {
       const item = await db.Item.findByPk(detail.itemId);
       const qty = parseFloat(detail.receivedQuantity);
 
-      // Get unit price from PO if available, otherwise from item
-      let unitPrice = 0;
-      let taxPct = 0;
-      let discPct = 0;
+      // Use the GRN line's own price/tax/discount as the source of truth,
+      // falling back to the PO, then to the item master.
+      let unitPrice = parseFloat(detail.unitPrice || 0);
+      let taxPct = parseFloat(detail.taxPercentage || 0);
+      let discPct = parseFloat(detail.discountPercentage || 0);
       if (po) {
         const poDetail = po.details.find((pd) => pd.itemId === detail.itemId);
         if (poDetail) {
-          unitPrice = parseFloat(poDetail.unitPrice);
-          taxPct = parseFloat(poDetail.taxPercent || 0);
-          discPct = parseFloat(poDetail.discountPercent || 0);
+          if (!unitPrice) unitPrice = parseFloat(poDetail.unitPrice);
+          if (!taxPct) taxPct = parseFloat(poDetail.taxPercent || 0);
+          if (!discPct) discPct = parseFloat(poDetail.discountPercent || 0);
         }
       }
       if (!unitPrice && item) unitPrice = parseFloat(item.purchaseCost || item.cost || 0);
@@ -628,6 +641,7 @@ class PurchaseInvoiceService {
         invoiceDate: new Date().toISOString().split('T')[0],
         dueDate: null,
         warehouseId: grn.warehouseId,
+        goodsReceiptId: grn.id,
         status: 'draft',
         notes: `Generated from Goods Receipt ${grn.grnNumber}`,
         subtotal,

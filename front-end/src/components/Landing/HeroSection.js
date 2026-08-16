@@ -210,7 +210,7 @@ const HeroSection = () => {
                   maxWidth: 540,
                 }}
               >
-                EzeeFlo ERP simplifies Accounting, Sales, Purchases, Inventory, Banking, Fixed Assets, Reporting and Business Operations through one intelligent cloud-ready platform.
+                EzeeFlo ERP simplifies Accounting, Sales, Purchases, Inventory, Banking, Fixed Assets, HR & Payroll, POS, Reporting and Business Operations through one intelligent cloud-ready platform.
               </Typography>
 
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>

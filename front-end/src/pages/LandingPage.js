@@ -4,8 +4,8 @@ import HeroSection from '../components/Landing/HeroSection';
 import FeaturesSection from '../components/Landing/FeaturesSection';
 import ModulesSection from '../components/Landing/ModulesSection';
 import RoadmapSection from '../components/Landing/RoadmapSection';
-import ProductTourSection from '../components/Landing/ProductTourSection';
-import ScreenshotsSection from '../components/Landing/ScreenshotsSection';
+import HRPayrollFeaturesSection from '../components/Landing/HRPayrollFeaturesSection';
+import LoyaltyFeaturesSection from '../components/Landing/LoyaltyFeaturesSection';
 import StatsSection from '../components/Landing/StatsSection';
 import FAQ from '../components/Landing/FAQ';
 import CTA from '../components/Landing/CTA';
@@ -20,8 +20,8 @@ const LandingPage = () => {
       <FeaturesSection />
       <ModulesSection />
       <RoadmapSection />
-      <ProductTourSection />
-      <ScreenshotsSection />
+      <HRPayrollFeaturesSection />
+      <LoyaltyFeaturesSection />
       <StatsSection />
       <FAQ />
       <CTA />

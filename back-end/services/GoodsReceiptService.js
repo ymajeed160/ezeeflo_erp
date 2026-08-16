@@ -1,5 +1,5 @@
 'use strict';
-const { GoodsReceipt, GoodsReceiptDetail, PurchaseOrder, PurchaseOrderDetail, Item, InventoryBalance, InventoryTransaction, sequelize } = require('../models');
+const { GoodsReceipt, GoodsReceiptDetail, PurchaseOrder, PurchaseOrderDetail, Item, InventoryBalance, InventoryTransaction, PurchaseInvoice, sequelize } = require('../models');
 const goodsReceiptRepository = require('../repositories/GoodsReceiptRepository');
 const journalEntryService = require('./JournalEntryService');
 const { GoodsReceiptDTO } = require('../dto/GoodsReceiptDTO');
@@ -8,8 +8,27 @@ const { Op } = require('sequelize');
 class GoodsReceiptService {
   async list(tenantId, query) {
     const { rows, count, page, limit } = await goodsReceiptRepository.findAll(tenantId, query);
+
+    // Determine which GRNs have already been converted to Purchase Invoices
+    const grnIds = rows.map((r) => r.id);
+    const linkMap = new Map();
+    if (grnIds.length) {
+      const invoices = await PurchaseInvoice.findAll({
+        where: { tenantId, goodsReceiptId: { [Op.in]: grnIds } },
+        attributes: ['id', 'invoiceNumber', 'goodsReceiptId'],
+        paranoid: false,
+      });
+      invoices.forEach((p) => linkMap.set(p.goodsReceiptId, p.invoiceNumber));
+    }
+
     return {
-      data: rows.map((r) => new GoodsReceiptDTO(r)),
+      data: rows.map((r) => {
+        const dto = new GoodsReceiptDTO(r);
+        const invoiceNumber = linkMap.get(r.id);
+        dto.convertedToInvoice = !!invoiceNumber;
+        dto.convertedInvoiceNumber = invoiceNumber || null;
+        return dto;
+      }),
       count,
       page,
       limit,
@@ -104,26 +123,39 @@ class GoodsReceiptService {
           throw Object.assign(new Error(`Item ID ${d.itemId} not found`), { statusCode: 404 });
         }
 
+        const isService = item.itemType === 'service';
+
         // For product items, warehouse is required
-        if (item.itemType !== 'service' && !data.warehouseId) {
-          throw Object.assign(new Error('Warehouse is required for product items'), { statusCode: 400 });
+        if (!isService && !data.warehouseId) {
+          throw Object.assign(new Error('Warehouse is required for product items'), { statusCode: 400, isOperational: true });
         }
+
+        // Received quantity is required for product items only
+        if (!isService && !(parseFloat(d.receivedQuantity) > 0)) {
+          throw Object.assign(
+            new Error(`Received qty is required for product item: ${item.name || item.code || d.itemId}`),
+            { statusCode: 400, isOperational: true }
+          );
+        }
+
+        // Default received quantity to ordered quantity when not provided (services)
+        const receivedQty = parseFloat(d.receivedQuantity ?? d.orderedQuantity ?? orderedQty ?? 0);
 
         // Check already received quantity (only when linked to a PO)
         if (po) {
           const alreadyReceived = await goodsReceiptRepository.getAlreadyReceivedQty(
             tenantId, data.purchaseOrderId, d.itemId
           );
-          const newTotal = alreadyReceived + parseFloat(d.receivedQuantity);
+          const newTotal = alreadyReceived + receivedQty;
           if (orderedQty > 0 && newTotal > orderedQty) {
             throw Object.assign(
-              new Error(`Cannot receive more than ordered. Item: ${d.itemId}, Ordered: ${orderedQty}, Already Received: ${alreadyReceived}, This: ${d.receivedQuantity}`),
+              new Error(`Cannot receive more than ordered. Item: ${d.itemId}, Ordered: ${orderedQty}, Already Received: ${alreadyReceived}, This: ${receivedQty}`),
               { statusCode: 400 }
             );
           }
         }
 
-        const qty = parseFloat(d.receivedQuantity);
+        const qty = receivedQty;
         const lineTotal = qty * unitPrice;
         const discountAmt = lineTotal * (discPct / 100);
         const afterDiscount = lineTotal - discountAmt;

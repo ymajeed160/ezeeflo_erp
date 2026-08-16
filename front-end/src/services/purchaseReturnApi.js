@@ -78,6 +78,14 @@ class PurchaseReturnApi {
   }
 
   /**
+   * Get returnable lines for a posted purchase invoice
+   */
+  static async getReturnable(invoiceId) {
+    const response = await api.get(`/purchase-returns/returnable/${invoiceId}`);
+    return response.data;
+  }
+
+  /**
    * Delete purchase return
    */
   static async delete(id) {
@@ -89,7 +97,7 @@ class PurchaseReturnApi {
    * Approve return (accounting + inventory integration)
    */
   static async approve(id) {
-    const response = await api.post(`/purchase-returns/${id}/approve`);
+    const response = await api.patch(`/purchase-returns/${id}/approve`);
     return response.data;
   }
 
@@ -97,7 +105,15 @@ class PurchaseReturnApi {
    * Reject return
    */
   static async reject(id) {
-    const response = await api.post(`/purchase-returns/${id}/reject`);
+    const response = await api.patch(`/purchase-returns/${id}/reject`);
+    return response.data;
+  }
+
+  /**
+   * Reverse an approved/posted return
+   */
+  static async reverse(id) {
+    const response = await api.patch(`/purchase-returns/${id}/reverse`);
     return response.data;
   }
 }

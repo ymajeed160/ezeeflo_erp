@@ -31,6 +31,16 @@ class PurchaseReturnController {
     }
   }
 
+  async getReturnable(req, res, next) {
+    try {
+      const tenantId = req.user.tenantId;
+      const result = await service.getReturnableLines(req.params.invoiceId, tenantId);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async create(req, res, next) {
     try {
       const tenantId = req.user.tenantId;
@@ -93,6 +103,17 @@ class PurchaseReturnController {
       }
 
       const record = await service.reject(req.params.id, tenantId, userId, value?.reason);
+      res.json({ success: true, data: record });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async reverse(req, res, next) {
+    try {
+      const tenantId = req.user.tenantId;
+      const userId = req.user.id;
+      const record = await service.reverse(req.params.id, tenantId, userId);
       res.json({ success: true, data: record });
     } catch (error) {
       next(error);

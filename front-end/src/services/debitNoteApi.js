@@ -6,7 +6,7 @@ const debitNoteApi = {
   create: (data) => api.post('/debit-notes', data),
   update: (id, data) => api.put(`/debit-notes/${id}`, data),
   delete: (id) => api.delete(`/debit-notes/${id}`),
-  approve: (id) => api.post(`/debit-notes/${id}/approve`),
+  approve: (id, data = {}) => api.post(`/debit-notes/${id}/approve`, data),
 };
 
 export default debitNoteApi;

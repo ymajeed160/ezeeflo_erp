@@ -187,13 +187,23 @@ const DemoRequestSection = () => {
     setSubmitting(true);
     setSubmitError('');
 
-    // Simulate API call
     try {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      const response = await fetch('/api/demo-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || 'Something went wrong. Please try again.');
+      }
+
       setSubmitted(true);
-      setSubmitting(false);
-    } catch {
-      setSubmitError('Something went wrong. Please try again.');
+    } catch (err) {
+      setSubmitError(err.message || 'Something went wrong. Please try again.');
+    } finally {
       setSubmitting(false);
     }
   };

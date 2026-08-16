@@ -27,7 +27,7 @@ import { fetchSuppliers } from '../store/slices/supplierSlice';
 import { fetchItems } from '../store/slices/itemSlice';
 import { fetchWarehouses } from '../store/slices/warehouseSlice';
 import { fetchPurchaseOrders, fetchPurchaseOrder } from '../store/slices/purchaseOrderSlice';
-import { confirmDialog, apiSuccess, apiError } from '../utils/toast';
+import { apiSuccess, apiError } from '../utils/toast';
 import { generateGoodsReceiptPdf } from '../utils/pdfGoodsReceipt';
 import PdfViewer from '../components/PdfViewer';
 import goodsReceiptApi from '../services/goodsReceiptApi';
@@ -67,6 +67,7 @@ const GoodsReceipts = () => {
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody, setEmailBody] = useState('');
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [confirmState, setConfirmState] = useState(null);
   const activeCompany = useSelector((s) => s.company?.activeCompany || null);
   const poList = useSelector((s) => s.purchaseOrders?.list || []);
   const poListRef = useRef(poList);
@@ -75,10 +76,12 @@ const GoodsReceipts = () => {
   const { register, handleSubmit, control, reset, setValue, watch, formState: { errors } } = useForm({
     defaultValues: {
       purchaseOrderId: '', supplierId: '', receiptDate: new Date().toISOString().split('T')[0], warehouseId: '',
-      referenceNo: '', notes: '', items: [{ itemId: '', orderedQuantity: 0, receivedQuantity: 0, unitCost: 0 }],
+      referenceNo: '', notes: '', items: [{ itemId: '', orderedQuantity: 0, receivedQuantity: 0, unitCost: 0, taxPercentage: 0 }],
     },
   });
   const { fields, append, remove } = useFieldArray({ control, name: 'items' });
+  const watchedItems = watch('items');
+  const getItemType = (itemId) => itemsList.find((it) => it.id === itemId)?.itemType || 'product';
 
   const loadData = useCallback(() => {
     dispatch(fetchGoodsReceipts({ page: currentPage + 1, limit: rowsPerPage, search, status: statusFilter, supplierId: supplierFilter }));
@@ -141,6 +144,7 @@ const GoodsReceipts = () => {
                 orderedQuantity: d.quantity || 0,
                 receivedQuantity: d.quantity || 0,
                 unitCost: d.unitPrice || 0,
+                taxPercentage: d.taxPercentage || d.taxPercent || 0,
               });
             });
           }
@@ -197,7 +201,7 @@ const GoodsReceipts = () => {
     setValue('notes', d.notes || '');
     remove();
     (d.details || d.GoodsReceiptDetails || d.items || []).forEach((item) => {
-      append({ itemId: item.Item?.id || item.itemId || '', orderedQuantity: item.orderedQuantity || 0, receivedQuantity: item.receivedQuantity || 0, unitCost: item.unitPrice || item.unitCost || 0 });
+      append({ itemId: item.Item?.id || item.itemId || '', orderedQuantity: item.orderedQuantity || 0, receivedQuantity: item.receivedQuantity || 0, unitCost: item.unitPrice || item.unitCost || 0, taxPercentage: item.taxPercentage || 0 });
     });
     setOpenForm(true);
   };
@@ -275,6 +279,8 @@ const GoodsReceipts = () => {
     payload.details = payload.details.map((d) => ({
       ...d,
       unitPrice: d.unitCost,
+      receivedQuantity: d.receivedQuantity || d.orderedQuantity || 0,
+      taxPercentage: d.taxPercentage || 0,
     }));
     payload.details.forEach((d) => delete d.unitCost);
 
@@ -299,8 +305,12 @@ const GoodsReceipts = () => {
     }
   };
 
+  const askConfirm = (message, onConfirm) => {
+    setConfirmState({ message, onConfirm });
+  };
+
   const handleDelete = (id) => {
-    confirmDialog('Are you sure you want to delete this goods receipt?', async () => {
+    askConfirm('Are you sure you want to delete this goods receipt?', async () => {
       const result = await dispatch(deleteGoodsReceipt(id));
       if (result.meta.requestStatus === 'fulfilled') {
         apiSuccess('Goods Receipt deleted');
@@ -312,7 +322,7 @@ const GoodsReceipts = () => {
   };
 
   const handleApprove = (id) => {
-    confirmDialog('Approve this goods receipt? Inventory will be increased.', async () => {
+    askConfirm('Approve this goods receipt? Inventory will be increased.', async () => {
       const result = await dispatch(approveGoodsReceipt(id));
       if (result.meta.requestStatus === 'fulfilled') {
         apiSuccess('Goods Receipt approved and inventory updated');
@@ -324,7 +334,7 @@ const GoodsReceipts = () => {
   };
 
   const handleCancel = (id) => {
-    confirmDialog('Cancel this goods receipt?', async () => {
+    askConfirm('Cancel this goods receipt?', async () => {
       const result = await dispatch(cancelGoodsReceipt(id));
       if (result.meta.requestStatus === 'fulfilled') {
         apiSuccess('Goods Receipt cancelled');
@@ -386,6 +396,7 @@ const GoodsReceipts = () => {
               <TableCell>Items</TableCell>
               <TableCell>Total Qty</TableCell>
               <TableCell>Status</TableCell>
+              <TableCell>Converted To</TableCell>
               <TableCell align="center">Actions</TableCell>
             </TableRow>
           </TableHead>
@@ -399,6 +410,13 @@ const GoodsReceipts = () => {
                 <TableCell>{gr.details?.length || 0}</TableCell>
                 <TableCell>{gr.totalQuantity || 0}</TableCell>
                 <TableCell><Chip size="small" label={gr.status} color={statusColors[gr.status] || 'default'} /></TableCell>
+                <TableCell>
+                  {gr.convertedToInvoice ? (
+                    <Chip size="small" color="info" label={`Invoice: ${gr.convertedInvoiceNumber}`} />
+                  ) : (
+                    <Typography variant="caption" color="text.secondary">-</Typography>
+                  )}
+                </TableCell>
                 <TableCell align="center">
                   <Stack direction="row" spacing={0.5} justifyContent="center">
                     <Tooltip title="View"><IconButton size="small" onClick={() => handleView(gr)}><ViewIcon fontSize="small" /></IconButton></Tooltip>
@@ -503,6 +521,7 @@ const GoodsReceipts = () => {
                                 orderedQuantity: d.quantity || 0,
                                 receivedQuantity: d.quantity || 0,
                                 unitCost: d.unitPrice || 0,
+                                taxPercentage: d.taxPercentage || d.taxPercent || 0,
                               });
                             });
                           }
@@ -569,7 +588,7 @@ const GoodsReceipts = () => {
 
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
               <Typography variant="subtitle1">Items</Typography>
-              <Button size="small" onClick={() => append({ itemId: '', orderedQuantity: 0, receivedQuantity: 0, unitCost: 0 })} startIcon={<AddIcon />}>Add Item</Button>
+              <Button size="small" onClick={() => append({ itemId: '', orderedQuantity: 0, receivedQuantity: 0, unitCost: 0, taxPercentage: 0 })} startIcon={<AddIcon />}>Add Item</Button>
             </Box>
 
             {fields.map((field, idx) => (
@@ -589,16 +608,48 @@ const GoodsReceipts = () => {
                   <TextField fullWidth size="small" type="number" label="Ordered Qty" {...register(`items.${idx}.orderedQuantity`, { valueAsNumber: true, min: 0 })} />
                 </Grid>
                 <Grid item xs={4} md={2}>
-                  <TextField fullWidth size="small" type="number" label="Received Qty *" {...register(`items.${idx}.receivedQuantity`, { required: 'Required', valueAsNumber: true, min: 1 })} error={!!errors.items?.[idx]?.receivedQuantity} helperText={errors.items?.[idx]?.receivedQuantity?.message} />
+                  <TextField fullWidth size="small" type="number" label={getItemType(watchedItems?.[idx]?.itemId) === 'service' ? 'Received Qty' : 'Received Qty *'} {...register(`items.${idx}.receivedQuantity`, getItemType(watchedItems?.[idx]?.itemId) === 'service' ? { valueAsNumber: true, min: 0 } : { required: 'Required for product', valueAsNumber: true, validate: (v) => v > 0 || 'Must be greater than 0' })} error={!!errors.items?.[idx]?.receivedQuantity} helperText={errors.items?.[idx]?.receivedQuantity?.message} />
                 </Grid>
                 <Grid item xs={4} md={2}>
                   <TextField fullWidth size="small" type="number" label="Unit Cost" {...register(`items.${idx}.unitCost`, { valueAsNumber: true, min: 0 })} />
+                </Grid>
+                <Grid item xs={4} md={1}>
+                  <TextField fullWidth size="small" type="number" label="VAT %" {...register(`items.${idx}.taxPercentage`, { valueAsNumber: true, min: 0, max: 100 })} />
+                </Grid>
+                <Grid item xs={4} md={1}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Total"
+                    value={(() => {
+                      const qty = parseFloat(watchedItems?.[idx]?.receivedQuantity) || 0;
+                      const cost = parseFloat(watchedItems?.[idx]?.unitCost) || 0;
+                      const tax = parseFloat(watchedItems?.[idx]?.taxPercentage) || 0;
+                      return (qty * cost * (1 + tax / 100)).toFixed(2);
+                    })()}
+                    InputProps={{ readOnly: true }}
+                  />
                 </Grid>
                 <Grid item xs={12} md={1}>
                   {idx > 0 && <IconButton size="small" color="error" onClick={() => remove(idx)}><DeleteIcon /></IconButton>}
                 </Grid>
               </Grid>
             ))}
+
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mt: 2 }}>
+              <Typography variant="subtitle1" fontWeight="bold" sx={{ mr: 1 }}>Grand Total:</Typography>
+              <Typography variant="h6" fontWeight="bold" color="primary">
+                {(() => {
+                  const total = (watchedItems || []).reduce((sum, it) => {
+                    const qty = parseFloat(it.receivedQuantity) || 0;
+                    const cost = parseFloat(it.unitCost) || 0;
+                    const tax = parseFloat(it.taxPercentage) || 0;
+                    return sum + qty * cost * (1 + tax / 100);
+                  }, 0);
+                  return total.toFixed(2);
+                })()}
+              </Typography>
+            </Box>
           </DialogContent>
           <DialogActions>
             <Button onClick={handleCloseForm}>Cancel</Button>
@@ -630,6 +681,8 @@ const GoodsReceipts = () => {
                       <TableCell>Item</TableCell>
                       <TableCell>Ordered Qty</TableCell>
                       <TableCell>Received Qty</TableCell>
+                      <TableCell align="right">Unit Price</TableCell>
+                      <TableCell align="right">Total</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -638,6 +691,8 @@ const GoodsReceipts = () => {
                         <TableCell>{d.itemName || d.Item?.itemName || '-'}</TableCell>
                         <TableCell>{d.orderedQuantity || 0}</TableCell>
                         <TableCell>{d.receivedQuantity || 0}</TableCell>
+                        <TableCell align="right">{Number(d.unitPrice || 0).toFixed(2)}</TableCell>
+                        <TableCell align="right">{Number(d.lineTotal || 0).toFixed(2)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -687,6 +742,28 @@ const GoodsReceipts = () => {
             disabled={sendingEmail || !emailTo}
             startIcon={sendingEmail ? <CircularProgress size={16} /> : <EmailIcon />}>
             {sendingEmail ? 'Sending...' : 'Send Email'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Confirm Dialog (replaces native window.confirm) */}
+      <Dialog open={!!confirmState} onClose={() => setConfirmState(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Confirm</DialogTitle>
+        <DialogContent>
+          <Typography variant="body1">{confirmState?.message}</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmState(null)}>Cancel</Button>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={() => {
+              const onConfirm = confirmState?.onConfirm;
+              setConfirmState(null);
+              if (onConfirm) onConfirm();
+            }}
+          >
+            Confirm
           </Button>
         </DialogActions>
       </Dialog>

@@ -43,6 +43,8 @@ import BankAccounts from './pages/BankAccounts';
 import BankTransactions from './pages/BankTransactions';
 import PaymentReceipts from './pages/PaymentReceipts';
 import PaymentVouchers from './pages/PaymentVouchers';
+import CashPaymentVouchers from './pages/CashPaymentVouchers';
+import CashReceiptVouchers from './pages/CashReceiptVouchers';
 import BankReconciliation from './pages/BankReconciliation';
 import ReportsCenter from './pages/Reports/ReportsCenter';
 import ReportViewer from './pages/Reports/ReportViewer';
@@ -92,44 +94,245 @@ const App = () => {
   const mode = useSelector((state) => state.theme.mode);
 
   const theme = React.useMemo(
-    () =>
-      createTheme({
+    () => {
+      const isLight = mode === 'light';
+
+      return createTheme({
         palette: {
           mode,
-          primary: { main: '#1976d2', light: '#e3f2fd', dark: '#1565c0' },
-          secondary: { main: '#9c27b0' },
-          success: { main: '#2e7d32', light: '#e8f5e9' },
-          warning: { main: '#ed6c02', light: '#fff3e0' },
-          error: { main: '#d32f2f', light: '#fce4ec' },
-          background: {
-            default: mode === 'light' ? '#f5f7fa' : '#121212',
-            paper: mode === 'light' ? '#ffffff' : '#1e1e1e',
+          primary: {
+            main: isLight ? '#2563eb' : '#60a5fa',
+            light: isLight ? '#dbeafe' : '#1e3a5f',
+            dark: isLight ? '#1d4ed8' : '#93bbfd',
+            contrastText: '#ffffff',
           },
+          secondary: {
+            main: isLight ? '#7c3aed' : '#a78bfa',
+            light: isLight ? '#ede9fe' : '#2e1065',
+            dark: isLight ? '#5b21b6' : '#c4b5fd',
+          },
+          success: { main: isLight ? '#059669' : '#34d399', light: '#ecfdf5', dark: isLight ? '#047857' : '#6ee7b7' },
+          warning: { main: isLight ? '#d97706' : '#fbbf24', light: '#fffbeb', dark: isLight ? '#b45309' : '#fcd34d' },
+          error: { main: isLight ? '#dc2626' : '#f87171', light: '#fef2f2', dark: isLight ? '#b91c1c' : '#fca5a5' },
+          info: { main: isLight ? '#0891b2' : '#22d3ee', light: '#ecfeff' },
+          grey: {
+            50: '#f9fafb', 100: '#f3f4f6', 200: '#e5e7eb', 300: '#d1d5db',
+            400: '#9ca3af', 500: '#6b7280', 600: '#4b5563', 700: '#374151',
+            800: '#1f2937', 900: '#111827',
+          },
+          background: {
+            default: isLight ? '#f8fafc' : '#0f172a',
+            paper: isLight ? '#ffffff' : '#1e293b',
+          },
+          text: {
+            primary: isLight ? '#1e293b' : '#f1f5f9',
+            secondary: isLight ? '#64748b' : '#94a3b8',
+          },
+          divider: isLight ? '#e2e8f0' : '#334155',
         },
         typography: {
-          fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+          fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+          h4: { fontWeight: 700, fontSize: '1.5rem', letterSpacing: '-0.02em' },
+          h5: { fontWeight: 600, fontSize: '1.25rem', letterSpacing: '-0.01em' },
+          h6: { fontWeight: 600, fontSize: '1.1rem' },
+          subtitle1: { fontWeight: 500, fontSize: '0.9rem', color: isLight ? '#64748b' : '#94a3b8' },
+          body2: { fontSize: '0.85rem', color: isLight ? '#475569' : '#cbd5e1' },
+          caption: { fontSize: '0.75rem', color: isLight ? '#94a3b8' : '#64748b' },
         },
-        shape: { borderRadius: 8 },
+        shape: { borderRadius: 10 },
+        shadows: [
+          'none',
+          // 1 — subtle lift (cards, papers)
+          isLight ? '0px 1px 3px rgba(0,0,0,0.08), 0px 1px 2px rgba(0,0,0,0.06)' : '0px 1px 3px rgba(0,0,0,0.4)',
+          // 2 — floating cards
+          isLight ? '0px 4px 6px rgba(0,0,0,0.07), 0px 2px 4px rgba(0,0,0,0.06)' : '0px 4px 6px rgba(0,0,0,0.5)',
+          // 3 — elevated (dialogs)
+          isLight ? '0px 10px 15px rgba(0,0,0,0.08), 0px 4px 6px rgba(0,0,0,0.05)' : '0px 10px 15px rgba(0,0,0,0.6)',
+          // 4 — modals
+          isLight ? '0px 14px 28px rgba(0,0,0,0.1), 0px 10px 10px rgba(0,0,0,0.06)' : '0px 14px 28px rgba(0,0,0,0.7)',
+          // 5
+          isLight ? '0px 19px 38px rgba(0,0,0,0.12), 0px 15px 12px rgba(0,0,0,0.06)' : '0px 19px 38px rgba(0,0,0,0.8)',
+          ...Array(19).fill('none'),
+        ],
         components: {
+          MuiCssBaseline: {
+            styleOverrides: {
+              body: {
+                '&::-webkit-scrollbar': { width: 6, height: 6 },
+                '&::-webkit-scrollbar-track': { background: 'transparent' },
+                '&::-webkit-scrollbar-thumb': { background: isLight ? '#cbd5e1' : '#475569', borderRadius: 3 },
+              },
+            },
+          },
           MuiButton: {
             styleOverrides: {
               root: {
                 textTransform: 'none',
                 fontWeight: 600,
+                fontSize: '0.875rem',
+                borderRadius: 8,
+                padding: '8px 18px',
+                boxShadow: 'none',
+                '&:hover': { boxShadow: 'none' },
+              },
+              containedPrimary: {
+                background: isLight
+                  ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)'
+                  : 'linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%)',
+                color: '#ffffff',
+                '&:hover': {
+                  background: isLight
+                    ? 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)'
+                    : 'linear-gradient(135deg, #93bbfd 0%, #60a5fa 100%)',
+                },
+              },
+              outlined: {
+                borderColor: isLight ? '#e2e8f0' : '#475569',
+                '&:hover': {
+                  borderColor: isLight ? '#2563eb' : '#60a5fa',
+                  backgroundColor: isLight ? '#f0f7ff' : 'rgba(96,165,250,0.08)',
+                },
               },
             },
           },
           MuiCard: {
             styleOverrides: {
               root: {
-                boxShadow: mode === 'light'
-                  ? '0px 2px 8px rgba(0,0,0,0.08)'
-                  : '0px 2px 8px rgba(0,0,0,0.3)',
+                borderRadius: 12,
+                border: `1px solid ${isLight ? '#f1f5f9' : '#334155'}`,
+                boxShadow: isLight
+                  ? '0px 2px 6px rgba(0,0,0,0.08), 0px 1px 3px rgba(0,0,0,0.06)'
+                  : '0px 2px 6px rgba(0,0,0,0.35), 0px 1px 3px rgba(0,0,0,0.25)',
+                transition: 'box-shadow 0.25s ease, transform 0.2s ease',
+                '&:hover': {
+                  boxShadow: isLight
+                    ? '0px 8px 20px rgba(0,0,0,0.1), 0px 3px 8px rgba(0,0,0,0.06)'
+                    : '0px 8px 20px rgba(0,0,0,0.5)',
+                  transform: 'translateY(-1px)',
+                },
+              },
+            },
+          },
+          MuiPaper: {
+            styleOverrides: {
+              root: {
+                backgroundImage: 'none',
+              },
+              elevation1: {
+                boxShadow: isLight
+                  ? '0px 1px 4px rgba(0,0,0,0.08), 0px 1px 3px rgba(0,0,0,0.06)'
+                  : '0px 1px 4px rgba(0,0,0,0.4)',
+              },
+              elevation2: {
+                boxShadow: isLight
+                  ? '0px 4px 8px rgba(0,0,0,0.08), 0px 2px 4px rgba(0,0,0,0.06)'
+                  : '0px 4px 8px rgba(0,0,0,0.5)',
+              },
+            },
+          },
+          MuiTableContainer: {
+            styleOverrides: {
+              root: {
+                borderRadius: 10,
+                boxShadow: isLight
+                  ? '0px 1px 4px rgba(0,0,0,0.06), 0px 1px 3px rgba(0,0,0,0.04)'
+                  : '0px 1px 4px rgba(0,0,0,0.35)',
+                border: `1px solid ${isLight ? '#f1f5f9' : '#334155'}`,
+              },
+            },
+          },
+          MuiTableHead: {
+            styleOverrides: {
+              root: {
+                '& .MuiTableCell-head': {
+                  fontWeight: 600,
+                  fontSize: '0.8rem',
+                  color: isLight ? '#64748b' : '#94a3b8',
+                  backgroundColor: isLight ? '#f8fafc' : '#1e293b',
+                  borderBottom: `2px solid ${isLight ? '#e2e8f0' : '#334155'}`,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  padding: '12px 16px',
+                },
+              },
+            },
+          },
+          MuiTableRow: {
+            styleOverrides: {
+              root: {
+                '&:hover': {
+                  backgroundColor: isLight ? '#f8fafc' : 'rgba(255,255,255,0.03)',
+                },
+                '&:last-child td': {
+                  borderBottom: 0,
+                },
+              },
+            },
+          },
+          MuiTableCell: {
+            styleOverrides: {
+              root: {
+                borderBottom: `1px solid ${isLight ? '#f1f5f9' : '#1e293b'}`,
+                padding: '14px 16px',
+                fontSize: '0.875rem',
+              },
+            },
+          },
+          MuiChip: {
+            styleOverrides: {
+              root: {
+                fontWeight: 500,
+                fontSize: '0.75rem',
+                borderRadius: 6,
+              },
+            },
+          },
+          MuiTextField: {
+            styleOverrides: {
+              root: {
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: 8,
+                  backgroundColor: isLight ? '#ffffff' : '#1e293b',
+                  '& fieldset': {
+                    borderColor: isLight ? '#e2e8f0' : '#475569',
+                  },
+                  '&:hover fieldset': {
+                    borderColor: isLight ? '#cbd5e1' : '#64748b',
+                  },
+                },
+              },
+            },
+          },
+          MuiDialog: {
+            styleOverrides: {
+              paper: {
+                borderRadius: 16,
+              },
+            },
+          },
+          MuiTooltip: {
+            styleOverrides: {
+              tooltip: {
+                backgroundColor: isLight ? '#1e293b' : '#f1f5f9',
+                color: isLight ? '#f8fafc' : '#0f172a',
+                borderRadius: 6,
+                fontSize: '0.75rem',
+                fontWeight: 500,
+                padding: '6px 12px',
+              },
+            },
+          },
+          MuiAppBar: {
+            styleOverrides: {
+              root: {
+                backgroundImage: 'none',
+                borderBottom: `1px solid ${isLight ? '#e2e8f0' : '#1e293b'}`,
               },
             },
           },
         },
-      }),
+      });
+    },
     [mode]
   );
 
@@ -249,6 +452,7 @@ const App = () => {
             <Route path="/app/sales/payments/new" element={<CustomerPayments />} />
             <Route path="/app/sales/payments/:id/edit" element={<CustomerPayments />} />
             <Route path="/app/sales/payments/:id/view" element={<CustomerPayments />} />
+            <Route path="/app/sales/crv" element={<CashReceiptVouchers />} />
 
             {/* Purchases - Suppliers */}
             <Route path="/app/purchases/suppliers" element={<Suppliers />} />
@@ -340,6 +544,7 @@ const App = () => {
 
             {/* Purchases - Supplier Payments */}
             <Route path="/app/purchases/payments" element={<SupplierPayments />} />
+            <Route path="/app/purchases/cpv" element={<CashPaymentVouchers />} />
             <Route path="/app/purchases/payments/new" element={<SupplierPayments />} />
             <Route path="/app/purchases/payments/:id/edit" element={<SupplierPayments />} />
             <Route path="/app/purchases/payments/:id/view" element={<SupplierPayments />} />

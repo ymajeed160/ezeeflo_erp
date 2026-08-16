@@ -18,6 +18,8 @@ import {
   rejectPurchaseRequest, clearError, clearSelected,
 } from '../store/slices/purchaseRequestSlice';
 import { fetchItems } from '../store/slices/itemSlice';
+import { generateFromPR } from '../store/slices/purchaseOrderSlice';
+import { apiSuccess, apiError } from '../utils/toast';
 
 const INITIAL_FORM = {
   requestDate: new Date().toISOString().split('T')[0],
@@ -266,6 +268,19 @@ const PurchaseRequests = () => {
 
   const handleReject = (reqId) => {
     dispatch(rejectPurchaseRequest(reqId));
+  };
+
+  const handleConvertToPO = async (reqId) => {
+    const result = await dispatch(generateFromPR({ purchaseRequestId: reqId }));
+    if (result.meta.requestStatus === 'fulfilled') {
+      apiSuccess('Purchase Order created from Purchase Request');
+      loadData();
+    } else {
+      const msg = typeof result.payload === 'string'
+        ? result.payload
+        : (result.payload?.message || 'Failed to create Purchase Order');
+      apiError(msg);
+    }
   };
 
   const formatDate = (d) => {
@@ -717,7 +732,7 @@ const PurchaseRequests = () => {
                           <IconButton
                             size="small"
                             color="secondary"
-                            onClick={() => navigate(`/app/purchases/orders/new?fromRequest=${row.id}`)}
+                            onClick={() => handleConvertToPO(row.id)}
                           >
                             <Receipt fontSize="small" />
                           </IconButton>

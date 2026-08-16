@@ -18,7 +18,8 @@ $srcDirs = Get-ChildItem $srcBackend -Directory | Where-Object { $_.Name -notin 
 foreach ($dir in $srcDirs) {
     Copy-Item $dir.FullName -Destination "$deployDir\" -Recurse -Force
 }
-$srcFiles = Get-ChildItem $srcBackend -File
+$excludeFiles = @('.env', '.env.local')
+$srcFiles = Get-ChildItem $srcBackend -File | Where-Object { $_.Name -notin $excludeFiles }
 foreach ($file in $srcFiles) {
     Copy-Item $file.FullName -Destination "$deployDir\" -Force
 }
@@ -61,8 +62,20 @@ if (-not $allOk) {
 # 5. Create zip
 Write-Host "=== Creating zip ==="
 if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-[System.IO.Compression.ZipFile]::CreateFromDirectory($deployDir, $zipPath)
+$zip = [System.IO.Compression.ZipFile]::Open($zipPath, [System.IO.Compression.ZipArchiveMode]::Create)
+$baseLen = $deployDir.Length
+Get-ChildItem -Path $deployDir -Recurse -File | ForEach-Object {
+    $relPath = $_.FullName.Substring($baseLen).TrimStart('\').Replace('\', '/')
+    $entry = $zip.CreateEntry($relPath, [System.IO.Compression.CompressionLevel]::Optimal)
+    $entryStream = $entry.Open()
+    $fileStream = [System.IO.File]::OpenRead($_.FullName)
+    $fileStream.CopyTo($entryStream)
+    $fileStream.Dispose()
+    $entryStream.Dispose()
+}
+$zip.Dispose()
 $sizeMB = [math]::Round((Get-Item $zipPath).Length / 1MB, 2)
 
 # Verify zip structure

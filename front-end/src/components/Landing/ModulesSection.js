@@ -20,6 +20,8 @@ import {
   Engineering,
   Assessment,
   CheckCircle,
+  Groups,
+  Loyalty,
 } from '@mui/icons-material';
 
 const MODULES = [
@@ -64,6 +66,27 @@ const MODULES = [
     color: '#0891b2',
     bgColor: '#ecfeff',
     items: ['Asset Register', 'Depreciation', 'Maintenance', 'Disposal', 'Revaluation', 'Asset Reports'],
+  },
+  {
+    icon: <Groups sx={{ fontSize: 32 }} />,
+    title: 'HR & Payroll',
+    color: '#4f46e5',
+    bgColor: '#eef2ff',
+    items: ['Employee Management', 'Attendance & Shifts', 'Leave Management', 'Payroll Processing', 'Loans & Benefits', 'Performance & Training'],
+  },
+  {
+    icon: <PointOfSale sx={{ fontSize: 32 }} />,
+    title: 'POS',
+    color: '#0d9488',
+    bgColor: '#f0fdfa',
+    items: ['Cash Register', 'Multi-Payment', 'Held Orders', 'End-of-Day', 'Returns & Refunds', 'POS Reports'],
+  },
+  {
+    icon: <Loyalty sx={{ fontSize: 32 }} />,
+    title: 'Rewards',
+    color: '#e11d48',
+    bgColor: '#fff1f2',
+    items: ['Points Engine', 'Membership Tiers', 'Rewards Catalog', 'Coupons & Gift Cards', 'Campaigns', 'Referrals & Analytics'],
   },
   {
     icon: <Assessment sx={{ fontSize: 32 }} />,
@@ -137,7 +160,7 @@ const ModulesSection = () => {
               variant="body1"
               sx={{ color: '#64748b', maxWidth: 600, mx: 'auto', fontSize: '1.05rem' }}
             >
-              20+ integrated modules covering every aspect of your business operations.
+              24+ integrated modules covering every aspect of your business operations.
             </Typography>
           </Box>
         </FadeInSection>

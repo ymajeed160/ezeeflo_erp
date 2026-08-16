@@ -56,12 +56,11 @@ class InventoryTransactionService {
       transactionType,
       referenceId,
       referenceType,
-      referenceNumber,
-      quantity,
+      quantityIn: quantity > 0 ? quantity : 0,
+      quantityOut: quantity < 0 ? Math.abs(quantity) : 0,
+      runningBalance: Math.max(0, newQty),
       unitCost: unitCost || 0,
-      totalCost: totalCost || 0,
-      balanceAfter: Math.max(0, newQty),
-      createdAt: new Date(),
+      transactionDate: new Date(),
     }, { transaction });
 
     return record;

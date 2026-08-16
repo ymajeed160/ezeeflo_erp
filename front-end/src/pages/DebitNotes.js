@@ -53,10 +53,11 @@ import {
 import { fetchSuppliers } from '../store/slices/supplierSlice';
 import { fetchPurchaseReturns } from '../store/slices/purchaseReturnSlice';
 import { confirmDialog, apiSuccess, apiError } from '../utils/toast';
+import accountApi from '../services/accountApi';
 
 const statusColors = {
-  Draft: 'default',
-  Approved: 'success',
+  draft: 'default',
+  approved: 'success',
 };
 
 const DebitNotes = () => {
@@ -75,6 +76,12 @@ const DebitNotes = () => {
   const [editId, setEditId] = useState(null);
   const [generateFromReturn, setGenerateFromReturn] = useState(false);
   const [filteredPurchaseReturns, setFilteredPurchaseReturns] = useState([]);
+  const [postDialogOpen, setPostDialogOpen] = useState(false);
+  const [postTarget, setPostTarget] = useState(null);
+  const [postAccounts, setPostAccounts] = useState({ apAccountId: '', expenseAccountId: '', inventoryAccountId: '', vatAccountId: '' });
+  const [assetAccounts, setAssetAccounts] = useState([]);
+  const [expenseAccounts, setExpenseAccounts] = useState([]);
+  const [liabilityAccounts, setLiabilityAccounts] = useState([]);
 
   const { register, handleSubmit, control, reset, watch, setValue, formState: { errors } } = useForm({
     defaultValues: {
@@ -98,6 +105,20 @@ const DebitNotes = () => {
     loadData();
     dispatch(fetchSuppliers({ limit: 999 }));
     dispatch(fetchPurchaseReturns({ limit: 999 }));
+    // Load chart of accounts for the approval posting dialog
+    const loadAccounts = async () => {
+      try {
+        const [assetRes, expenseRes, liabilityRes] = await Promise.all([
+          accountApi.getByType('asset'),
+          accountApi.getByType('expense'),
+          accountApi.getByType('liability'),
+        ]);
+        setAssetAccounts(assetRes.data?.data || assetRes.data || []);
+        setExpenseAccounts(expenseRes.data?.data || expenseRes.data || []);
+        setLiabilityAccounts(liabilityRes.data?.data || liabilityRes.data || []);
+      } catch (e) { /* ignore */ }
+    };
+    loadAccounts();
   }, [loadData, dispatch]);
 
   useEffect(() => {
@@ -112,7 +133,7 @@ const DebitNotes = () => {
       reset({
         supplierId: currentItem.supplierId || '',
         purchaseReturnId: currentItem.purchaseReturnId || null,
-        debitDate: currentItem.debitDate?.split('T')[0] || '',
+        debitDate: currentItem.debitNoteDate?.split('T')[0] || '',
         amount: currentItem.amount || 0,
         reason: currentItem.reason || '',
         notes: currentItem.notes || '',
@@ -135,7 +156,7 @@ const DebitNotes = () => {
   useEffect(() => {
     if (generateFromReturn && selectedSupplierId && purchaseReturnsList?.length) {
       const filtered = purchaseReturnsList.filter(
-        (pr) => String(pr.supplierId) === String(selectedSupplierId) && pr.status === 'Approved'
+        (pr) => String(pr.supplierId) === String(selectedSupplierId) && pr.status === 'approved'
       );
       setFilteredPurchaseReturns(filtered);
     } else {
@@ -160,7 +181,7 @@ const DebitNotes = () => {
   };
 
   const handleEdit = (dn) => {
-    if (dn.status === 'Approved') {
+    if (dn.status === 'approved') {
       apiError('Approved debit notes cannot be edited');
       return;
     }
@@ -179,7 +200,7 @@ const DebitNotes = () => {
   };
 
   const handleDelete = async (dn) => {
-    if (dn.status === 'Approved') {
+    if (dn.status === 'approved') {
       apiError('Approved debit notes cannot be deleted');
       return;
     }
@@ -189,25 +210,48 @@ const DebitNotes = () => {
     }
   };
 
-  const handleApprove = async (dn) => {
-    const confirmed = await confirmDialog(
-      `Approve Debit Note #${dn.debitNoteNumber}? This will create a journal entry (AP DR, Inventory/Expense CR).`
-    );
-    if (confirmed) {
-      dispatch(approveDebitNote(dn.id)).then((res) => {
-        if (res.payload) loadData();
-      });
+  const handleOpenPostDialog = async (dn) => {
+    const result = await dispatch(fetchDebitNoteById(dn.id));
+    const note = result.payload;
+    if (!note) return;
+    const supplierVal = suppliersList.find((s) => String(s.id) === String(note.supplierId));
+    setPostTarget(note);
+    setPostAccounts({
+      apAccountId: supplierVal?.apAccountId || note.supplier?.apAccountId || '',
+      expenseAccountId: '',
+      inventoryAccountId: '',
+      vatAccountId: '',
+    });
+    setPostDialogOpen(true);
+  };
+
+  const handleApprove = async () => {
+    if (!postTarget) return;
+    const data = {};
+    if (postAccounts.apAccountId) data.apAccountId = postAccounts.apAccountId;
+    if (postAccounts.expenseAccountId) data.expenseAccountId = postAccounts.expenseAccountId;
+    if (postAccounts.inventoryAccountId) data.inventoryAccountId = postAccounts.inventoryAccountId;
+    if (postAccounts.vatAccountId) data.vatAccountId = postAccounts.vatAccountId;
+
+    const result = await dispatch(approveDebitNote({ id: postTarget.id, data }));
+    if (result.meta.requestStatus === 'fulfilled') {
+      apiSuccess('Debit note approved successfully');
+      setPostDialogOpen(false);
+      setPostTarget(null);
+      loadData();
+    } else {
+      apiError(result.payload || 'Failed to approve debit note');
     }
   };
 
   const onSubmit = async (data) => {
     const payload = {
-      supplierId: parseInt(data.supplierId),
-      purchaseReturnId: data.purchaseReturnId ? parseInt(data.purchaseReturnId) : null,
-      debitDate: data.debitDate,
+      supplierId: data.supplierId,
+      purchaseReturnId: data.purchaseReturnId || null,
+      debitNoteDate: data.debitDate,
       amount: parseFloat(data.amount),
       reason: data.reason,
-      notes: data.notes,
+      notes: data.reason ? `${data.reason}${data.notes ? ' — ' + data.notes : ''}` : (data.notes || null),
     };
 
     if (editId) {
@@ -283,15 +327,15 @@ const DebitNotes = () => {
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
                 <MenuItem value="">All</MenuItem>
-                <MenuItem value="Draft">Draft</MenuItem>
-                <MenuItem value="Approved">Approved</MenuItem>
+                <MenuItem value="draft">Draft</MenuItem>
+                <MenuItem value="approved">Approved</MenuItem>
               </TextField>
             </Grid>
             <Grid item xs={12} sm={3}>
               <Autocomplete
                 size="small"
                 options={suppliersList || []}
-                getOptionLabel={(o) => o.supplierName || o.supplier_name || ''}
+                getOptionLabel={(o) => o.name || o.supplierName || o.supplier_name || ''}
                 value={suppliersList?.find((c) => String(c.id) === supplierFilter) || null}
                 onChange={(e, v) => setSupplierFilter(v ? String(v.id) : '')}
                 renderInput={(params) => <TextField {...params} label="Supplier" />}
@@ -337,8 +381,8 @@ const DebitNotes = () => {
               items?.map((dn) => (
                 <TableRow key={dn.id} hover>
                   <TableCell>{dn.debitNoteNumber}</TableCell>
-                  <TableCell>{dn.debitDate?.split('T')[0]}</TableCell>
-                  <TableCell>{dn.supplier?.supplierName || dn.supplier?.supplier_name || '-'}</TableCell>
+                  <TableCell>{dn.debitNoteDate?.split('T')[0]}</TableCell>
+                  <TableCell>{dn.supplier?.name || dn.supplier?.supplierName || dn.supplier?.supplier_name || '-'}</TableCell>
                   <TableCell align="right">{formatCurrency(dn.amount)}</TableCell>
                   <TableCell>{dn.reason || '-'}</TableCell>
                   <TableCell>
@@ -351,7 +395,7 @@ const DebitNotes = () => {
                           <ViewIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
-                      {dn.status === 'Draft' && (
+                      {dn.status === 'draft' && (
                         <>
                           <Tooltip title="Edit">
                             <IconButton size="small" onClick={() => handleEdit(dn)}>
@@ -364,7 +408,7 @@ const DebitNotes = () => {
                             </IconButton>
                           </Tooltip>
                           <Tooltip title="Approve">
-                            <IconButton size="small" color="success" onClick={() => handleApprove(dn)}>
+                            <IconButton size="small" color="success" onClick={() => handleOpenPostDialog(dn)}>
                               <ApproveIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>
@@ -423,7 +467,7 @@ const DebitNotes = () => {
                       disabled={viewMode || (generateFromReturn && selectedPurchaseReturnId)}
                       size="small"
                       options={suppliersList || []}
-                      getOptionLabel={(o) => o.supplierName || o.supplier_name || ''}
+                      getOptionLabel={(o) => o.name || o.supplierName || o.supplier_name || ''}
                       value={suppliersList?.find((c) => String(c.id) === String(field.value)) || null}
                       onChange={(e, v) => field.onChange(v ? String(v.id) : '')}
                       renderInput={(params) => (
@@ -528,6 +572,76 @@ const DebitNotes = () => {
             )}
           </DialogActions>
         </form>
+      </Dialog>
+
+      {/* Approve / Post to Journal Dialog (chart of accounts) */}
+      <Dialog open={postDialogOpen} onClose={() => { setPostDialogOpen(false); setPostTarget(null); }} maxWidth="sm" fullWidth>
+        <DialogTitle>Approve Debit Note</DialogTitle>
+        <DialogContent>
+          {postTarget && (
+            <Box sx={{ mt: 1 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Debit Note: {postTarget.debitNoteNumber} — Amount: {formatCurrency(postTarget.amount)}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                Select the Chart of Accounts for each entry line:
+              </Typography>
+
+              <Grid container spacing={2} sx={{ mt: 1 }}>
+                <Grid item xs={12}>
+                  <Typography variant="caption" color="text.secondary">CREDIT — Expense (manual / service items)</Typography>
+                  <Autocomplete
+                    size="small"
+                    options={expenseAccounts}
+                    getOptionLabel={(opt) => opt.code ? `${opt.code} - ${opt.name}` : opt.name || ''}
+                    value={expenseAccounts.find((a) => a.id === postAccounts.expenseAccountId) || null}
+                    onChange={(e, v) => setPostAccounts({ ...postAccounts, expenseAccountId: v?.id || '' })}
+                    renderInput={(params) => <TextField {...params} label="Expense Account" placeholder="Select expense account" />}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="caption" color="text.secondary">CREDIT — Inventory (product items)</Typography>
+                  <Autocomplete
+                    size="small"
+                    options={assetAccounts}
+                    getOptionLabel={(opt) => opt.code ? `${opt.code} - ${opt.name}` : opt.name || ''}
+                    value={assetAccounts.find((a) => a.id === postAccounts.inventoryAccountId) || null}
+                    onChange={(e, v) => setPostAccounts({ ...postAccounts, inventoryAccountId: v?.id || '' })}
+                    renderInput={(params) => <TextField {...params} label="Inventory Account" placeholder="Select asset account" />}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="caption" color="text.secondary">CREDIT — VAT Input / Input Tax (optional)</Typography>
+                  <Autocomplete
+                    size="small"
+                    options={assetAccounts}
+                    getOptionLabel={(opt) => opt.code ? `${opt.code} - ${opt.name}` : opt.name || ''}
+                    value={assetAccounts.find((a) => a.id === postAccounts.vatAccountId) || null}
+                    onChange={(e, v) => setPostAccounts({ ...postAccounts, vatAccountId: v?.id || '' })}
+                    renderInput={(params) => <TextField {...params} label="VAT Input Account" placeholder="Select VAT input account" />}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="caption" color="text.secondary">DEBIT — Accounts Payable (required)</Typography>
+                  <Autocomplete
+                    size="small"
+                    options={liabilityAccounts}
+                    getOptionLabel={(opt) => opt.code ? `${opt.code} - ${opt.name}` : opt.name || ''}
+                    value={liabilityAccounts.find((a) => a.id === postAccounts.apAccountId) || null}
+                    onChange={(e, v) => setPostAccounts({ ...postAccounts, apAccountId: v?.id || '' })}
+                    renderInput={(params) => <TextField {...params} label="Accounts Payable Account" placeholder="Select AP account" />}
+                  />
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setPostDialogOpen(false); setPostTarget(null); }}>Cancel</Button>
+          <Button onClick={handleApprove} variant="contained" color="primary" disabled={submitting}>
+            {submitting ? 'Approving...' : 'Approve'}
+          </Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );

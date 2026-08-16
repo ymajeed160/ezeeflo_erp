@@ -4,6 +4,7 @@ module.exports = (sequelize, DataTypes) => {
   const PurchaseReturnDetail = sequelize.define('PurchaseReturnDetail', {
     id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
     purchaseReturnId: { type: DataTypes.UUID, allowNull: false },
+    purchaseInvoiceLineId: { type: DataTypes.UUID, allowNull: true },
     itemId: { type: DataTypes.UUID, allowNull: false },
     description: { type: DataTypes.STRING(500), allowNull: true },
     quantity: { type: DataTypes.DECIMAL(18, 4), allowNull: false },
@@ -20,8 +21,9 @@ module.exports = (sequelize, DataTypes) => {
 
   PurchaseReturnDetail.associate = (models) => {
     PurchaseReturnDetail.belongsTo(models.PurchaseReturn, { foreignKey: 'purchaseReturnId' });
-    PurchaseReturnDetail.belongsTo(models.Item, { foreignKey: 'itemId', as: 'Item' });
-    PurchaseReturnDetail.belongsTo(models.Warehouse, { foreignKey: 'warehouseId', as: 'Warehouse' });
+    PurchaseReturnDetail.belongsTo(models.Item, { foreignKey: 'itemId', as: 'item' });
+    PurchaseReturnDetail.belongsTo(models.Warehouse, { foreignKey: 'warehouseId', as: 'warehouse' });
+    PurchaseReturnDetail.belongsTo(models.PurchaseInvoiceDetail, { foreignKey: 'purchaseInvoiceLineId', as: 'invoiceLine' });
   };
 
   return PurchaseReturnDetail;

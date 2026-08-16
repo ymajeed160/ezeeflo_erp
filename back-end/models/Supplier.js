@@ -40,7 +40,17 @@ const Supplier = sequelize.define('Supplier', {
   email: {
     type: DataTypes.STRING(150),
     allowNull: true,
-    validate: { isEmail: { msg: 'Invalid email format' } },
+    validate: {
+      isValidEmail(value) {
+        // Email is optional — only validate when a value is provided
+        if (value && String(value).trim() !== '') {
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!emailRegex.test(String(value).trim())) {
+            throw new Error('Invalid email format');
+          }
+        }
+      },
+    },
   },
   taxNumber: {
     type: DataTypes.STRING(50),

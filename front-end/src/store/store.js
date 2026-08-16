@@ -1,6 +1,8 @@
 import { configureStore, combineReducers } from '@reduxjs/toolkit';
 import { persistStore, persistReducer } from 'redux-persist';
 import storage from 'redux-persist/lib/storage';
+import { injectStore } from '../services/api';
+import { injectAxiosStore } from '../services/axiosInstance';
 import authReducer from './slices/authSlice';
 import themeReducer from './slices/themeSlice';
 import userReducer from './slices/userSlice';
@@ -127,6 +129,10 @@ export const store = configureStore({
       },
     }),
 });
+
+// Inject store into API interceptors so they can read auth token immediately from Redux
+injectStore(store);
+injectAxiosStore(store);
 
 export const persistor = persistStore(store);
 

@@ -429,6 +429,10 @@ const SystemConfigPage = () => {
                 <ConfigSelect label="Default Supplier" value={getCfg('purchase', 'default_supplier')}
                   onChange={(v) => updateConfig('purchase', 'default_supplier', v)} options={supplierOptions} />
               </Grid>
+              <Grid item xs={12} md={4}>
+                <ConfigSelect label="Default Cash Account" value={getCfg('purchase', 'default_cash_account')}
+                  onChange={(v) => updateConfig('purchase', 'default_cash_account', v)} options={accountOptions} />
+              </Grid>
             </Grid>
           </SectionCard>
         )}

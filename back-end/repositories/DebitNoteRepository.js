@@ -2,21 +2,21 @@ const { DebitNote, Supplier, PurchaseReturn, JournalEntry, User } = require('../
 
 class DebitNoteRepository {
   async findAll(tenantId, options = {}) {
-    const { page = 1, limit = 10, search, status, supplierId, startDate, endDate, sortBy = 'created_at', sortOrder = 'DESC' } = options;
-    const where = { tenant_id: tenantId };
+    const { page = 1, limit = 10, search, status, supplierId, startDate, endDate, sortBy = 'createdAt', sortOrder = 'DESC' } = options;
+    const where = { tenantId };
     if (status) where.status = status;
-    if (supplierId) where.supplier_id = supplierId;
+    if (supplierId) where.supplierId = supplierId;
     if (startDate && endDate) {
-      where.debit_note_date = { [Op.between]: [startDate, endDate] };
+      where.debitNoteDate = { [Op.between]: [startDate, endDate] };
     } else if (startDate) {
-      where.debit_note_date = { [Op.gte]: startDate };
+      where.debitNoteDate = { [Op.gte]: startDate };
     } else if (endDate) {
-      where.debit_note_date = { [Op.lte]: endDate };
+      where.debitNoteDate = { [Op.lte]: endDate };
     }
     const { Op } = require('sequelize');
     if (search) {
       where[Op.or] = [
-        { debit_note_number: { [Op.like]: `%${search}%` } },
+        { debitNoteNumber: { [Op.like]: `%${search}%` } },
         { notes: { [Op.like]: `%${search}%` } },
         { '$supplier.name$': { [Op.like]: `%${search}%` } }
       ];
@@ -40,13 +40,13 @@ class DebitNoteRepository {
 
   async findById(tenantId, id) {
     return DebitNote.findOne({
-      where: { id, tenant_id: tenantId },
+      where: { id, tenantId },
       include: [
         { model: Supplier, as: 'supplier', attributes: ['id', 'code', 'name', 'contactPerson', 'phone', 'email'] },
         { model: PurchaseReturn, as: 'purchaseReturn', attributes: ['id', 'return_number', 'return_date'] },
-        { model: JournalEntry, as: 'journalEntry' },
-        { model: User, as: 'creator', attributes: ['id', 'username'] },
-        { model: User, as: 'approver', attributes: ['id', 'username'] }
+        { model: JournalEntry, as: 'journalEntry', required: false },
+        { model: User, as: 'creator', attributes: ['id', 'username'], required: false },
+        { model: User, as: 'approver', attributes: ['id', 'username'], required: false }
       ],
       paranoid: true
     });
@@ -54,14 +54,14 @@ class DebitNoteRepository {
 
   async findByNumber(tenantId, number) {
     return DebitNote.findOne({
-      where: { tenant_id: tenantId, debit_note_number: number },
+      where: { tenantId, debitNoteNumber: number },
       paranoid: true
     });
   }
 
   async findLastNumber(tenantId) {
     return DebitNote.findOne({
-      where: { tenant_id: tenantId },
+      where: { tenantId },
       order: [['createdAt', 'DESC']],
       paranoid: true
     });
@@ -72,13 +72,13 @@ class DebitNoteRepository {
   }
 
   async update(tenantId, id, data, transaction = null) {
-    const record = await DebitNote.findOne({ where: { id, tenant_id: tenantId }, transaction });
+    const record = await DebitNote.findOne({ where: { id, tenantId }, transaction });
     if (!record) return null;
     return record.update(data, { transaction });
   }
 
   async delete(tenantId, id) {
-    const record = await DebitNote.findOne({ where: { id, tenant_id: tenantId } });
+    const record = await DebitNote.findOne({ where: { id, tenantId } });
     if (!record) return null;
     return record.destroy();
   }

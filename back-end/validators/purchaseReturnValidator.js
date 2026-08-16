@@ -2,37 +2,41 @@
 
 const Joi = require('joi');
 
+// Models use UUID primary keys. Accept UUID strings for all IDs.
+const uuid = () => Joi.string().guid({ version: ['uuidv4'] }).allow(null);
+
 const purchaseReturnDetailSchema = Joi.object({
-  id: Joi.number().integer().optional(),
-  itemId: Joi.number().integer().required(),
+  id: uuid().optional(),
+  purchaseInvoiceLineId: uuid().optional(),
+  itemId: Joi.string().guid({ version: ['uuidv4'] }).required(),
   description: Joi.string().max(255).allow(null, '').optional(),
   quantity: Joi.number().min(0.0001).required(),
-  unitCost: Joi.number().min(0).required(),
+  unitCost: Joi.number().min(0).optional(),
   taxRate: Joi.number().min(0).max(100).default(0),
   discountAmount: Joi.number().min(0).default(0),
-  lineTotal: Joi.number().min(0).required(),
-  warehouseId: Joi.number().integer().allow(null).optional()
+  lineTotal: Joi.number().min(0).optional(),
+  warehouseId: uuid().optional()
 });
 
 const createSchema = Joi.object({
   returnDate: Joi.date().iso().required(),
-  supplierId: Joi.number().integer().required(),
-  purchaseInvoiceId: Joi.number().integer().allow(null).optional(),
-  goodsReceiptId: Joi.number().integer().allow(null).optional(),
+  supplierId: uuid().optional(),
+  purchaseInvoiceId: uuid().optional(),
+  goodsReceiptId: uuid().optional(),
   referenceType: Joi.string().valid('purchase_invoice', 'goods_receipt').required(),
-  warehouseId: Joi.number().integer().allow(null).optional(),
+  warehouseId: uuid().optional(),
   notes: Joi.string().allow('', null).optional(),
   details: Joi.array().items(purchaseReturnDetailSchema).min(1).required()
 });
 
 const updateSchema = Joi.object({
   returnDate: Joi.date().iso().optional(),
-  supplierId: Joi.number().integer().optional(),
-  purchaseInvoiceId: Joi.number().integer().allow(null).optional(),
-  goodsReceiptId: Joi.number().integer().allow(null).optional(),
+  supplierId: uuid().optional(),
+  purchaseInvoiceId: uuid().optional(),
+  goodsReceiptId: uuid().optional(),
   referenceType: Joi.string().valid('purchase_invoice', 'goods_receipt').optional(),
-  warehouseId: Joi.number().integer().allow(null).optional(),
-  status: Joi.string().valid('Draft', 'Approved', 'Rejected').optional(),
+  warehouseId: uuid().optional(),
+  status: Joi.string().valid('draft', 'approved', 'rejected', 'posted', 'reversed').optional(),
   notes: Joi.string().allow('', null).optional(),
   details: Joi.array().items(purchaseReturnDetailSchema).min(1).optional()
 });

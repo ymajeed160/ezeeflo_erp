@@ -55,11 +55,13 @@ import { fetchSuppliers } from '../store/slices/supplierSlice';
 import { fetchPurchaseInvoices } from '../store/slices/purchaseInvoiceSlice';
 import { fetchActiveBankAccounts } from '../store/slices/bankAccountSlice';
 import { confirmDialog, apiSuccess, apiError } from '../utils/toast';
+import accountApi from '../services/accountApi';
 
 const statusColors = {
   draft: 'default',
   confirmed: 'info',
   approved: 'success',
+  posted: 'success',
   cancelled: 'error',
 };
 
@@ -85,6 +87,11 @@ const SupplierPayments = () => {
   const [viewMode, setViewMode] = useState(false);
   const [editId, setEditId] = useState(null);
   const [filteredInvoices, setFilteredInvoices] = useState([]);
+  const [postDialogOpen, setPostDialogOpen] = useState(false);
+  const [postTarget, setPostTarget] = useState(null);
+  const [postAccounts, setPostAccounts] = useState({ apAccountId: '', cashAccountId: '' });
+  const [assetAccounts, setAssetAccounts] = useState([]);
+  const [liabilityAccounts, setLiabilityAccounts] = useState([]);
 
   const { register, handleSubmit, control, reset, watch, setValue, formState: { errors } } = useForm({
     defaultValues: {
@@ -105,6 +112,13 @@ const SupplierPayments = () => {
   const allocatedAmount = watch('allocations')?.reduce((sum, a) => sum + (parseFloat(a.allocatedAmount) || 0), 0) || 0;
   const unallocated = (parseFloat(paymentAmount) || 0) - allocatedAmount;
 
+  // Auto-sum allocated invoice amounts into the payment Amount field
+  useEffect(() => {
+    if (fields.length > 0) {
+      setValue('amount', Math.round(allocatedAmount * 100) / 100);
+    }
+  }, [allocatedAmount, fields.length, setValue]);
+
   const loadData = useCallback(() => {
     dispatch(fetchSupplierPayments({ search, status: statusFilter, supplierId: supplierFilter, page, limit }));
   }, [dispatch, search, statusFilter, supplierFilter, page, limit]);
@@ -114,6 +128,17 @@ const SupplierPayments = () => {
     dispatch(fetchSuppliers({ limit: 999 }));
     dispatch(fetchPurchaseInvoices({ limit: 999 }));
     dispatch(fetchActiveBankAccounts());
+    const loadAccounts = async () => {
+      try {
+        const [assetRes, liabilityRes] = await Promise.all([
+          accountApi.getByType('asset'),
+          accountApi.getByType('liability'),
+        ]);
+        setAssetAccounts(assetRes.data?.data || assetRes.data || []);
+        setLiabilityAccounts(liabilityRes.data?.data || liabilityRes.data || []);
+      } catch (e) { /* ignore */ }
+    };
+    loadAccounts();
   }, [loadData, dispatch]);
 
   useEffect(() => {
@@ -227,12 +252,32 @@ const SupplierPayments = () => {
   };
 
   const handlePostToJournal = async (sp) => {
-    const confirmed = await confirmDialog(
-      `Post Payment #${sp.paymentNumber} to Journal? This will create a journal entry (AP DR, Cash CR).`
-    );
-    if (confirmed) {
-      const res = await dispatch(postToJournalSupplierPayment(sp.id));
-      if (!res.error) { apiSuccess('Payment posted to journal'); loadData(); }
+    const result = await dispatch(fetchSupplierPaymentById(sp.id));
+    const payment = result.payload;
+    if (!payment) return;
+    setPostTarget(payment);
+    setPostAccounts({
+      apAccountId: payment.supplier?.apAccountId || '',
+      cashAccountId: payment.bankAccountId || '',
+    });
+    setPostDialogOpen(true);
+  };
+
+  const handlePost = async () => {
+    if (!postTarget) return;
+    const data = {};
+    if (postAccounts.apAccountId) data.apAccountId = postAccounts.apAccountId;
+    if (postAccounts.cashAccountId) data.cashAccountId = postAccounts.cashAccountId;
+
+    const result = await dispatch(postToJournalSupplierPayment({ id: postTarget.id, data }));
+    if (result.meta.requestStatus === 'fulfilled') {
+      apiSuccess('Payment posted to journal');
+      setPostDialogOpen(false);
+      setPostTarget(null);
+      handleClose();
+      loadData();
+    } else {
+      apiError(result.payload || 'Failed to post payment to journal');
     }
   };
 
@@ -608,7 +653,7 @@ const SupplierPayments = () => {
                   </Box>
                 </Box>
 
-                {!viewMode && currentItem?.status === 'draft' && selectedSupplierId && (
+                {!viewMode && (!currentItem || currentItem?.status === 'draft') && selectedSupplierId && (
                   <Button
                     size="small"
                     variant="outlined"
@@ -632,7 +677,10 @@ const SupplierPayments = () => {
                             options={filteredInvoices}
                             getOptionLabel={(o) => `${o.invoiceNumber || ''} (${formatCurrency(o.totalAmount || o.total_amount || 0)} total)`}
                             value={filteredInvoices.find((inv) => String(inv.id) === String(f.value)) || null}
-                            onChange={(e, v) => f.onChange(v ? String(v.id) : '')}
+                            onChange={(e, v) => {
+                              f.onChange(v ? String(v.id) : '');
+                              setValue(`allocations.${index}.allocatedAmount`, v ? parseFloat(v.totalAmount || v.total_amount || 0) : 0);
+                            }}
                             renderInput={(params) => (
                               <TextField {...params} label="Invoice" />
                             )}
@@ -664,9 +712,14 @@ const SupplierPayments = () => {
                   </Grid>
                 ))}
 
-                {!selectedSupplierId && !viewMode && (
+                {!viewMode && !selectedSupplierId && (
                   <Typography variant="body2" color="text.secondary">
                     Select a supplier to allocate invoices
+                  </Typography>
+                )}
+                {!viewMode && selectedSupplierId && filteredInvoices.length === 0 && (
+                  <Typography variant="body2" color="text.secondary">
+                    No outstanding invoices found for this supplier.
                   </Typography>
                 )}
               </Grid>
@@ -699,19 +752,7 @@ const SupplierPayments = () => {
                 variant="contained"
                 color="success"
                 disabled={submitting}
-                onClick={async () => {
-                  const confirmed = await confirmDialog(
-                    `Post Payment #${currentItem.paymentNumber} to Journal?`
-                  );
-                  if (confirmed) {
-                    const res = await dispatch(postToJournalSupplierPayment(currentItem.id));
-                    if (!res.error) {
-                      apiSuccess('Payment posted to journal');
-                      handleClose();
-                      loadData();
-                    }
-                  }
-                }}
+                onClick={() => handlePostToJournal(currentItem)}
               >
                 Post to Journal
               </Button>
@@ -723,6 +764,54 @@ const SupplierPayments = () => {
             )}
           </DialogActions>
         </form>
+      </Dialog>
+
+      {/* Post to Journal Dialog (chart of accounts) */}
+      <Dialog open={postDialogOpen} onClose={() => { setPostDialogOpen(false); setPostTarget(null); }} maxWidth="sm" fullWidth>
+        <DialogTitle>Post Supplier Payment to Journal</DialogTitle>
+        <DialogContent>
+          {postTarget && (
+            <Box sx={{ mt: 1 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Payment: {postTarget.paymentNumber} — Amount: {formatCurrency(postTarget.amount)}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                Select the Chart of Accounts for each entry line:
+              </Typography>
+
+              <Grid container spacing={2} sx={{ mt: 1 }}>
+                <Grid item xs={12}>
+                  <Typography variant="caption" color="text.secondary">DEBIT — Accounts Payable (required)</Typography>
+                  <Autocomplete
+                    size="small"
+                    options={liabilityAccounts}
+                    getOptionLabel={(opt) => opt.code ? `${opt.code} - ${opt.name}` : opt.name || ''}
+                    value={liabilityAccounts.find((a) => a.id === postAccounts.apAccountId) || null}
+                    onChange={(e, v) => setPostAccounts({ ...postAccounts, apAccountId: v?.id || '' })}
+                    renderInput={(params) => <TextField {...params} label="Accounts Payable Account" placeholder="Select AP account" />}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="caption" color="text.secondary">CREDIT — Cash / Bank (required)</Typography>
+                  <Autocomplete
+                    size="small"
+                    options={assetAccounts}
+                    getOptionLabel={(opt) => opt.code ? `${opt.code} - ${opt.name}` : opt.name || ''}
+                    value={assetAccounts.find((a) => a.id === postAccounts.cashAccountId) || null}
+                    onChange={(e, v) => setPostAccounts({ ...postAccounts, cashAccountId: v?.id || '' })}
+                    renderInput={(params) => <TextField {...params} label="Cash / Bank Account" placeholder="Select cash or bank account" />}
+                  />
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setPostDialogOpen(false); setPostTarget(null); }}>Cancel</Button>
+          <Button onClick={handlePost} variant="contained" color="primary" disabled={submitting}>
+            {submitting ? 'Posting...' : 'Post'}
+          </Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );

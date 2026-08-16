@@ -35,6 +35,7 @@ const deliveryNoteRoutes = require('./routes/deliveryNote.routes');
 const salesInvoiceRoutes = require('./routes/salesInvoice.routes');
 const salesReturnRoutes = require('./routes/salesReturn.routes');
 const creditNoteRoutes = require('./routes/creditNote.routes');
+const demoRoutes = require('./routes/demoRoutes');
 const customerPaymentRoutes = require('./routes/customerPayment.routes');
 const supplierRoutes = require('./routes/supplier.routes');
 const purchaseRequestRoutes = require('./routes/purchaseRequest.routes');
@@ -44,6 +45,8 @@ const purchaseInvoiceRoutes = require('./routes/purchaseInvoice.routes');
 const purchaseReturnRoutes = require('./routes/purchaseReturn.routes');
 const debitNoteRoutes = require('./routes/debitNote.routes');
 const supplierPaymentRoutes = require('./routes/supplierPayment.routes');
+const cashPaymentVoucherRoutes = require('./routes/cashPaymentVoucher.routes');
+const cashReceiptVoucherRoutes = require('./routes/cashReceiptVoucher.routes');
 const bankAccountRoutes = require('./routes/bankAccountRoutes');
 const bankTransactionRoutes = require('./routes/bankTransactionRoutes');
 const paymentReceiptRoutes = require('./routes/paymentReceiptRoutes');
@@ -84,6 +87,7 @@ const app = express();
 
 // Security middleware
 app.use(helmet({
+  xXssProtection: false, // Deprecated, not supported by modern browsers
   crossOriginResourcePolicy: { policy: 'cross-origin' },
   contentSecurityPolicy: {
     directives: {
@@ -248,6 +252,9 @@ app.get('/api/health', (req, res) => {
 // PDF preview — no auth required (iframe loads this)
 app.use('/api/pdf-preview', pdfPreviewRoutes);
 
+// Demo request — public endpoint, no auth required
+app.use('/api/demo-request', demoRoutes);
+
 // Routes that do NOT require company context
 app.use('/api/auth', authRoutes);
 
@@ -285,6 +292,8 @@ const businessRoutes = [
   { path: '/api/purchase-returns', router: purchaseReturnRoutes },
   { path: '/api/debit-notes', router: debitNoteRoutes },
   { path: '/api/supplier-payments', router: supplierPaymentRoutes },
+  { path: '/api/cash-payment-vouchers', router: cashPaymentVoucherRoutes },
+  { path: '/api/cash-receipt-vouchers', router: cashReceiptVoucherRoutes },
   { path: '/api/bank-accounts', router: bankAccountRoutes },
   { path: '/api/bank-transactions', router: bankTransactionRoutes },
   { path: '/api/payment-receipts', router: paymentReceiptRoutes },

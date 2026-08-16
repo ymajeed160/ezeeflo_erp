@@ -36,6 +36,8 @@ class GoodsReceiptDTO {
     this.status = data.status || 'draft';
     this.totalQuantity = parseFloat(data.totalQuantity || 0);
     this.createdBy = data.createdBy || null;
+    this.convertedToInvoice = false;
+    this.convertedInvoiceNumber = null;
     this.details = (data.details || []).map((d) => new GoodsReceiptDetailDTO(d));
     this.createdAt = data.createdAt || null;
     this.updatedAt = data.updatedAt || null;

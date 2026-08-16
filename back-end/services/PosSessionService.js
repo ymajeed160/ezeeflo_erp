@@ -152,16 +152,16 @@ class PosSessionService {
       createdBy: userId,
     });
 
-    await AuditService.log({
-      tenantId,
-      userId,
-      action: 'POS_SESSION_OPENED',
-      module: 'POS',
-      entity: 'PosSession',
-      entityId: session.id,
-      newValues: { sessionNumber, terminalId, openingCash },
-      description: `POS Session ${sessionNumber} opened on terminal ${terminal.terminalCode}`,
-    });
+    try {
+      await AuditService.recordSystem('POS_SESSION_OPENED', 'POS', 'PosSession', session.id, {
+        tenantId,
+        userId,
+        newValues: { sessionNumber, terminalId, openingCash },
+        description: `POS Session ${sessionNumber} opened on terminal ${terminal.terminalCode}`,
+      });
+    } catch (auditErr) {
+      logger.warn('Failed to audit POS session open:', auditErr.message);
+    }
 
     return this.getById(tenantId, session.id);
   }
@@ -213,17 +213,17 @@ class PosSessionService {
 
     await PosSession.update(updateData, { where: { tenantId, id } });
 
-    await AuditService.log({
-      tenantId,
-      userId,
-      action: 'POS_SESSION_CLOSED',
-      module: 'POS',
-      entity: 'PosSession',
-      entityId: id,
-      oldValues: { status: 'open' },
-      newValues: { status: updateData.status, expectedCash, actualCash, cashDifference },
-      description: `POS Session ${session.sessionNumber} closed. Expected: ${expectedCash}, Actual: ${actualCash}, Difference: ${cashDifference}`,
-    });
+    try {
+      await AuditService.recordSystem('POS_SESSION_CLOSED', 'POS', 'PosSession', id, {
+        tenantId,
+        userId,
+        oldValues: { status: 'open' },
+        newValues: { status: updateData.status, expectedCash, actualCash, cashDifference },
+        description: `POS Session ${session.sessionNumber} closed. Expected: ${expectedCash}, Actual: ${actualCash}, Difference: ${cashDifference}`,
+      });
+    } catch (auditErr) {
+      logger.warn('Failed to audit POS session close:', auditErr.message);
+    }
 
     return this.getById(tenantId, id);
   }

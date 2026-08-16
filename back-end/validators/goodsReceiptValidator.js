@@ -9,7 +9,7 @@ exports.createGoodsReceipt = [
   body('details').isArray({ min: 1 }).withMessage('At least one detail line is required'),
   body('details.*.itemId').isUUID().withMessage('Item is required'),
   body('details.*.orderedQuantity').isFloat({ min: 0 }).withMessage('Ordered qty must be >= 0'),
-  body('details.*.receivedQuantity').isFloat({ min: 0 }).withMessage('Received qty must be >= 0'),
+  body('details.*.receivedQuantity').optional({ nullable: true }).isFloat({ min: 0 }).withMessage('Received qty must be >= 0'),
   body('details.*.unitPrice').optional().isFloat({ min: 0 }),
   body('details.*.taxPercentage').optional().isFloat({ min: 0, max: 100 }),
   body('details.*.discountPercentage').optional().isFloat({ min: 0, max: 100 }),

@@ -2,20 +2,18 @@ const Joi = require('joi');
 
 const createDebitNoteSchema = Joi.object({
   debitNoteDate: Joi.date().iso().required(),
-  supplierId: Joi.number().integer().positive().required(),
-  purchaseReturnId: Joi.number().integer().positive().allow(null).optional(),
+  supplierId: Joi.string().guid({ version: ['uuidv4'] }).required(),
+  purchaseReturnId: Joi.string().guid({ version: ['uuidv4'] }).allow(null).optional(),
   referenceType: Joi.string().valid('PurchaseReturn', 'Manual').default('Manual'),
-  referenceId: Joi.number().integer().positive().allow(null).optional(),
   amount: Joi.number().precision(2).min(0).required(),
   notes: Joi.string().max(2000).allow('', null).optional()
 });
 
 const updateDebitNoteSchema = Joi.object({
   debitNoteDate: Joi.date().iso().optional(),
-  supplierId: Joi.number().integer().positive().optional(),
-  purchaseReturnId: Joi.number().integer().positive().allow(null).optional(),
+  supplierId: Joi.string().guid({ version: ['uuidv4'] }).optional(),
+  purchaseReturnId: Joi.string().guid({ version: ['uuidv4'] }).allow(null).optional(),
   referenceType: Joi.string().valid('PurchaseReturn', 'Manual').optional(),
-  referenceId: Joi.number().integer().positive().allow(null).optional(),
   amount: Joi.number().precision(2).min(0).optional(),
   notes: Joi.string().max(2000).allow('', null).optional()
 });

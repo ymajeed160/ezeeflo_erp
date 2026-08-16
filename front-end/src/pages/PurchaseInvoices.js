@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Button, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, IconButton, Chip, Dialog,
@@ -10,7 +11,7 @@ import {
 } from '@mui/material';
 import {
   Add, Edit, Delete, Search, Refresh, Visibility,
-  CheckCircle, Cancel, Send, Autorenew,
+  CheckCircle, Cancel, Send, Autorenew, Replay,
   PictureAsPdf as PdfIcon, Email as EmailIcon, FileDownload as DownloadIcon, Print as PrintIcon,
 } from '@mui/icons-material';
 import {
@@ -52,6 +53,7 @@ const emptyDetail = () => ({ itemId: '', description: '', quantity: 1, unitCost:
 
 const PurchaseInvoices = () => {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const { items, selectedItem, totalCount, page, limit, loading, error } = useSelector(
     (s) => s.purchaseInvoices
   );
@@ -189,13 +191,24 @@ const PurchaseInvoices = () => {
       })),
     };
     delete payload.details;
+
+    let result;
     if (editMode && selectedItem) {
-      await dispatch(updatePurchaseInvoice({ id: selectedItem.id, ...payload }));
+      result = await dispatch(updatePurchaseInvoice({ id: selectedItem.id, ...payload }));
     } else {
-      await dispatch(createPurchaseInvoice(payload));
+      result = await dispatch(createPurchaseInvoice(payload));
     }
-    setShowModal(false);
-    loadData();
+
+    if (result.meta.requestStatus === 'fulfilled') {
+      apiSuccess(editMode ? 'Purchase Invoice updated successfully' : 'Purchase Invoice created successfully');
+      setShowModal(false);
+      loadData();
+    } else {
+      const msg = typeof result.payload === 'string'
+        ? result.payload
+        : (result.payload?.message || 'Failed to save invoice');
+      apiError(msg);
+    }
   };
 
   const handleView = async (inv) => {
@@ -340,7 +353,10 @@ const PurchaseInvoices = () => {
       setSelectedGenerateId('');
       loadData();
     } else {
-      apiError(result.payload?.message || result.error?.message || 'Failed to generate invoice');
+      const msg = typeof result.payload === 'string'
+        ? result.payload
+        : (result.payload?.message || 'Failed to generate invoice');
+      apiError(msg);
     }
   };
 
@@ -355,9 +371,11 @@ const PurchaseInvoices = () => {
   };
 
   const updateDetail = (index, field, value) => {
-    const updated = [...form.details];
-    updated[index] = { ...updated[index], [field]: value };
-    setForm({ ...form, details: updated });
+    setForm((prev) => {
+      const updated = [...prev.details];
+      updated[index] = { ...updated[index], [field]: value };
+      return { ...prev, details: updated };
+    });
   };
 
   const calcLineTotal = (line) => {
@@ -452,7 +470,7 @@ const PurchaseInvoices = () => {
                       {po.orderNumber} - {po.supplier?.name || ''}
                     </MenuItem>
                   ))
-                : grns.filter((g) => g.status === 'received').map((grn) => (
+                : grns.filter((g) => g.status === 'received' && !g.convertedToInvoice).map((grn) => (
                     <MenuItem key={grn.id} value={grn.id}>
                       {grn.grnNumber || grn.goodsReceiptNumber} - {grn.supplierName || ''}
                     </MenuItem>
@@ -652,8 +670,7 @@ const PurchaseInvoices = () => {
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell sx={{ fontWeight: 600 }}>Item</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
+                    <TableCell sx={{ fontWeight: 600, minWidth: 220 }}>Item</TableCell>
                     <TableCell sx={{ fontWeight: 600 }} align="right">Qty</TableCell>
                     <TableCell sx={{ fontWeight: 600 }} align="right">Unit Cost</TableCell>
                     <TableCell sx={{ fontWeight: 600 }} align="right">Tax %</TableCell>
@@ -680,6 +697,7 @@ const PurchaseInvoices = () => {
                                 if (item) updateDetail(idx, 'description', item.description || '');
                               }}
                               displayEmpty
+                              sx={{ minWidth: 200 }}
                             >
                               <MenuItem value="">Select</MenuItem>
                               {itemsList.map((it) => (
@@ -688,15 +706,6 @@ const PurchaseInvoices = () => {
                             </Select>
                           </FormControl>
                         )}
-                      </TableCell>
-                      <TableCell>
-                        <TextField
-                          size="small"
-                          value={line.description}
-                          onChange={(e) => updateDetail(idx, 'description', e.target.value)}
-                          disabled={viewMode}
-                          fullWidth
-                        />
                       </TableCell>
                       <TableCell>
                         <TextField
@@ -876,11 +885,18 @@ const PurchaseInvoices = () => {
                           </>
                         )}
                         {inv.status === 'posted' && (
-                          <Tooltip title="Cancel">
-                            <IconButton size="small" color="error" onClick={() => handleCancel(inv.id)}>
-                              <Cancel fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
+                          <>
+                            <Tooltip title="Create Return">
+                              <IconButton size="small" color="warning" onClick={() => navigate(`/app/purchases/purchase-returns/new?invoiceId=${inv.id}`)}>
+                                <Replay fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Cancel">
+                              <IconButton size="small" color="error" onClick={() => handleCancel(inv.id)}>
+                                <Cancel fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </>
                         )}
                       </TableCell>
                     </TableRow>

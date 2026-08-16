@@ -67,6 +67,8 @@ const ROADMAP_CATEGORIES = [
       'Reports & Analytics',
       'Role-Based Access Control',
       'Audit Trail',
+      'HR & Payroll',
+      'POS (Point of Sale)',
     ],
   },
   {
@@ -78,7 +80,6 @@ const ROADMAP_CATEGORIES = [
     description: 'Features currently in active development',
     estimated: 'Q3 2026',
     items: [
-      'HR & Payroll',
       'CRM',
       'Budget Management',
       'Document Management',
@@ -190,6 +191,7 @@ const roadmapItemIcons = {
   'Role-Based Access Control': <Security sx={{ fontSize: 18 }} />,
   'Audit Trail': <History sx={{ fontSize: 18 }} />,
   'HR & Payroll': <Group sx={{ fontSize: 18 }} />,
+  'POS (Point of Sale)': <PointOfSale sx={{ fontSize: 18 }} />,
   'CRM': <Campaign sx={{ fontSize: 18 }} />,
   'Budget Management': <AccountTree sx={{ fontSize: 18 }} />,
   'Document Management': <Description sx={{ fontSize: 18 }} />,

@@ -8,17 +8,17 @@
     "@emotion/styled": "^11.11.0",
     "@mui/icons-material": "^5.15.0",
     "@mui/material": "^5.15.0",
-    "@mui/x-charts": "^6.18.0",
-    "@mui/x-date-pickers": "^6.18.0",
+    "@mui/x-charts": "^7.29.1",
+    "@mui/x-date-pickers": "^7.29.4",
     "@reduxjs/toolkit": "^2.0.1",
     "axios": "^1.6.2",
     "dayjs": "^1.11.10",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
     "notistack": "^3.0.1",
-    "pdfjs-dist": "^6.1.200",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
+    "pdfjs-dist": "^6.2.108",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "react-error-boundary": "^4.0.11",
     "react-hook-form": "^7.49.0",
     "react-icons": "^5.6.0",
@@ -31,9 +31,9 @@
     "xlsx": "^0.18.5"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
+    "start": "react-app-rewired start",
+    "build": "react-app-rewired build",
+    "test": "react-app-rewired test",
     "eject": "react-scripts eject"
   },
   "proxy": "http://localhost:5000",
@@ -50,6 +50,7 @@
     ]
   },
   "devDependencies": {
+    "react-app-rewired": "^2.2.1",
     "sharp": "^0.35.3"
   }
 }

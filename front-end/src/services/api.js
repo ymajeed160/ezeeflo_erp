@@ -27,14 +27,31 @@ const getPersistedState = (key) => {
   return null;
 };
 
+// Helper: get token from Redux store first (immediate), fall back to localStorage (persisted)
+let _store = null;
+export const injectStore = (store) => { _store = store; };
+
+const getAccessToken = () => {
+  // Try Redux store first (immediate after login, before persist flushes)
+  if (_store) {
+    const state = _store.getState();
+    if (state.auth?.accessToken) {
+      return state.auth.accessToken;
+    }
+  }
+  // Fall back to persisted localStorage
+  const auth = getPersistedState('auth');
+  return auth?.accessToken || null;
+};
+
 // Attach token and active company to every request
 api.interceptors.request.use(
   (config) => {
     try {
-      // Attach auth token
-      const auth = getPersistedState('auth');
-      if (auth?.accessToken) {
-        config.headers.Authorization = `Bearer ${auth.accessToken}`;
+      // Attach auth token — reads from Redux store first, falls back to localStorage
+      const accessToken = getAccessToken();
+      if (accessToken) {
+        config.headers.Authorization = `Bearer ${accessToken}`;
       }
 
       // Attach active company ID — URL param takes priority, falls back to localStorage

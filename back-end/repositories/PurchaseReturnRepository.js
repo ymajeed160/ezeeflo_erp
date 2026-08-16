@@ -61,15 +61,16 @@ class PurchaseReturnRepository {
     return { data: rows, total: count, page, limit };
   }
 
-  async findById(id, tenantId) {
+  async findById(id, tenantId, transaction) {
     return await this.model.findOne({
       where: { id, tenantId },
+      transaction,
       include: [
         {
           model: this.detailModel,
           as: 'details',
           include: [
-            { model: Item, as: 'item', attributes: ['id', 'name', 'code', 'type'] },
+            { model: Item, as: 'item', attributes: ['id', 'name', 'itemCode', 'itemType', 'inventoryAccountId', 'expenseAccountId'] },
             { model: Warehouse, as: 'warehouse', attributes: ['id', 'name'] }
           ]
         },
@@ -114,7 +115,7 @@ class PurchaseReturnRepository {
       await this.detailModel.bulkCreate(detailRecords, { transaction });
     }
 
-    return await this.findById(record.id, data.tenantId);
+    return await this.findById(record.id, data.tenantId, transaction);
   }
 
   async update(id, tenantId, data, details = null, options = {}) {
@@ -127,13 +128,13 @@ class PurchaseReturnRepository {
       await this.detailModel.bulkCreate(detailRecords, { transaction });
     }
 
-    return await this.findById(id, tenantId);
+    return await this.findById(id, tenantId, transaction);
   }
 
   async updateStatus(id, tenantId, status, options = {}) {
     const transaction = options.transaction;
     await this.model.update({ status }, { where: { id, tenantId }, transaction });
-    return await this.findById(id, tenantId);
+    return await this.findById(id, tenantId, transaction);
   }
 
   async delete(id, tenantId) {

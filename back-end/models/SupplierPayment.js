@@ -12,7 +12,7 @@ module.exports = (sequelize, DataTypes) => {
     referenceNumber: { type: DataTypes.STRING(100), allowNull: true },
     bankAccountId: { type: DataTypes.UUID, allowNull: true },
     notes: { type: DataTypes.TEXT, allowNull: true },
-    status: { type: DataTypes.ENUM('draft', 'confirmed', 'approved', 'cancelled'), defaultValue: 'draft' },
+    status: { type: DataTypes.ENUM('draft', 'confirmed', 'posted', 'cancelled'), defaultValue: 'draft' },
     journalEntryId: { type: DataTypes.UUID, allowNull: true },
     createdBy: { type: DataTypes.UUID, allowNull: true },
     updatedBy: { type: DataTypes.UUID, allowNull: true },

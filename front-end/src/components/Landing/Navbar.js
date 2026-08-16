@@ -24,6 +24,7 @@ const NAV_ITEMS = [
   { label: 'Home', href: '#hero' },
   { label: 'Features', href: '#features' },
   { label: 'Modules', href: '#modules' },
+  { label: 'Rewards', href: '#rewards' },
   { label: 'Solutions', href: '#solutions' },
   { label: 'Pricing', href: '#pricing' },
   { label: 'About', href: '#about' },
@@ -80,7 +81,7 @@ const Navbar = () => {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Box component="img" src="/images/newlogo.png" alt="EzeeFlo" sx={{ height: 32 }} />
           <Typography variant="h6" sx={{ fontWeight: 700, color: '#1e293b' }}>
-            EzeeFlo <span style={{ color: '#7c3aed' }}>ERP</span>
+            EzeeFlo <span style={{ color: '#7c3aed' }}>Platform</span>
           </Typography>
         </Box>
         <IconButton onClick={() => setDrawerOpen(false)}>
@@ -175,7 +176,7 @@ const Navbar = () => {
               >
                 EzeeFlo{' '}
                 <Box component="span" sx={{ color: scrolled ? '#7c3aed' : '#a78bfa' }}>
-                  ERP
+                  Platform
                 </Box>
               </Typography>
             </Box>

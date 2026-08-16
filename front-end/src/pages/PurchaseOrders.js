@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Box,
@@ -60,7 +60,7 @@ import {
 import { fetchSuppliers } from '../store/slices/supplierSlice';
 import { fetchItems } from '../store/slices/itemSlice';
 import { fetchWarehouses } from '../store/slices/warehouseSlice';
-import { fetchPurchaseRequests as fetchApprovedPurchaseRequests } from '../store/slices/purchaseRequestSlice';
+import { fetchPurchaseRequests as fetchApprovedPurchaseRequests, fetchPurchaseRequestById } from '../store/slices/purchaseRequestSlice';
 import { confirmDialog, apiSuccess, apiError } from '../utils/toast';
 import { generatePurchaseOrderPdf } from '../utils/pdfPurchaseOrder';
 import PdfViewer from '../components/PdfViewer';
@@ -78,6 +78,7 @@ const statusColors = {
 const PurchaseOrders = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const dispatch = useDispatch();
   const { list, total, page, limit, selectedOrder, loading, submitting } = useSelector((s) => s.purchaseOrders);
   const suppliersList = useSelector((s) => s.suppliers?.suppliers || []);
@@ -172,6 +173,46 @@ const PurchaseOrders = () => {
     });
     setOpenForm(true);
   };
+
+  // Auto-open the create form when navigating to /purchase-orders/new
+  // and pre-fill lines from a Purchase Request via ?fromRequest=<id>
+  const isNewRoute = location.pathname.endsWith('/new');
+  useEffect(() => {
+    if (!isNewRoute) return;
+    const params = new URLSearchParams(location.search);
+    const fromRequest = params.get('fromRequest');
+
+    handleAdd();
+
+    if (!fromRequest) return;
+
+    (async () => {
+      try {
+        const result = await dispatch(fetchPurchaseRequestById(fromRequest));
+        const pr = result.payload?.data || result.payload;
+        if (pr && Array.isArray(pr.details) && pr.details.length) {
+          reset({
+            supplierId: '',
+            orderDate: new Date().toISOString().split('T')[0],
+            expectedDeliveryDate: '',
+            warehouseId: '',
+            notes: pr.notes || '',
+            status: 'draft',
+            details: pr.details.map((d) => ({
+              itemId: d.itemId || '',
+              description: d.description || '',
+              quantity: d.quantity || 0,
+              unitPrice: 0,
+              taxPercentage: 0,
+              discountPercentage: 0,
+            })),
+          });
+        }
+      } catch (err) {
+        apiError('Failed to load purchase request');
+      }
+    })();
+  }, [isNewRoute, location.search]);
 
   const handleEdit = (order) => {
     setViewMode(false);

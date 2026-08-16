@@ -53,12 +53,14 @@ const ProtectedRoute = ({ children, allowedRoles = [], requireCompany = true }) 
   }, [companies, urlCompanyId, activeCompanyId, requireCompany]);
 
   // If Redux says authenticated but no token exists in storage, force logout
-  if (isAuthenticated && !getToken()) {
-    dispatch(clearAuth());
-    dispatch(setActiveCompany(null));
-    window.location.replace('/login');
-    return null;
-  }
+  // React 19: must use useEffect for side effects, not render-phase dispatch
+  useEffect(() => {
+    if (isAuthenticated && !getToken()) {
+      dispatch(clearAuth());
+      dispatch(setActiveCompany(null));
+      window.location.replace('/login');
+    }
+  }, [isAuthenticated, dispatch]);
 
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;

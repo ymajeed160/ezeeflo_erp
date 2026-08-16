@@ -4,14 +4,15 @@ class PurchaseReturnDetailDTO {
   constructor(data) {
     this.id = data.id || null;
     this.purchaseReturnId = data.purchaseReturnId || null;
+    this.purchaseInvoiceLineId = data.purchaseInvoiceLineId || null;
     this.itemId = data.itemId || null;
     this.itemName = data.itemName || data.item?.name || null;
-    this.itemCode = data.itemCode || data.item?.code || null;
-    this.itemType = data.itemType || data.item?.type || null;
+    this.itemCode = data.itemCode || data.item?.itemCode || data.item?.code || null;
+    this.itemType = data.itemType || data.item?.itemType || data.item?.type || null;
     this.description = data.description || null;
     this.quantity = parseFloat(data.quantity) || 0;
     this.unitCost = parseFloat(data.unitCost) || 0;
-    this.taxRate = parseFloat(data.taxRate) || 0;
+    this.taxRate = parseFloat(data.taxRate || data.taxPercent) || 0;
     this.discountAmount = parseFloat(data.discountAmount) || 0;
     this.lineTotal = parseFloat(data.lineTotal) || 0;
     this.warehouseId = data.warehouseId || null;
@@ -49,7 +50,7 @@ class PurchaseReturnDTO {
     this.warehouseId = data.warehouseId || null;
     this.warehouseName = data.warehouseName || data.warehouse?.name || null;
     this.referenceType = data.referenceType || null;
-    this.status = data.status || 'Draft';
+    this.status = data.status || 'draft';
     this.totalAmount = parseFloat(data.totalAmount) || 0;
     this.notes = data.notes || null;
     this.details = data.details ? PurchaseReturnDetailDTO.toDTOList(data.details) : [];

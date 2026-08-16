@@ -64,7 +64,7 @@ class SupplierPaymentController {
 
   async postToJournal(req, res) {
     try {
-      const record = await SupplierPaymentService.postToJournal(req.tenantId, req.userId, req.params.id);
+      const record = await SupplierPaymentService.postToJournal(req.tenantId, req.userId, req.params.id, req.body || {});
       return res.json({ success: true, message: 'Supplier Payment posted to journal', data: record });
     } catch (error) {
       return res.status(400).json({ success: false, message: error.message });

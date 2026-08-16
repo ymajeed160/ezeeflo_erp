@@ -58,9 +58,9 @@ export const deleteDebitNote = createAsyncThunk('debitNote/delete', async (id, {
   }
 });
 
-export const approveDebitNote = createAsyncThunk('debitNote/approve', async (id, { rejectWithValue }) => {
+export const approveDebitNote = createAsyncThunk('debitNote/approve', async ({ id, data }, { rejectWithValue }) => {
   try {
-    const response = await debitNoteApi.approve(id);
+    const response = await debitNoteApi.approve(id, data);
     return response.data.data;
   } catch (error) {
     return rejectWithValue(error.response?.data?.message || 'Failed to approve debit note');

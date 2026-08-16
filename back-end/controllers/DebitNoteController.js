@@ -18,7 +18,7 @@ class DebitNoteController {
 
   async getById(req, res) {
     try {
-      const record = await DebitNoteService.findById(req.tenantId, parseInt(req.params.id));
+      const record = await DebitNoteService.findById(req.tenantId, req.params.id);
       if (!record) return res.status(404).json({ success: false, message: 'Debit Note not found' });
       return res.json({ success: true, data: record });
     } catch (error) {
@@ -37,7 +37,7 @@ class DebitNoteController {
 
   async update(req, res) {
     try {
-      const record = await DebitNoteService.update(req.tenantId, parseInt(req.params.id), req.body);
+      const record = await DebitNoteService.update(req.tenantId, req.params.id, req.body);
       return res.json({ success: true, message: 'Debit Note updated', data: record });
     } catch (error) {
       return res.status(400).json({ success: false, message: error.message });
@@ -46,7 +46,7 @@ class DebitNoteController {
 
   async delete(req, res) {
     try {
-      await DebitNoteService.delete(req.tenantId, parseInt(req.params.id));
+      await DebitNoteService.delete(req.tenantId, req.params.id);
       return res.json({ success: true, message: 'Debit Note deleted' });
     } catch (error) {
       return res.status(400).json({ success: false, message: error.message });
@@ -55,7 +55,7 @@ class DebitNoteController {
 
   async approve(req, res) {
     try {
-      const record = await DebitNoteService.approve(req.tenantId, req.userId, parseInt(req.params.id));
+      const record = await DebitNoteService.approve(req.tenantId, req.userId, req.params.id, req.body || {});
       return res.json({ success: true, message: 'Debit Note approved', data: record });
     } catch (error) {
       return res.status(400).json({ success: false, message: error.message });

@@ -85,10 +85,13 @@ const Navbar = () => {
     <AppBar
       position="fixed"
       color="inherit"
-      elevation={1}
+      elevation={0}
       sx={{
         zIndex: (theme) => theme.zIndex.drawer + 1,
         bgcolor: 'background.paper',
+        borderBottom: '1px solid',
+        borderColor: 'divider',
+        backdropFilter: 'blur(8px)',
       }}
     >
       <Toolbar>
@@ -100,7 +103,7 @@ const Navbar = () => {
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" fontWeight={700} color="primary" sx={{ display: { xs: 'none', sm: 'block' } }}>
-            ezeeflo
+            EzeeFlo ERP
           </Typography>
         </Box>
 
@@ -158,43 +161,87 @@ const Navbar = () => {
             anchorEl={anchorEl}
             open={Boolean(anchorEl)}
             onClose={handleProfileMenuClose}
-            PaperProps={{ sx: { width: 220 } }}
+            PaperProps={{
+              sx: {
+                width: 240,
+                mt: 1,
+                borderRadius: 3,
+                bgcolor: '#1f2937',
+                color: '#e5e7eb',
+                border: '1px solid rgba(255,255,255,0.08)',
+                boxShadow: '0px 8px 24px rgba(0,0,0,0.4)',
+                overflow: 'hidden',
+              },
+            }}
             transformOrigin={{ horizontal: 'right', vertical: 'top' }}
             anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
           >
-            <Box sx={{ p: 2, textAlign: 'center' }}>
-              <Avatar sx={{ width: 48, height: 48, mx: 'auto', mb: 1, bgcolor: 'primary.main' }}>
+            <Box sx={{
+              p: 2.5, textAlign: 'center',
+              background: 'linear-gradient(135deg, #1e293b 0%, #111827 100%)',
+              borderBottom: '1px solid rgba(255,255,255,0.06)',
+            }}>
+              <Avatar sx={{
+                width: 52, height: 52, mx: 'auto', mb: 1.5,
+                background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                boxShadow: '0 2px 8px rgba(99,102,241,0.4)',
+                fontWeight: 700,
+              }}>
                 {user?.firstName?.[0]}{user?.lastName?.[0]}
               </Avatar>
-              <Typography variant="subtitle2">{user?.firstName} {user?.lastName}</Typography>
-              <Typography variant="caption" color="text.secondary">{user?.email}</Typography>
+              <Typography variant="subtitle2" sx={{ color: '#f3f4f6', fontWeight: 600 }}>
+                {user?.firstName} {user?.lastName}
+              </Typography>
+              <Typography variant="caption" sx={{ color: '#9ca3af' }}>{user?.email}</Typography>
               <Chip
                 label={user?.roles?.[0]?.name || 'User'}
                 size="small"
-                color="primary"
-                sx={{ mt: 0.5 }}
+                sx={{
+                  mt: 1, fontWeight: 600, fontSize: '0.7rem',
+                  bgcolor: 'rgba(99,102,241,0.2)', color: '#a5b4fc',
+                  border: '1px solid rgba(99,102,241,0.3)',
+                }}
               />
             </Box>
-            <Divider />
-            <MenuItem onClick={() => { handleProfileMenuClose(); navigate('/app/profile' + location.search); }}>
-              <ListItemIcon><AccountCircle fontSize="small" /></ListItemIcon>
+            <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
+            <MenuItem onClick={() => { handleProfileMenuClose(); navigate('/app/profile' + location.search); }}
+              sx={{
+                py: 1.2, color: '#d1d5db',
+                '&:hover': { bgcolor: 'rgba(255,255,255,0.06)', color: '#f3f4f6' },
+              }}>
+              <ListItemIcon><AccountCircle fontSize="small" sx={{ color: '#9ca3af' }} /></ListItemIcon>
               Profile
             </MenuItem>
-            <MenuItem onClick={handleChangePassword}>
-              <ListItemIcon><Key fontSize="small" /></ListItemIcon>
+            <MenuItem onClick={handleChangePassword}
+              sx={{
+                py: 1.2, color: '#d1d5db',
+                '&:hover': { bgcolor: 'rgba(255,255,255,0.06)', color: '#f3f4f6' },
+              }}>
+              <ListItemIcon><Key fontSize="small" sx={{ color: '#9ca3af' }} /></ListItemIcon>
               Change Password
             </MenuItem>
-            <MenuItem onClick={() => { handleProfileMenuClose(); navigate('/app/settings/system' + location.search); }}>
-              <ListItemIcon><Settings fontSize="small" /></ListItemIcon>
+            <MenuItem onClick={() => { handleProfileMenuClose(); navigate('/app/settings/system' + location.search); }}
+              sx={{
+                py: 1.2, color: '#d1d5db',
+                '&:hover': { bgcolor: 'rgba(255,255,255,0.06)', color: '#f3f4f6' },
+              }}>
+              <ListItemIcon><Settings fontSize="small" sx={{ color: '#9ca3af' }} /></ListItemIcon>
               Settings
             </MenuItem>
-            <MenuItem onClick={handleSwitchCompany}>
-              <ListItemIcon><Business fontSize="small" /></ListItemIcon>
+            <MenuItem onClick={handleSwitchCompany}
+              sx={{
+                py: 1.2, color: '#d1d5db',
+                '&:hover': { bgcolor: 'rgba(255,255,255,0.06)', color: '#f3f4f6' },
+              }}>
+              <ListItemIcon><Business fontSize="small" sx={{ color: '#9ca3af' }} /></ListItemIcon>
               Switch Company
             </MenuItem>
-            <Divider />
-            <MenuItem onClick={handleLogout} sx={{ color: 'error.main' }}>
-              <ListItemIcon><Logout fontSize="small" color="error" /></ListItemIcon>
+            <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
+            <MenuItem onClick={handleLogout}
+              sx={{
+                py: 1.2, color: '#fca5a5',
+                '&:hover': { bgcolor: 'rgba(239,68,68,0.12)', color: '#fecaca' },
+              }}>
               Logout
             </MenuItem>
           </Menu>
