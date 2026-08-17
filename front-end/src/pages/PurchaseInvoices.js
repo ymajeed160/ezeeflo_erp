@@ -94,6 +94,11 @@ const PurchaseInvoices = () => {
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody, setEmailBody] = useState('');
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [confirmingId, setConfirmingId] = useState(null);
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [confirmTarget, setConfirmTarget] = useState(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+  const [confirmFetching, setConfirmFetching] = useState(false);
   const activeCompany = useSelector((s) => s.company?.activeCompany || null);
 
   const loadData = useCallback(() => {
@@ -321,13 +326,36 @@ const PurchaseInvoices = () => {
   };
 
   const handleConfirm = async (id) => {
-    if (window.confirm('Confirm this invoice?')) {
-      const result = await dispatch(confirmPurchaseInvoice(id));
+    setConfirmFetching(true);
+    setConfirmTarget(null);
+    setConfirmDialogOpen(true);
+    try {
+      const { data: res } = await purchaseInvoiceApi.getPostingPreview(id);
+      setConfirmTarget(res.data);
+    } catch (err) {
+      apiError(err.response?.data?.message || 'Could not load posting preview.');
+      setConfirmDialogOpen(false);
+    } finally {
+      setConfirmFetching(false);
+    }
+  };
+
+  const handleConfirmPost = async () => {
+    if (!confirmTarget || confirmLoading) return;
+    setConfirmingId(confirmTarget.id);
+    setConfirmLoading(true);
+    try {
+      const result = await dispatch(confirmPurchaseInvoice(confirmTarget.id));
       if (result.meta.requestStatus === 'fulfilled') {
-        apiSuccess('Invoice confirmed successfully');
+        apiSuccess('Purchase Invoice confirmed and posted successfully.');
+        setConfirmDialogOpen(false);
+        setConfirmTarget(null);
       } else {
-        apiError(result.payload || 'Failed to confirm invoice');
+        apiError(result.payload || 'Purchase Invoice could not be posted. No accounting or inventory changes were made.');
       }
+    } finally {
+      setConfirmLoading(false);
+      setConfirmingId(null);
       loadData();
     }
   };
@@ -552,6 +580,86 @@ const PurchaseInvoices = () => {
         <DialogActions>
           <Button onClick={() => { setPostDialogOpen(false); setPostTarget(null); }}>Cancel</Button>
           <Button onClick={handleApprove} variant="contained" color="primary">Post to Journal</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Confirm & Post Dialog (shows resolved Chart of Accounts) */}
+      <Dialog open={confirmDialogOpen} onClose={() => { if (!confirmLoading) { setConfirmDialogOpen(false); setConfirmTarget(null); } }} maxWidth="sm" fullWidth>
+        <DialogTitle>Confirm &amp; Post Purchase Invoice</DialogTitle>
+        <DialogContent>
+          {confirmFetching ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : confirmTarget ? (
+            <Box sx={{ mt: 1 }}>
+              <Typography variant="subtitle1" fontWeight={600}>
+                {confirmTarget.invoiceNumber} — Total: {parseFloat(confirmTarget.totalAmount || 0).toFixed(2)}
+              </Typography>
+              <Alert severity="info" sx={{ mt: 1, mb: 2 }}>
+                Review the Chart of Accounts below. Confirming will create the accounting and inventory entries.
+              </Alert>
+
+              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                DEBIT — Related Accounts (Inventory / Expense)
+              </Typography>
+              <TableContainer component={Paper} variant="outlined" sx={{ mb: 1 }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 600 }}>Item</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Account</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 600 }}>Debit</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {confirmTarget.lines.map((l) => (
+                      <TableRow key={l.itemId}>
+                        <TableCell>{l.itemName} ({l.itemType === 'product' ? 'Inventory' : 'Service'})</TableCell>
+                        <TableCell>{l.account ? `${l.account.code} - ${l.account.name}` : '—'}</TableCell>
+                        <TableCell align="right">{parseFloat(l.netAmount || 0).toFixed(2)}</TableCell>
+                      </TableRow>
+                    ))}
+                    {confirmTarget.vatAccount && parseFloat(confirmTarget.taxAmount || 0) > 0 && (
+                      <TableRow>
+                        <TableCell>VAT Input</TableCell>
+                        <TableCell>{confirmTarget.vatAccount.code} - {confirmTarget.vatAccount.name}</TableCell>
+                        <TableCell align="right">{parseFloat(confirmTarget.taxAmount || 0).toFixed(2)}</TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+
+              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                CREDIT — Main Account (Supplier / Accounts Payable)
+              </Typography>
+              <TableContainer component={Paper} variant="outlined">
+                <Table size="small">
+                  <TableBody>
+                    <TableRow>
+                      <TableCell>Supplier</TableCell>
+                      <TableCell>{confirmTarget.supplier?.name || '—'}</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell>Account</TableCell>
+                      <TableCell>{confirmTarget.supplier?.account ? `${confirmTarget.supplier.account.code} - ${confirmTarget.supplier.account.name}` : '—'}</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 600 }}>Credit</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 600 }}>{parseFloat(confirmTarget.totalAmount || 0).toFixed(2)}</TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Box>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setConfirmDialogOpen(false); setConfirmTarget(null); }} disabled={confirmLoading}>Cancel</Button>
+          <Button onClick={handleConfirmPost} variant="contained" color="primary" disabled={confirmLoading || confirmFetching || !confirmTarget}>
+            {confirmLoading ? 'Posting...' : 'Confirm & Post'}
+          </Button>
         </DialogActions>
       </Dialog>
 
@@ -859,7 +967,7 @@ const PurchaseInvoices = () => {
                               </IconButton>
                             </Tooltip>
                             <Tooltip title="Confirm">
-                              <IconButton size="small" color="success" onClick={() => handleConfirm(inv.id)}>
+                              <IconButton size="small" color="success" disabled={confirmingId === inv.id} onClick={() => handleConfirm(inv.id)}>
                                 <CheckCircle fontSize="small" />
                               </IconButton>
                             </Tooltip>

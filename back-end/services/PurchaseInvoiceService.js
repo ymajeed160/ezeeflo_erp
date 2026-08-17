@@ -234,26 +234,204 @@ class PurchaseInvoiceService {
     }
   }
 
+  async _resolvePosting(existing, tenantId, transaction = null) {
+    const supplier = await db.Supplier.findOne({ where: { id: existing.supplierId, tenantId }, transaction });
+    if (!supplier) throw new Error('Supplier not found');
+    if (supplier.status !== 'active' || supplier.isActive === false) throw new Error('Supplier is not active');
+    if (!supplier.apAccountId) throw new Error('Supplier Chart of Account is not configured.');
+
+    // VAT Receivable account from System Configuration → Accounting
+    const totalTax = parseFloat(existing.taxAmount || 0);
+    let vatReceivableId = null;
+    if (totalTax > 0) {
+      const vatConfigs = await db.SystemConfig.findAll({
+        where: { tenantId, category: 'accounting', configKey: 'vat_receivable' },
+        attributes: ['configValue'],
+        transaction,
+      });
+      if (vatConfigs.length > 0 && vatConfigs[0].configValue) {
+        vatReceivableId = vatConfigs[0].configValue;
+      } else {
+        throw new Error('VAT Receivable Account is not configured in Accounting System Configuration.');
+      }
+    }
+
+    const details = existing.details || existing.PurchaseInvoiceDetails || [];
+    const lines = [];
+    for (const detail of details) {
+      const item = await db.Item.findOne({ where: { id: detail.itemId, tenantId }, transaction });
+      if (!item) throw new Error(`Item ${detail.itemId} not found`);
+      if (item.isActive === false) throw new Error(`Item "${item.name || item.itemName}" is not active`);
+
+      const qty = parseFloat(detail.quantity || 0);
+      if (qty <= 0) throw new Error(`Quantity must be greater than zero for item "${item.name || item.itemName}"`);
+      const unitCost = parseFloat(detail.unitCost || 0);
+      if (unitCost < 0) throw new Error(`Unit price must not be negative for item "${item.name || item.itemName}"`);
+
+      // lineTotal is stored net of discount and EXCLUDES VAT; taxAmount is the VAT portion.
+      const lineTotal = parseFloat(detail.lineTotal || 0);
+      const taxAmount = parseFloat(detail.taxAmount || 0);
+      const itemName = item.name || item.itemName || 'Item';
+      const isProduct = item.itemType === 'product';
+      const accountId = isProduct ? item.inventoryAccountId : item.expenseAccountId;
+      if (!accountId) throw new Error(`Chart of Account is not configured for Item: ${itemName}.`);
+      if (isProduct && !existing.warehouseId) throw new Error(`Warehouse is required for inventory item: ${itemName}.`);
+
+      lines.push({
+        itemId: detail.itemId,
+        itemName,
+        itemType: item.itemType,
+        accountId,
+        netAmount: lineTotal,
+        taxAmount,
+        quantity: qty,
+        unitCost,
+      });
+    }
+
+    return {
+      supplier,
+      apAccountId: supplier.apAccountId,
+      vatReceivableId,
+      totalTax,
+      totalAmount: parseFloat(existing.totalAmount || 0),
+      lines,
+    };
+  }
+
+  async getPostingPreview(id, tenantId) {
+    const existing = await purchaseInvoiceRepository.findById(id, tenantId);
+    if (!existing) throw new Error('Purchase Invoice not found');
+    const resolved = await this._resolvePosting(existing, tenantId);
+
+    const accountIds = [...new Set([
+      resolved.apAccountId,
+      resolved.vatReceivableId,
+      ...resolved.lines.map((l) => l.accountId),
+    ].filter(Boolean))];
+
+    const accounts = accountIds.length
+      ? await db.Account.findAll({ where: { id: accountIds, tenantId } })
+      : [];
+    const accountMap = {};
+    accounts.forEach((a) => {
+      accountMap[a.id] = { id: a.id, code: a.code, name: a.name, type: a.type };
+    });
+
+    return {
+      id: existing.id,
+      invoiceNumber: existing.invoiceNumber,
+      invoiceDate: existing.invoiceDate,
+      totalAmount: resolved.totalAmount,
+      taxAmount: resolved.totalTax,
+      supplier: {
+        id: resolved.supplier.id,
+        name: resolved.supplier.name,
+        account: accountMap[resolved.apAccountId] || null,
+      },
+      vatAccount: resolved.vatReceivableId ? (accountMap[resolved.vatReceivableId] || null) : null,
+      lines: resolved.lines.map((l) => ({
+        itemId: l.itemId,
+        itemName: l.itemName,
+        itemType: l.itemType,
+        account: accountMap[l.accountId] || null,
+        netAmount: l.netAmount,
+        taxAmount: l.taxAmount,
+      })),
+    };
+  }
+
   async confirm(id, tenantId, userId) {
     const existing = await purchaseInvoiceRepository.findById(id, tenantId);
     if (!existing) throw new Error('Purchase Invoice not found');
+    if (existing.status === 'posted') throw new Error('This Purchase Invoice has already been posted.');
     if (existing.status !== 'draft') throw new Error('Only draft invoices can be confirmed');
 
-    await purchaseInvoiceRepository.update(id, tenantId, {
-      status: 'confirmed',
-      updatedBy: userId,
-    });
+    const details = existing.details || existing.PurchaseInvoiceDetails || [];
+    if (!details || details.length === 0) {
+      throw new Error('Invoice must have at least one item to post');
+    }
 
-    await GenericAuditService.log({
-      tenantId,
-      entityType: 'PurchaseInvoice',
-      entityId: id,
-      action: 'CONFIRM',
-      performedBy: userId,
-      newValues: { status: 'confirmed' },
-    });
+    const resolved = await this._resolvePosting(existing, tenantId);
 
-    return this.getById(id, tenantId);
+    const transaction = await db.sequelize.transaction();
+    try {
+      const journalLines = [];
+
+      for (const line of resolved.lines) {
+        const isProduct = line.itemType === 'product';
+
+        journalLines.push({
+          accountId: line.accountId,
+          debit: line.netAmount,
+          credit: 0,
+          description: `Purchase of ${line.itemName}${isProduct ? '' : ' (Service)'} - ${existing.invoiceNumber}`,
+        });
+
+        if (line.taxAmount > 0) {
+          journalLines.push({
+            accountId: resolved.vatReceivableId,
+            debit: line.taxAmount,
+            credit: 0,
+            description: `VAT Input on ${line.itemName} - ${existing.invoiceNumber}`,
+          });
+        }
+
+        if (isProduct) {
+          await inventoryService.addStock(
+            tenantId,
+            line.itemId,
+            existing.warehouseId,
+            line.quantity,
+            line.unitCost,
+            { id: existing.id, type: 'PurchaseInvoice', number: existing.invoiceNumber },
+            transaction
+          );
+        }
+      }
+
+      // Credit the supplier's Accounts Payable account (total including VAT)
+      journalLines.push({
+        accountId: resolved.apAccountId,
+        debit: 0,
+        credit: resolved.totalAmount,
+        description: `Accounts Payable - ${resolved.supplier.name} - ${existing.invoiceNumber}`,
+      });
+
+      // Create the journal entry (validates balanced debits/credits)
+      const journalEntry = await JournalEntryService.createEntry(
+        {
+          lines: journalLines,
+          entryDate: existing.invoiceDate || new Date().toISOString().split('T')[0],
+          reference: existing.invoiceNumber,
+          description: `Purchase Invoice ${existing.invoiceNumber} - ${resolved.supplier.name}`,
+        },
+        tenantId,
+        userId,
+        transaction
+      );
+
+      await purchaseInvoiceRepository.update(id, tenantId, {
+        status: 'posted',
+        journalEntryId: journalEntry.id,
+        updatedBy: userId,
+      }, transaction);
+
+      await GenericAuditService.log({
+        tenantId,
+        entityType: 'PurchaseInvoice',
+        entityId: id,
+        action: 'CONFIRM',
+        performedBy: userId,
+        newValues: { status: 'posted', journalEntryId: journalEntry.id },
+      }, transaction);
+
+      await transaction.commit();
+      return this.getById(id, tenantId);
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
   }
 
   async approve(id, tenantId, userId, accountData = {}) {

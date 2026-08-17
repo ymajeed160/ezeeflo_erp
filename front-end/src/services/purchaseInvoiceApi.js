@@ -24,6 +24,9 @@ const purchaseInvoiceApi = {
   confirm: (id) =>
     api.post(`/purchase-invoices/${id}/confirm`),
 
+  getPostingPreview: (id) =>
+    api.get(`/purchase-invoices/${id}/posting-preview`),
+
   cancel: (id) =>
     api.post(`/purchase-invoices/${id}/cancel`),
 

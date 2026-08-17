@@ -15,7 +15,7 @@ const handleValidationErrors = (req, res, next) => {
 const supplierValidation = {
   list: [
     query('page').optional().isInt({ min: 1 }).toInt(),
-    query('limit').optional().isInt({ min: 1, max: 999 }).toInt(),
+    query('limit').optional().isInt({ min: 1, max: 10000 }).toInt(),
     query('sortOrder').optional().isIn(['ASC', 'DESC', 'asc', 'desc']),
     query('status').optional().isIn(['active', 'inactive', 'blocked']),
     handleValidationErrors,

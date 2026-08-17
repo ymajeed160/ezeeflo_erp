@@ -17,6 +17,12 @@ router.get(
 );
 
 router.get(
+  '/:id/posting-preview',
+  authorize('purchaseinvoice.view'),
+  purchaseInvoiceController.getPostingPreview.bind(purchaseInvoiceController)
+);
+
+router.get(
   '/:id',
   authorize('purchaseinvoice.view'),
   purchaseInvoiceValidation.getById,

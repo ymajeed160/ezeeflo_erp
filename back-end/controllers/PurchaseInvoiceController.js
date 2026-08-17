@@ -71,7 +71,18 @@ class PurchaseInvoiceController {
       const userId = req.user.id;
       const { id } = req.params;
       const result = await purchaseInvoiceService.confirm(id, tenantId, userId);
-      res.json({ success: true, data: result, message: 'Purchase Invoice confirmed successfully' });
+      res.json({ success: true, data: result, message: 'Purchase Invoice confirmed and posted successfully' });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getPostingPreview(req, res, next) {
+    try {
+      const tenantId = req.user.tenantId;
+      const { id } = req.params;
+      const result = await purchaseInvoiceService.getPostingPreview(id, tenantId);
+      res.json({ success: true, data: result, message: 'Posting preview retrieved' });
     } catch (error) {
       next(error);
     }
