@@ -1,5 +1,5 @@
 'use strict';
-const { SalesReturn, SalesReturnDetail, Customer, Warehouse, Item, SalesInvoice, User, Account } = require('../models');
+const { SalesReturn, SalesReturnDetail, Customer, Warehouse, Item, SalesInvoice, User, Account, JournalEntry } = require('../models');
 
 class SalesReturnRepository {
   /**
@@ -71,13 +71,14 @@ class SalesReturnRepository {
       where: { tenantId, id },
       include: [
         { model: Customer, as: 'customer', attributes: ['id', 'name', 'code', 'email', 'phone', 'mobile', 'taxNumber', 'arAccountId'], required: false },
-        { model: SalesInvoice, as: 'salesInvoice', attributes: ['id', 'invoiceNumber'] },
+        { model: SalesInvoice, as: 'salesInvoice', attributes: ['id', 'invoiceNumber', 'invoiceDate', 'warehouseId'] },
         { model: Warehouse, as: 'warehouse', attributes: ['id', 'name', 'code'], required: false },
         { model: User, as: 'creator', attributes: ['id', 'username'] },
         { model: User, as: 'updater', attributes: ['id', 'username'] },
         { model: Account, as: 'customerAccount', attributes: ['id', 'code', 'name'], required: false },
         { model: Account, as: 'revenueAccount', attributes: ['id', 'code', 'name'], required: false },
         { model: Account, as: 'taxAccount', attributes: ['id', 'code', 'name'], required: false },
+        { model: JournalEntry, as: 'journalEntry', attributes: ['id', 'entryNumber', 'status'], required: false },
         {
           model: SalesReturnDetail,
           as: 'details',
@@ -162,6 +163,7 @@ class SalesReturnRepository {
               taxPercent: line.taxPercent,
               discountPercent: line.discountPercent,
               lineTotal: line.lineTotal,
+              costPrice: line.costPrice,
               returnReason: line.returnReason,
             },
             { where: { id: line.id, tenantId, salesReturnId: id }, transaction }
@@ -179,6 +181,7 @@ class SalesReturnRepository {
               taxPercent: line.taxPercent,
               discountPercent: line.discountPercent,
               lineTotal: line.lineTotal,
+              costPrice: line.costPrice,
               returnReason: line.returnReason,
             },
             { transaction }

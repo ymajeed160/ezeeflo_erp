@@ -23,6 +23,28 @@ router.post(
   SalesReturnController.create
 );
 
+// GET /api/:tenantId/sales-returns/invoices-for-return - Invoices available for return
+router.get(
+  '/invoices-for-return',
+  authorize('salesreturn.view'),
+  SalesReturnController.listInvoicesForReturn
+);
+
+// GET /api/:tenantId/sales-returns/returnable/:invoiceId - Returnable invoice lines
+router.get(
+  '/returnable/:invoiceId',
+  authorize('salesreturn.view'),
+  SalesReturnController.getReturnableInvoiceLines
+);
+
+// GET /api/:tenantId/sales-returns/:id/posting-preview - resolved posting accounts
+router.get(
+  '/:id/posting-preview',
+  authorize('salesreturn.view'),
+  salesReturnValidator.idParam,
+  SalesReturnController.getPostingPreview
+);
+
 // GET /api/:tenantId/sales-returns/:id - Get return by ID
 router.get(
   '/:id',

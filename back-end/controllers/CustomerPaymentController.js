@@ -88,6 +88,20 @@ class CustomerPaymentController {
   }
 
   /**
+   * GET /api/:tenantId/customer-payments/:id/posting-preview
+   */
+  static async getPostingPreview(req, res, next) {
+    try {
+      const tenantId = req.user.tenantId;
+      const id = req.params.id;
+      const result = await CustomerPaymentService.getPostingPreview(tenantId, id);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * POST /api/:tenantId/customer-payments/:id/cancel
    */
   static async cancel(req, res, next) {

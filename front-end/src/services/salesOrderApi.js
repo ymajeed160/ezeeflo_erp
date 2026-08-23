@@ -9,6 +9,8 @@ const salesOrderApi = {
   approve: (id) => axiosInstance.patch(`/sales-orders/${id}/approve`),
   close: (id) => axiosInstance.patch(`/sales-orders/${id}/close`),
   sendEmail: (id, { to, subject, body, pdfBase64 }) => axiosInstance.post(`/sales-orders/${id}/send-email`, { to, subject, body, pdfBase64 }),
+  getDeliverableLines: (id) => axiosInstance.get(`/sales-orders/${id}/deliverable-lines`),
+  getInvoiceableLines: (id) => axiosInstance.get(`/sales-orders/${id}/invoiceable-lines`),
 };
 
 export default salesOrderApi;

@@ -42,7 +42,47 @@ class SalesReturnController {
       next(error);
     }
   }
+  /**
+   * GET /api/:tenantId/sales-returns/invoices-for-return?customerId=xxx
+   */
+  static async listInvoicesForReturn(req, res, next) {
+    try {
+      const tenantId = req.user.tenantId;
+      const customerId = req.query.customerId || null;
+      const result = await SalesReturnService.listInvoicesForReturn(tenantId, customerId);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
 
+  /**
+   * GET /api/:tenantId/sales-returns/returnable/:invoiceId
+   */
+  static async getReturnableInvoiceLines(req, res, next) {
+    try {
+      const tenantId = req.user.tenantId;
+      const invoiceId = req.params.invoiceId;
+      const result = await SalesReturnService.getReturnableInvoiceLines(tenantId, invoiceId);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/:tenantId/sales-returns/:id/posting-preview
+   */
+  static async getPostingPreview(req, res, next) {
+    try {
+      const tenantId = req.user.tenantId;
+      const id = req.params.id;
+      const result = await SalesReturnService.getPostingPreview(tenantId, id);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
   /**
    * PUT /api/sales-returns/:id
    */

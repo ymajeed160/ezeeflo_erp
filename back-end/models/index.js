@@ -457,6 +457,10 @@ DeliveryNoteDetail.belongsTo(Item, { foreignKey: 'itemId', as: 'item' });
 SalesOrderDetail.hasMany(DeliveryNoteDetail, { foreignKey: 'salesOrderDetailId' });
 DeliveryNoteDetail.belongsTo(SalesOrderDetail, { foreignKey: 'salesOrderDetailId', as: 'salesOrderDetail' });
 
+// QuotationDetail - SalesOrderDetail (line-level source tracking)
+QuotationDetail.hasMany(SalesOrderDetail, { foreignKey: 'quotationDetailId' });
+SalesOrderDetail.belongsTo(QuotationDetail, { foreignKey: 'quotationDetailId', as: 'quotationDetail' });
+
 // User - DeliveryNote (createdBy/updatedBy)
 User.hasMany(DeliveryNote, { foreignKey: 'createdBy' });
 DeliveryNote.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
@@ -514,6 +518,14 @@ SalesInvoiceDetail.belongsTo(SalesInvoice, { foreignKey: 'salesInvoiceId', as: '
 // Item - SalesInvoiceDetail
 Item.hasMany(SalesInvoiceDetail, { foreignKey: 'itemId' });
 SalesInvoiceDetail.belongsTo(Item, { foreignKey: 'itemId', as: 'item' });
+
+// DeliveryNoteDetail - SalesInvoiceDetail (line-level source tracking)
+DeliveryNoteDetail.hasMany(SalesInvoiceDetail, { foreignKey: 'deliveryNoteDetailId' });
+SalesInvoiceDetail.belongsTo(DeliveryNoteDetail, { foreignKey: 'deliveryNoteDetailId', as: 'deliveryNoteDetail' });
+
+// SalesOrderDetail - SalesInvoiceDetail (line-level source tracking)
+SalesOrderDetail.hasMany(SalesInvoiceDetail, { foreignKey: 'salesOrderDetailId' });
+SalesInvoiceDetail.belongsTo(SalesOrderDetail, { foreignKey: 'salesOrderDetailId', as: 'salesOrderDetail' });
 
 // User - SalesInvoice (createdBy/updatedBy)
 User.hasMany(SalesInvoice, { foreignKey: 'createdBy' });
@@ -628,6 +640,10 @@ Account.hasMany(CustomerPayment, { foreignKey: 'paymentAccountId' });
 CustomerPayment.belongsTo(Account, { foreignKey: 'paymentAccountId', as: 'paymentAccount' });
 Account.hasMany(CustomerPayment, { foreignKey: 'customerAccountId' });
 CustomerPayment.belongsTo(Account, { foreignKey: 'customerAccountId', as: 'customerAccount' });
+Account.hasMany(CustomerPayment, { foreignKey: 'cashAccountId' });
+CustomerPayment.belongsTo(Account, { foreignKey: 'cashAccountId', as: 'cashAccount' });
+BankAccount.hasMany(CustomerPayment, { foreignKey: 'bankAccountRefId' });
+CustomerPayment.belongsTo(BankAccount, { foreignKey: 'bankAccountRefId', as: 'bankAccountRef' });
 
 // JournalEntry - CustomerPayment
 JournalEntry.hasMany(CustomerPayment, { foreignKey: 'journalEntryId' });
@@ -904,6 +920,8 @@ SupplierPayment.belongsTo(Supplier, { foreignKey: 'supplierId', as: 'supplier' }
 // Account - SupplierPayment (bank/cash account)
 Account.hasMany(SupplierPayment, { foreignKey: 'bankAccountId' });
 SupplierPayment.belongsTo(Account, { foreignKey: 'bankAccountId', as: 'bankAccount' });
+Account.hasMany(SupplierPayment, { foreignKey: 'cashAccountId' });
+SupplierPayment.belongsTo(Account, { foreignKey: 'cashAccountId', as: 'cashAccount' });
 
 // JournalEntry - SupplierPayment
 JournalEntry.hasMany(SupplierPayment, { foreignKey: 'journalEntryId' });

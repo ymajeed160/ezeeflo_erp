@@ -4,7 +4,7 @@ const salesOrderRepo = require('../repositories/SalesOrderRepository');
 const quotationRepo = require('../repositories/QuotationRepository');
 const SalesOrderDTO = require('../dto/SalesOrderDTO');
 const AuditLogService = require('./AuditLogService');
-const { sequelize } = require('../models');
+const { sequelize, Quotation, QuotationDetail } = require('../models');
 
 class SalesOrderService {
   async list(tenantId, query) {
@@ -59,10 +59,12 @@ class SalesOrderService {
       const detailRecords = data.details.map((line) => ({
         tenantId,
         salesOrderId: order.id,
+        quotationDetailId: line.quotationDetailId || null,
         itemId: line.itemId,
         description: line.description || null,
         quantity: line.quantity,
         deliveredQuantity: 0,
+        invoicedQuantity: 0,
         unitPrice: line.unitPrice,
         taxPercentage: line.taxPercentage || 0,
         discountPercentage: line.discountPercentage || 0,
@@ -71,9 +73,10 @@ class SalesOrderService {
 
       await salesOrderRepo.bulkCreateDetails(detailRecords, { transaction: t });
 
-      // If created from quotation, mark quotation as converted
+      // If created from quotation, track ordered quantities at line level and
+      // compute quotation status (partially_ordered / fully_ordered)
       if (data.quotationId) {
-        await quotationRepo.convert(tenantId, data.quotationId, 'sales_order', order.id, userId, { transaction: t });
+        await this._syncQuotationOrderedQty(tenantId, data.quotationId, t);
       }
 
       await t.commit();
@@ -207,6 +210,97 @@ class SalesOrderService {
 
   async close(tenantId, id, userId) {
     return await this.updateStatus(tenantId, id, 'closed', userId);
+  }
+
+  /**
+   * Recompute a quotation's ordered quantity and status from its sales orders.
+   */
+  async _syncQuotationOrderedQty(tenantId, quotationId, transaction = null) {
+    const qd = await QuotationDetail.findAll({ where: { quotationId, tenantId }, transaction });
+    if (!qd.length) return;
+
+    const { SalesOrderDetail } = require('../models');
+    const totals = await SalesOrderDetail.findAll({
+      where: { tenantId, quotationDetailId: { [require('sequelize').Op.in]: qd.map((d) => d.id) } },
+      attributes: ['quotationDetailId', [sequelize.fn('SUM', sequelize.col('quantity')), 'orderedQty']],
+      group: ['quotationDetailId'],
+      transaction,
+    });
+
+    const orderedByDetail = {};
+    totals.forEach((t) => { orderedByDetail[t.quotationDetailId] = parseFloat(t.get('orderedQty') || 0); });
+
+    let totalQuoted = 0;
+    let totalOrdered = 0;
+    for (const d of qd) {
+      const ordered = orderedByDetail[d.id] || 0;
+      totalQuoted += parseFloat(d.quantity);
+      totalOrdered += ordered;
+      if (parseFloat(d.orderedQuantity) !== ordered) {
+        await d.update({ orderedQuantity: ordered }, { transaction });
+      }
+    }
+
+    let status = 'approved';
+    if (totalOrdered > 0 && totalOrdered < totalQuoted) status = 'partially_ordered';
+    else if (totalOrdered >= totalQuoted) status = 'fully_ordered';
+
+    await quotationRepo.updateStatus(tenantId, quotationId, status, null, { transaction });
+  }
+
+  /**
+   * Returns per-line ordered / delivered / remaining quantities for a sales order.
+   */
+  async getDeliverableLines(tenantId, id) {
+    const order = await salesOrderRepo.findById(id, tenantId);
+    if (!order) throw new Error('Sales Order not found');
+
+    const deliveryNoteRepository = require('../repositories/DeliveryNoteRepository');
+    const lines = [];
+    for (const d of order.details || []) {
+      const ordered = parseFloat(d.quantity);
+      const delivered = await deliveryNoteRepository.getDeliveredQtyForOrderLine(d.id, tenantId);
+      lines.push({
+        salesOrderDetailId: d.id,
+        itemId: d.itemId,
+        itemName: d.item ? (d.item.name || d.item.itemName || '') : '',
+        description: d.description,
+        orderedQuantity: ordered,
+        deliveredQuantity: delivered,
+        remainingQuantity: Math.max(0, ordered - delivered),
+        unitPrice: parseFloat(d.unitPrice),
+        taxPercentage: parseFloat(d.taxPercentage || 0),
+        discountPercentage: parseFloat(d.discountPercentage || 0),
+      });
+    }
+    return { id: order.id, orderNumber: order.orderNumber, customerId: order.customerId, warehouseId: order.warehouseId, reference: order.reference, status: order.status, lines };
+  }
+
+  /**
+   * Returns per-line ordered / invoiced / remaining invoiceable quantities.
+   */
+  async getInvoiceableLines(tenantId, id) {
+    const order = await salesOrderRepo.findById(id, tenantId);
+    if (!order) throw new Error('Sales Order not found');
+
+    const lines = [];
+    for (const d of order.details || []) {
+      const ordered = parseFloat(d.quantity);
+      const invoiced = parseFloat(d.invoicedQuantity || 0);
+      lines.push({
+        salesOrderDetailId: d.id,
+        itemId: d.itemId,
+        itemName: d.item ? (d.item.name || d.item.itemName || '') : '',
+        description: d.description,
+        orderedQuantity: ordered,
+        invoicedQuantity: invoiced,
+        remainingQuantity: Math.max(0, ordered - invoiced),
+        unitPrice: parseFloat(d.unitPrice),
+        taxPercentage: parseFloat(d.taxPercentage || 0),
+        discountPercentage: parseFloat(d.discountPercentage || 0),
+      });
+    }
+    return { id: order.id, orderNumber: order.orderNumber, customerId: order.customerId, warehouseId: order.warehouseId, status: order.status, lines };
   }
 
   _validateLines(details) {

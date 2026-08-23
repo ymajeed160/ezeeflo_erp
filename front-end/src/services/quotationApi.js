@@ -8,8 +8,11 @@ const quotationApi = {
   delete: (id) => axiosInstance.delete(`/quotations/${id}`),
   updateStatus: (id, status) => axiosInstance.patch(`/quotations/${id}/status`, { status }),
   approve: (id) => axiosInstance.patch(`/quotations/${id}/approve`),
+  confirm: (id) => axiosInstance.post(`/quotations/${id}/confirm`),
   reject: (id) => axiosInstance.patch(`/quotations/${id}/reject`),
-  convertToSalesOrder: (id) => axiosInstance.post(`/quotations/${id}/convert-to-sales-order`),
+  cancel: (id) => axiosInstance.patch(`/quotations/${id}/cancel`),
+  convertToSalesOrder: (id, data) => axiosInstance.post(`/quotations/${id}/convert-to-sales-order`, data || {}),
+  getConvertibleLines: (id) => axiosInstance.get(`/quotations/${id}/convertible-lines`),
 };
 
 export default quotationApi;

@@ -23,6 +23,14 @@ router.post(
   CustomerPaymentController.create
 );
 
+// GET /api/:tenantId/customer-payments/:id/posting-preview - Resolved posting accounts
+router.get(
+  '/:id/posting-preview',
+  authorize('customerpayment.view'),
+  customerPaymentValidator.idParam,
+  CustomerPaymentController.getPostingPreview
+);
+
 // GET /api/:tenantId/customer-payments/:id - Get customer payment by ID
 router.get(
   '/:id',

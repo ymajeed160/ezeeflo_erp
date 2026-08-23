@@ -54,6 +54,32 @@ class SalesReturnApi {
   }
 
   /**
+   * List posted invoices available for return for a customer
+   */
+  static async listInvoicesForReturn(customerId) {
+    const response = await api.get(`/sales-returns/invoices-for-return`, {
+      params: { customerId },
+    });
+    return response.data;
+  }
+
+  /**
+   * Get returnable lines for a sales invoice
+   */
+  static async getReturnableLines(invoiceId) {
+    const response = await api.get(`/sales-returns/returnable/${invoiceId}`);
+    return response.data;
+  }
+
+  /**
+   * Preview resolved posting accounts before posting
+   */
+  static async getPostingPreview(id) {
+    const response = await api.get(`/sales-returns/${id}/posting-preview`);
+    return response.data;
+  }
+
+  /**
    * Create new sales return
    */
   static async create(data) {

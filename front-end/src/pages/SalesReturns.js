@@ -40,7 +40,6 @@ import {
   Search as SearchIcon,
   Refresh as RefreshIcon,
   CheckCircleOutline as PostIcon,
-  CheckCircleOutline as ApproveIcon,
   Cancel as RejectIcon,
 } from '@mui/icons-material';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
@@ -50,17 +49,13 @@ import {
   createReturn,
   updateReturn,
   deleteReturn,
-  approveReturn,
   rejectReturn,
+  postReturn,
   clearSelected,
 } from '../store/slices/salesReturnSlice';
 import { fetchCustomers } from '../store/slices/customerSlice';
-import { fetchItems } from '../store/slices/itemSlice';
-import { fetchWarehouses } from '../store/slices/warehouseSlice';
 import { confirmDialog, apiSuccess, apiError } from '../utils/toast';
 import SalesReturnApi from '../services/salesReturnApi';
-import accountApi from '../services/accountApi';
-import salesInvoiceApi from '../services/salesInvoiceApi';
 
 const statusColors = {
   draft: 'default',
@@ -69,14 +64,14 @@ const statusColors = {
   posted: 'success',
 };
 
+const formatCurrency = (val) => (parseFloat(val) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 const SalesReturns = () => {
   const navigate = useNavigate();
   const { id } = useParams();
   const dispatch = useDispatch();
   const { items, selected, loading, error, count, page, limit, totalPages } = useSelector((s) => s.salesReturns);
   const customersList = useSelector((s) => s.customers?.customers || []);
-  const itemsList = useSelector((s) => s.items?.items || []);
-  const warehouseList = useSelector((s) => s.warehouses?.warehouses || []);
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -84,12 +79,13 @@ const SalesReturns = () => {
   const [openForm, setOpenForm] = useState(false);
   const [viewMode, setViewMode] = useState(false);
   const [editId, setEditId] = useState(null);
+  const [forReturnInvoices, setForReturnInvoices] = useState([]);
+  const [returnableLines, setReturnableLines] = useState([]);
+  const [invoiceInfo, setInvoiceInfo] = useState(null);
   const [openPostDialog, setOpenPostDialog] = useState(false);
   const [postTarget, setPostTarget] = useState(null);
-  const [arAccounts, setArAccounts] = useState([]);
-  const [revenueAccounts, setRevenueAccounts] = useState([]);
-  const [taxAccounts, setTaxAccounts] = useState([]);
-  const [invoicesList, setInvoicesList] = useState([]);
+  const [postPreview, setPostPreview] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const { register, handleSubmit, control, reset, watch, setValue, formState: { errors } } = useForm({
     defaultValues: {
@@ -97,15 +93,12 @@ const SalesReturns = () => {
       returnDate: new Date().toISOString().split('T')[0],
       warehouseId: '',
       salesInvoiceId: null,
-      customerAccountId: '',
-      revenueAccountId: '',
-      taxAccountId: '',
       notes: '',
-      details: [{ itemId: '', description: '', quantity: 1, unitPrice: 0, taxPercent: 0, discountPercent: 0, costPrice: 0 }],
+      details: [{ salesInvoiceDetailId: null, itemId: '', description: '', quantity: 0, unitPrice: 0, taxPercent: 0, discountPercent: 0, costPrice: 0, lineTotal: 0 }],
     },
   });
 
-  const { fields, append, remove } = useFieldArray({ control, name: 'details' });
+  const { fields, replace } = useFieldArray({ control, name: 'details' });
 
   const loadData = useCallback(() => {
     dispatch(fetchReturns({ search, status: statusFilter, customerId: customerFilter, page, limit }));
@@ -114,8 +107,6 @@ const SalesReturns = () => {
   useEffect(() => {
     loadData();
     dispatch(fetchCustomers({ limit: 999 }));
-    dispatch(fetchItems({ limit: 999 }));
-    dispatch(fetchWarehouses({ limit: 999 }));
   }, [loadData, dispatch]);
 
   useEffect(() => {
@@ -125,47 +116,6 @@ const SalesReturns = () => {
     }
   }, [id, openForm, dispatch]);
 
-  // Fetch invoices for the invoice selector
-  useEffect(() => {
-    const fetchInvoices = async () => {
-      try {
-        const result = await salesInvoiceApi.list({ limit: 100 });
-        setInvoicesList(result.data || []);
-      } catch (e) {
-        // Silently fail
-      }
-    };
-    fetchInvoices();
-  }, []);
-
-  // Fetch accounts for post dialog
-  useEffect(() => {
-    const fetchAccounts = async () => {
-      try {
-        const [ar, rev, tax] = await Promise.all([
-          accountApi.getByType('asset'),
-          accountApi.getByType('revenue'),
-          accountApi.getByType('liability'),
-        ]);
-        setArAccounts(ar?.data || ar || []);
-        setRevenueAccounts(rev?.data || rev || []);
-        setTaxAccounts(tax?.data || tax || []);
-      } catch (e) {
-        // Silently fail
-      }
-    };
-    fetchAccounts();
-  }, []);
-
-  // Populate account fields in post dialog when return data is loaded
-  useEffect(() => {
-    if (selected && openPostDialog && postTarget) {
-      setValue('customerAccountId', selected.customerAccountId || selected.customer?.arAccountId || '');
-      setValue('revenueAccountId', selected.revenueAccountId || '');
-      setValue('taxAccountId', selected.taxAccountId || '');
-    }
-  }, [selected, openPostDialog, postTarget, setValue]);
-
   useEffect(() => {
     if (selected && openForm && editId) {
       reset({
@@ -173,12 +123,10 @@ const SalesReturns = () => {
         returnDate: selected.returnDate?.split('T')[0] || '',
         warehouseId: selected.warehouseId || '',
         salesInvoiceId: selected.salesInvoiceId || null,
-        customerAccountId: selected.customerAccountId || '',
-        revenueAccountId: selected.revenueAccountId || '',
-        taxAccountId: selected.taxAccountId || '',
         notes: selected.notes || '',
         details: selected.details?.length ? selected.details.map((d) => ({
           id: d.id,
+          salesInvoiceDetailId: d.salesInvoiceDetailId || null,
           itemId: d.itemId || '',
           description: d.description || '',
           quantity: d.quantity || 0,
@@ -186,7 +134,8 @@ const SalesReturns = () => {
           taxPercent: d.taxPercent || 0,
           discountPercent: d.discountPercent || 0,
           costPrice: d.costPrice || 0,
-        })) : [{ itemId: '', description: '', quantity: 1, unitPrice: 0, taxPercent: 0, discountPercent: 0, costPrice: 0 }],
+          lineTotal: d.lineTotal || 0,
+        })) : [],
       });
     }
   }, [selected, openForm, editId, reset]);
@@ -194,19 +143,67 @@ const SalesReturns = () => {
   const handleAdd = () => {
     setViewMode(false);
     setEditId(null);
+    setForReturnInvoices([]);
+    setReturnableLines([]);
+    setInvoiceInfo(null);
     dispatch(clearSelected());
     reset({
       customerId: '',
       returnDate: new Date().toISOString().split('T')[0],
       warehouseId: '',
       salesInvoiceId: null,
-      customerAccountId: '',
-      revenueAccountId: '',
-      taxAccountId: '',
       notes: '',
-      details: [{ itemId: '', description: '', quantity: 1, unitPrice: 0, taxPercent: 0, discountPercent: 0, costPrice: 0 }],
+      details: [],
     });
     setOpenForm(true);
+  };
+
+  const handleCustomerSelect = async (customerId) => {
+    setValue('customerId', customerId);
+    setValue('salesInvoiceId', null);
+    setValue('warehouseId', '');
+    setReturnableLines([]);
+    setInvoiceInfo(null);
+    replace([]);
+    setForReturnInvoices([]);
+    if (!customerId) return;
+    try {
+      const res = await SalesReturnApi.listInvoicesForReturn(customerId);
+      setForReturnInvoices(res?.data || []);
+    } catch (e) {
+      setForReturnInvoices([]);
+    }
+  };
+
+  const handleInvoiceSelect = async (invoiceId) => {
+    setValue('salesInvoiceId', invoiceId || null);
+    if (!invoiceId) {
+      setReturnableLines([]);
+      setInvoiceInfo(null);
+      replace([]);
+      return;
+    }
+    try {
+      const res = await SalesReturnApi.getReturnableLines(invoiceId);
+      setReturnableLines(res?.lines || []);
+      setInvoiceInfo(res?.invoice || null);
+      if (res?.invoice?.warehouseId) setValue('warehouseId', res.invoice.warehouseId);
+      replace((res?.lines || []).map((l) => ({
+        salesInvoiceDetailId: l.salesInvoiceDetailId,
+        itemId: l.itemId,
+        description: l.description || '',
+        quantity: 0,
+        unitPrice: l.unitPrice,
+        taxPercent: l.taxPercent,
+        discountPercent: l.discountPercent,
+        costPrice: l.costPrice,
+        lineTotal: 0,
+      })));
+    } catch (e) {
+      setReturnableLines([]);
+      replace([]);
+      apiError(e.response?.data?.message || 'Failed to load invoice lines');
+    }
   };
 
   const handleEdit = (returnItem) => {
@@ -216,6 +213,7 @@ const SalesReturns = () => {
     }
     setViewMode(false);
     setEditId(returnItem.id);
+    setReturnableLines([]);
     dispatch(fetchReturn(returnItem.id));
     setOpenForm(true);
   };
@@ -239,49 +237,42 @@ const SalesReturns = () => {
   };
 
   const handlePost = async (returnItem) => {
-    // Fetch full return details to get current accounts
-    dispatch(fetchReturn(returnItem.id));
     setPostTarget(returnItem);
+    setPostPreview(null);
     setOpenPostDialog(true);
+    setPreviewLoading(true);
+    try {
+      const preview = await SalesReturnApi.getPostingPreview(returnItem.id);
+      setPostPreview(preview);
+    } catch (error) {
+      apiError(error.response?.data?.message || error.message || 'Failed to load posting preview');
+      setOpenPostDialog(false);
+      setPostTarget(null);
+    } finally {
+      setPreviewLoading(false);
+    }
   };
 
   const handlePostSubmit = async () => {
     if (!postTarget) return;
-    const customerAccountId = watch('customerAccountId');
-    const revenueAccountId = watch('revenueAccountId');
-    const taxAccountId = watch('taxAccountId');
-    const payload = { customerAccountId, revenueAccountId, taxAccountId };
-    Object.keys(payload).forEach(k => { if (!payload[k]) delete payload[k]; });
     try {
-      const response = await SalesReturnApi.post(postTarget.id, payload);
+      const response = await dispatch(postReturn(postTarget.id)).unwrap();
       if (response) {
         apiSuccess('Return posted successfully - Journal entry created');
         setOpenPostDialog(false);
         setPostTarget(null);
+        setPostPreview(null);
         loadData();
       }
     } catch (error) {
-      apiError(error.response?.data?.message || error.message || 'Failed to post return');
+      apiError(error?.message || error || 'Failed to post return');
     }
   };
 
   const handleClosePost = () => {
     setOpenPostDialog(false);
     setPostTarget(null);
-  };
-
-  const handleApprove = async (returnItem) => {
-    const confirmed = await confirmDialog(
-      `Approve Return #${returnItem.returnNumber}? This will change the status to approved. Use Post to create journal entries.`
-    );
-    if (confirmed) {
-      dispatch(approveReturn(returnItem.id)).then((res) => {
-        if (res.payload) {
-          apiSuccess('Return approved successfully');
-          loadData();
-        }
-      });
-    }
+    setPostPreview(null);
   };
 
   const handleReject = async (returnItem) => {
@@ -296,21 +287,60 @@ const SalesReturns = () => {
   };
 
   const onSubmit = async (data) => {
+    if (!data.salesInvoiceId) {
+      apiError('Please select a Sales Invoice');
+      return;
+    }
+    const lines = (data.details || []).filter((d) => d.itemId && parseFloat(d.quantity) > 0);
+    if (!lines.length) {
+      apiError('Enter at least one return quantity greater than 0');
+      return;
+    }
+
+    // Frontend validation: return qty cannot exceed remaining returnable qty
+    for (const d of data.details || []) {
+      const qty = parseFloat(d.quantity) || 0;
+      if (qty <= 0) continue;
+      const line = returnableLines.find((l) => l.salesInvoiceDetailId === d.salesInvoiceDetailId)
+        || returnableLines.find((l) => l.itemId === d.itemId);
+      if (line && qty > parseFloat(line.remainingQty || 0)) {
+        apiError(`Return quantity for "${line.itemName || 'item'}" cannot exceed the remaining returnable quantity (${line.remainingQty}).`);
+        return;
+      }
+    }
+
     const payload = {
-      ...data,
       customerId: data.customerId,
+      salesInvoiceId: data.salesInvoiceId,
       warehouseId: data.warehouseId || null,
-      details: data.details.map((d) => ({
-        id: d.id || undefined,
-        itemId: d.itemId,
-        description: d.description || '',
-        quantity: parseFloat(d.quantity) || 0,
-        unitPrice: parseFloat(d.unitPrice) || 0,
-        taxPercent: parseFloat(d.taxPercent) || 0,
-        discountPercent: parseFloat(d.discountPercent) || 0,
-        lineTotal: (parseFloat(d.quantity) || 0) * (parseFloat(d.unitPrice) || 0),
-        costPrice: parseFloat(d.costPrice) || 0,
-      })),
+      returnDate: data.returnDate,
+      notes: data.notes || '',
+      isInventoryImpact: lines.some((d) => {
+        const line = returnableLines.find((l) => l.salesInvoiceDetailId === d.salesInvoiceDetailId)
+          || returnableLines.find((l) => l.itemId === d.itemId);
+        return line ? line.itemType !== 'service' : false;
+      }),
+      details: lines.map((d) => {
+        const qty = parseFloat(d.quantity) || 0;
+        const unitPrice = parseFloat(d.unitPrice) || 0;
+        const taxPercent = parseFloat(d.taxPercent) || 0;
+        const discountPercent = parseFloat(d.discountPercent) || 0;
+        const gross = qty * unitPrice;
+        const discountAmount = gross * discountPercent / 100;
+        const taxAmount = (gross - discountAmount) * taxPercent / 100;
+        return {
+          id: d.id || undefined,
+          salesInvoiceDetailId: d.salesInvoiceDetailId || null,
+          itemId: d.itemId,
+          description: d.description || '',
+          quantity: qty,
+          unitPrice,
+          taxPercent,
+          discountPercent,
+          lineTotal: parseFloat((gross - discountAmount + taxAmount).toFixed(2)),
+          costPrice: parseFloat(d.costPrice) || 0,
+        };
+      }),
     };
 
     if (editId) {
@@ -374,22 +404,6 @@ const SalesReturns = () => {
     };
   };
 
-  const handleItemSelect = (index, item) => {
-    if (!item) return;
-    setValue(`details.${index}.itemId`, item.id);
-    setValue(`details.${index}.description`, item.name || item.itemName || '');
-    setValue(`details.${index}.unitPrice`, item.sellingPrice || 0);
-    setValue(`details.${index}.costPrice`, item.costPrice || 0);
-    setValue(`details.${index}.taxPercent`, item.taxPercent || item.taxPercentage || 0);
-    // Auto-populate revenue account from item's income account if not already set
-    if (item.incomeAccountId) {
-      const currentRev = watch('revenueAccountId');
-      if (!currentRev) {
-        setValue('revenueAccountId', item.incomeAccountId);
-      }
-    }
-  };
-
   const renderFormDialog = () => (
     <Dialog open={openForm} onClose={handleClose} maxWidth="lg" fullWidth>
       <form onSubmit={handleSubmit(onSubmit)}>
@@ -409,10 +423,9 @@ const SalesReturns = () => {
                     disabled={viewMode}
                     value={customersList.find((c) => c.id === field.value) || null}
                     onChange={(_, val) => {
-                      field.onChange(val ? val.id : '');
-                      if (val && val.arAccountId) {
-                        setValue('customerAccountId', val.arAccountId);
-                      }
+                      const newId = val ? val.id : '';
+                      field.onChange(newId);
+                      if (!viewMode) handleCustomerSelect(newId);
                     }}
                     options={customersList}
                     getOptionLabel={(opt) => `${opt.code || ''} - ${opt.name || ''}`}
@@ -437,38 +450,36 @@ const SalesReturns = () => {
               />
             </Grid>
             <Grid item xs={12} sm={4}>
-              <Controller
-                name="warehouseId"
-                control={control}
-                render={({ field }) => (
-                  <Autocomplete
-                    disabled={viewMode}
-                    value={warehouseList.find((w) => w.id === field.value) || null}
-                    onChange={(_, val) => field.onChange(val ? val.id : '')}
-                    options={warehouseList}
-                    getOptionLabel={(opt) => opt.name || opt.warehouseName || ''}
-                    isOptionEqualToValue={(opt, val) => opt.id === val.id}
-                    renderInput={(params) => (
-                      <TextField {...params} label="Warehouse" />
-                    )}
-                  />
-                )}
+              <TextField
+                fullWidth
+                size="small"
+                label="Warehouse"
+                disabled
+                value={(viewMode || editId) ? (selected?.warehouseName || '') : (invoiceInfo?.warehouseName || '')}
+                InputLabelProps={{ shrink: true }}
               />
             </Grid>
             <Grid item xs={12} sm={4}>
               <Controller
                 name="salesInvoiceId"
                 control={control}
+                rules={{ required: 'Sales Invoice is required' }}
                 render={({ field }) => (
                   <Autocomplete
-                    disabled={viewMode}
-                    value={invoicesList.find((inv) => inv.id === field.value) || null}
-                    onChange={(_, val) => field.onChange(val ? val.id : null)}
-                    options={invoicesList}
-                    getOptionLabel={(opt) => `${opt.invoiceNumber || ''} - ${opt.customerName || ''}`}
+                    disabled={viewMode || (!editId && !watch('customerId'))}
+                    value={forReturnInvoices.find((inv) => inv.id === field.value) || null}
+                    onChange={(_, val) => {
+                      const invId = val ? val.id : null;
+                      field.onChange(invId);
+                      if (!viewMode) handleInvoiceSelect(invId);
+                    }}
+                    options={forReturnInvoices}
+                    getOptionLabel={(opt) =>
+                      `${opt.invoiceNumber || ''} | Total: ${formatCurrency(opt.grandTotal)} | Returnable: ${formatCurrency(opt.returnableTotal)}`
+                    }
                     isOptionEqualToValue={(opt, val) => opt.id === val.id}
                     renderInput={(params) => (
-                      <TextField {...params} label="Sales Invoice (optional)" />
+                      <TextField {...params} label="Sales Invoice" error={!!errors.salesInvoiceId} helperText={errors.salesInvoiceId?.message} />
                     )}
                   />
                 )}
@@ -488,69 +499,44 @@ const SalesReturns = () => {
             </Grid>
           </Grid>
 
-          {/* Accounting Information */}
-          <Typography variant="subtitle1" sx={{ mt: 3, mb: 1 }}>
-            Accounting Information
-          </Typography>
-          <Grid container spacing={2} sx={{ mb: 2 }}>
-            <Grid item xs={12} sm={4}>
-              <Controller
-                name="customerAccountId"
-                control={control}
-                render={({ field }) => (
-                  <Autocomplete
-                    disabled={viewMode}
-                    value={arAccounts.find((a) => a.id === field.value) || null}
-                    onChange={(_, val) => field.onChange(val ? val.id : '')}
-                    options={arAccounts}
-                    getOptionLabel={(opt) => `${opt.code} - ${opt.name}`}
-                    isOptionEqualToValue={(opt, val) => opt.id === val.id}
-                    renderInput={(params) => (
-                      <TextField {...params} label="Customer Account (A/R)" size="small" fullWidth />
-                    )}
-                  />
-                )}
-              />
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <Controller
-                name="revenueAccountId"
-                control={control}
-                render={({ field }) => (
-                  <Autocomplete
-                    disabled={viewMode}
-                    value={revenueAccounts.find((a) => a.id === field.value) || null}
-                    onChange={(_, val) => field.onChange(val ? val.id : '')}
-                    options={revenueAccounts}
-                    getOptionLabel={(opt) => `${opt.code} - ${opt.name}`}
-                    isOptionEqualToValue={(opt, val) => opt.id === val.id}
-                    renderInput={(params) => (
-                      <TextField {...params} label="Sales Return/Revenue Account" size="small" fullWidth />
-                    )}
-                  />
-                )}
-              />
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <Controller
-                name="taxAccountId"
-                control={control}
-                render={({ field }) => (
-                  <Autocomplete
-                    disabled={viewMode}
-                    value={taxAccounts.find((a) => a.id === field.value) || null}
-                    onChange={(_, val) => field.onChange(val ? val.id : '')}
-                    options={taxAccounts}
-                    getOptionLabel={(opt) => `${opt.code} - ${opt.name}`}
-                    isOptionEqualToValue={(opt, val) => opt.id === val.id}
-                    renderInput={(params) => (
-                      <TextField {...params} label="Tax Account (VAT Payable)" size="small" fullWidth />
-                    )}
-                  />
-                )}
-              />
-            </Grid>
-          </Grid>
+          {/* Accounting Information (view mode only — accounts are auto-resolved at posting) */}
+          {viewMode && selected && (
+            <>
+              <Typography variant="subtitle1" sx={{ mt: 3, mb: 1 }}>
+                Accounting
+              </Typography>
+              <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}>
+                <Grid container spacing={1}>
+                  <Grid item xs={12} sm={4}>
+                    <Typography variant="caption" color="text.secondary" display="block">Customer Account</Typography>
+                    <Typography variant="body2" fontWeight={600}>
+                      {selected.customerAccount ? `${selected.customerAccount.code} - ${selected.customerAccount.name}` : '-'}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Typography variant="caption" color="text.secondary" display="block">Sales Revenue</Typography>
+                    <Typography variant="body2" fontWeight={600}>
+                      {selected.revenueAccount ? `${selected.revenueAccount.code} - ${selected.revenueAccount.name}` : '-'}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Typography variant="caption" color="text.secondary" display="block">VAT Account</Typography>
+                    <Typography variant="body2" fontWeight={600}>
+                      {selected.taxAccount ? `${selected.taxAccount.code} - ${selected.taxAccount.name}` : '-'}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Typography variant="caption" color="text.secondary" display="block">Journal Entry</Typography>
+                    <Typography variant="body2" fontWeight={600}>{selected.journalEntryNumber || '-'}</Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Typography variant="caption" color="text.secondary" display="block">Status</Typography>
+                    <Typography variant="body2" fontWeight={600} sx={{ textTransform: 'uppercase' }}>{selected.status}</Typography>
+                  </Grid>
+                </Grid>
+              </Paper>
+            </>
+          )}
 
           {/* Detail Lines */}
           <Typography variant="subtitle1" sx={{ mt: 3, mb: 1 }}>
@@ -560,114 +546,70 @@ const SalesReturns = () => {
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ minWidth: 200 }}>Item</TableCell>
+                  <TableCell>Item</TableCell>
                   <TableCell sx={{ minWidth: 150 }}>Description</TableCell>
-                  <TableCell sx={{ minWidth: 90 }}>Qty</TableCell>
-                  <TableCell sx={{ minWidth: 120 }}>Unit Price</TableCell>
-                  <TableCell sx={{ minWidth: 110 }}>Tax %</TableCell>
-                  <TableCell sx={{ minWidth: 110 }}>Disc %</TableCell>
-                  <TableCell sx={{ minWidth: 120 }}>Cost Price</TableCell>
-                  <TableCell sx={{ minWidth: 120 }}>Line Total</TableCell>
-                  {!viewMode && <TableCell width={50}></TableCell>}
+                  <TableCell align="right">Invoiced Qty</TableCell>
+                  <TableCell align="right">Returned Qty</TableCell>
+                  <TableCell align="right">Return Qty</TableCell>
+                  <TableCell align="right">Unit Price</TableCell>
+                  <TableCell align="right">Line Total</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {fields.map((field, index) => (
-                  <TableRow key={field.id}>
-                    <TableCell>
-                      <Autocomplete
-                        disabled={viewMode}
-                        size="small"
-                        value={itemsList.find((it) => it.id === details[index]?.itemId) || null}
-                        onChange={(_, val) => handleItemSelect(index, val)}
-                        options={itemsList}
-                        getOptionLabel={(opt) => `${opt.itemCode || opt.code || ''} - ${opt.name || opt.itemName || ''}`}
-                        isOptionEqualToValue={(opt, val) => opt.id === val.id}
-                        renderInput={(params) => <TextField {...params} placeholder="Select Item" />}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <TextField
-                        size="small"
-                        fullWidth
-                        disabled={viewMode}
-                        {...register(`details.${index}.description`)}
-                        placeholder="Description"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <TextField
-                        size="small"
-                        type="number"
-                        disabled={viewMode}
-                        {...register(`details.${index}.quantity`, { min: 0 })}
-                        inputProps={{ step: 'any', min: 0 }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <TextField
-                        size="small"
-                        type="number"
-                        disabled={viewMode}
-                        {...register(`details.${index}.unitPrice`, { min: 0 })}
-                        inputProps={{ step: 'any', min: 0 }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <TextField
-                        size="small"
-                        type="number"
-                        disabled={viewMode}
-                        {...register(`details.${index}.taxPercent`, { min: 0, max: 100 })}
-                        inputProps={{ step: 'any', min: 0 }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <TextField
-                        size="small"
-                        type="number"
-                        disabled={viewMode}
-                        {...register(`details.${index}.discountPercent`, { min: 0, max: 100 })}
-                        inputProps={{ step: 'any', min: 0 }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <TextField
-                        size="small"
-                        type="number"
-                        disabled={viewMode}
-                        {...register(`details.${index}.costPrice`, { min: 0 })}
-                        inputProps={{ step: 'any', min: 0 }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2" fontWeight="bold">
-                        {calculateLineTotal(details[index])}
-                      </Typography>
-                    </TableCell>
-                    {!viewMode && (
+                {fields.map((field, index) => {
+                  const line = returnableLines.find((l) => l.salesInvoiceDetailId === details[index]?.salesInvoiceDetailId)
+                    || returnableLines.find((l) => l.itemId === details[index]?.itemId);
+                  const qty = parseFloat(details[index]?.quantity) || 0;
+                  const maxQty = line ? parseFloat(line.remainingQty || 0) : 0;
+                  const over = line && qty > maxQty;
+                  return (
+                    <TableRow key={field.id}>
                       <TableCell>
-                        <IconButton size="small" color="error" onClick={() => remove(index)} disabled={fields.length === 1}>
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
+                        <Typography variant="body2" fontWeight={600}>{line?.itemName || '-'}</Typography>
                       </TableCell>
-                    )}
-                  </TableRow>
-                ))}
+                      <TableCell>
+                        <TextField
+                          size="small"
+                          fullWidth
+                          disabled={viewMode}
+                          {...register(`details.${index}.description`)}
+                          placeholder="Description"
+                        />
+                      </TableCell>
+                      <TableCell align="right">{line ? line.invoicedQty : '-'}</TableCell>
+                      <TableCell align="right">{line ? line.returnedQty : '-'}</TableCell>
+                      <TableCell align="right">
+                        <TextField
+                          size="small"
+                          type="number"
+                          disabled={viewMode}
+                          inputProps={{ step: 'any', min: 0, max: line ? line.remainingQty : 0 }}
+                          error={over}
+                          helperText={over ? 'Exceeds remaining qty' : ''}
+                          {...register(`details.${index}.quantity`, {
+                            min: 0,
+                            validate: (v) => {
+                              if (line && parseFloat(v || 0) > maxQty) return 'Exceeds remaining qty';
+                              return true;
+                            },
+                          })}
+                        />
+                      </TableCell>
+                      <TableCell align="right">{formatCurrency(details[index]?.unitPrice)}</TableCell>
+                      <TableCell align="right">
+                        <Typography variant="body2" fontWeight="bold">{calculateLineTotal(details[index])}</Typography>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </TableContainer>
 
-          {!viewMode && (
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<AddIcon />}
-              onClick={() => append({ itemId: '', description: '', quantity: 1, unitPrice: 0, taxPercent: 0, discountPercent: 0, costPrice: 0 })}
-              sx={{ mt: 1 }}
-            >
-              Add Line
-            </Button>
+          {!viewMode && !watch('salesInvoiceId') && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              Select a customer and sales invoice to load returnable items.
+            </Typography>
           )}
 
           {/* Totals */}
@@ -748,7 +690,7 @@ const SalesReturns = () => {
                 <Select value={statusFilter} label="Status" onChange={(e) => setStatusFilter(e.target.value)}>
                   <MenuItem value="">All</MenuItem>
                   <MenuItem value="draft">Draft</MenuItem>
-                  <MenuItem value="approved">Approved</MenuItem>
+                  <MenuItem value="posted">Posted</MenuItem>
                   <MenuItem value="rejected">Rejected</MenuItem>
                 </Select>
               </FormControl>
@@ -830,35 +772,19 @@ const SalesReturns = () => {
                                 <EditIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
-                            <Tooltip title="Approve (Status Only - No Accounting)">
-                              <IconButton size="small" onClick={() => handleApprove(ret)}>
-                                <ApproveIcon fontSize="small" />
+                            <Tooltip title="Confirm & Post">
+                              <IconButton size="small" color="success" onClick={() => handlePost(ret)}>
+                                <PostIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
                             <Tooltip title="Reject">
-                              <IconButton size="small" color="error" onClick={() => handleReject(ret)}>
+                              <IconButton size="small" color="warning" onClick={() => handleReject(ret)}>
                                 <RejectIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
                             <Tooltip title="Delete">
                               <IconButton size="small" color="error" onClick={() => handleDelete(ret)}>
                                 <DeleteIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          </>
-                        )}
-                        {ret.status === 'approved' && (
-                          <>
-                            {!ret.journalEntryId && (
-                              <Tooltip title="Post (Create Journal Entry with Account Selection)">
-                                <IconButton size="small" color="success" onClick={() => handlePost(ret)}>
-                                  <PostIcon fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
-                            )}
-                            <Tooltip title="Reject">
-                              <IconButton size="small" color="warning" onClick={() => handleReject(ret)}>
-                                <RejectIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
                           </>
@@ -887,75 +813,70 @@ const SalesReturns = () => {
 
       {/* Post Confirmation Dialog */}
       <Dialog open={openPostDialog} onClose={handleClosePost} maxWidth="sm" fullWidth>
-        <DialogTitle>Post Return #{postTarget?.returnNumber || ''}</DialogTitle>
+        <DialogTitle>Confirm Sales Return #{postTarget?.returnNumber || ''}</DialogTitle>
         <DialogContent dividers>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            This will create a journal entry and update inventory (if configured).
-            Please review the accounts below before posting.
+            Are you sure you want to confirm and post this Sales Return?
+            A journal entry will be created and inventory updated (if applicable).
+            The accounts below are resolved automatically.
           </Typography>
           <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}>
-            <Grid container spacing={2}>
-              <Grid item xs={12}>
-                <Controller
-                  name="customerAccountId"
-                  control={control}
-                  render={({ field }) => (
-                    <Autocomplete
-                      value={arAccounts.find((a) => a.id === field.value) || null}
-                      onChange={(_, val) => field.onChange(val ? val.id : '')}
-                      options={arAccounts}
-                      getOptionLabel={(opt) => `${opt.code} - ${opt.name}`}
-                      isOptionEqualToValue={(opt, val) => opt.id === val.id}
-                      renderInput={(params) => (
-                        <TextField {...params} label="Customer Account (A/R)" size="small" fullWidth />
-                      )}
-                    />
-                  )}
-                />
+            {previewLoading ? (
+              <Typography variant="body2">Loading resolved accounts...</Typography>
+            ) : postPreview ? (
+              <Grid container spacing={1}>
+                <Grid item xs={12}>
+                  <Typography variant="caption" color="text.secondary" display="block">Customer Account</Typography>
+                  <Typography variant="body1" fontWeight={600}>
+                    {postPreview.customerAccount
+                      ? `${postPreview.customerAccount.code} - ${postPreview.customerAccount.name}`
+                      : 'Not resolved'}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="caption" color="text.secondary" display="block">Sales Revenue Account</Typography>
+                  <Typography variant="body1" fontWeight={600}>
+                    {postPreview.revenueAccount
+                      ? `${postPreview.revenueAccount.code} - ${postPreview.revenueAccount.name}`
+                      : 'Not resolved'}
+                  </Typography>
+                </Grid>
+                {parseFloat(postPreview.taxTotal) > 0 && (
+                  <Grid item xs={12}>
+                    <Typography variant="caption" color="text.secondary" display="block">VAT Account</Typography>
+                    <Typography variant="body1" fontWeight={600}>
+                      {postPreview.taxAccount
+                        ? `${postPreview.taxAccount.code} - ${postPreview.taxAccount.name}`
+                        : 'Not resolved'}
+                    </Typography>
+                  </Grid>
+                )}
+                <Grid item xs={12} sx={{ mt: 1 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Return Amount: AED {formatCurrency(postPreview.subTotal - postPreview.discountTotal)}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    VAT: AED {formatCurrency(postPreview.taxTotal)}
+                  </Typography>
+                  <Typography variant="body2" fontWeight={700}>
+                    Grand Total: AED {formatCurrency(postPreview.grandTotal)}
+                  </Typography>
+                </Grid>
               </Grid>
-              <Grid item xs={12}>
-                <Controller
-                  name="revenueAccountId"
-                  control={control}
-                  render={({ field }) => (
-                    <Autocomplete
-                      value={revenueAccounts.find((a) => a.id === field.value) || null}
-                      onChange={(_, val) => field.onChange(val ? val.id : '')}
-                      options={revenueAccounts}
-                      getOptionLabel={(opt) => `${opt.code} - ${opt.name}`}
-                      isOptionEqualToValue={(opt, val) => opt.id === val.id}
-                      renderInput={(params) => (
-                        <TextField {...params} label="Sales Return/Revenue Account" size="small" fullWidth />
-                      )}
-                    />
-                  )}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <Controller
-                  name="taxAccountId"
-                  control={control}
-                  render={({ field }) => (
-                    <Autocomplete
-                      value={taxAccounts.find((a) => a.id === field.value) || null}
-                      onChange={(_, val) => field.onChange(val ? val.id : '')}
-                      options={taxAccounts}
-                      getOptionLabel={(opt) => `${opt.code} - ${opt.name}`}
-                      isOptionEqualToValue={(opt, val) => opt.id === val.id}
-                      renderInput={(params) => (
-                        <TextField {...params} label="Tax Account (VAT Payable)" size="small" fullWidth />
-                      )}
-                    />
-                  )}
-                />
-              </Grid>
-            </Grid>
+            ) : (
+              <Typography variant="body2">No preview available.</Typography>
+            )}
           </Paper>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleClosePost}>Cancel</Button>
-          <Button onClick={handlePostSubmit} variant="contained" color="primary">
-            Post Return
+          <Button
+            onClick={handlePostSubmit}
+            variant="contained"
+            color="primary"
+            disabled={previewLoading || !postPreview}
+          >
+            Confirm & Post
           </Button>
         </DialogActions>
       </Dialog>

@@ -18,6 +18,8 @@ class SalesInvoiceDTO {
       discountPercent: parseFloat(line.discountPercent) || 0,
       lineTotal: parseFloat(line.lineTotal) || 0,
       costPrice: parseFloat(line.costPrice) || 0,
+      deliveryNoteDetailId: line.deliveryNoteDetailId || null,
+      salesOrderDetailId: line.salesOrderDetailId || null,
     }));
 
     // Compute header totals
@@ -71,6 +73,8 @@ class SalesInvoiceDTO {
       discountPercent: parseFloat(line.discountPercent) || 0,
       lineTotal: parseFloat(line.lineTotal) || 0,
       costPrice: parseFloat(line.costPrice) || 0,
+      deliveryNoteDetailId: line.deliveryNoteDetailId || null,
+      salesOrderDetailId: line.salesOrderDetailId || null,
     }));
 
     const subTotal = details.reduce((sum, d) => sum + (d.quantity * d.unitPrice), 0);

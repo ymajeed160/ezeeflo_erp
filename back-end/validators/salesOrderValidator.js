@@ -2,6 +2,7 @@
 const Joi = require('joi');
 
 const detailSchema = Joi.object({
+  quotationDetailId: Joi.string().uuid().allow(null, ''),
   itemId: Joi.string().uuid().required().messages({
     'string.guid': 'Item is required',
     'any.required': 'Item is required',

@@ -37,14 +37,18 @@ const salesReturnValidation = {
     body('notes').optional({ checkFalsy: true }).isString().withMessage('Notes must be a string'),
     body('status')
       .optional()
-      .isIn(['draft', 'approved', 'rejected'])
-      .withMessage('Status must be draft, approved, or rejected'),
+      .isIn(['draft', 'approved', 'rejected', 'posted'])
+      .withMessage('Status must be draft, approved, rejected, or posted'),
     body('isInventoryImpact')
       .optional()
       .isBoolean()
       .withMessage('isInventoryImpact must be a boolean'),
     body('details').isArray({ min: 1 }).withMessage('At least one return detail line is required'),
     body('details.*.itemId').isUUID().withMessage('Valid item ID is required in details'),
+    body('details.*.salesInvoiceDetailId')
+      .optional({ nullable: true })
+      .isUUID()
+      .withMessage('Valid sales invoice detail ID is required in details'),
     body('details.*.quantity')
       .isFloat({ gt: 0 })
       .withMessage('Quantity must be greater than 0 in details'),
@@ -59,6 +63,10 @@ const salesReturnValidation = {
       .optional()
       .isFloat({ min: 0 })
       .withMessage('Discount percent must be 0 or greater in details'),
+    body('details.*.costPrice')
+      .optional()
+      .isFloat({ min: 0 })
+      .withMessage('Cost price must be 0 or greater in details'),
     handleValidationErrors,
   ],
 
@@ -83,12 +91,20 @@ const salesReturnValidation = {
       .withMessage('isInventoryImpact must be a boolean'),
     body('details').isArray({ min: 1 }).withMessage('At least one return detail line is required'),
     body('details.*.itemId').isUUID().withMessage('Valid item ID is required in details'),
+    body('details.*.salesInvoiceDetailId')
+      .optional({ nullable: true })
+      .isUUID()
+      .withMessage('Valid sales invoice detail ID is required in details'),
     body('details.*.quantity')
       .isFloat({ gt: 0 })
       .withMessage('Quantity must be greater than 0 in details'),
     body('details.*.unitPrice')
       .isFloat({ min: 0 })
       .withMessage('Unit price must be 0 or greater in details'),
+    body('details.*.costPrice')
+      .optional()
+      .isFloat({ min: 0 })
+      .withMessage('Cost price must be 0 or greater in details'),
     handleValidationErrors,
   ],
 

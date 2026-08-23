@@ -6,7 +6,10 @@ const validateCreate = [
   body('paymentMethod').notEmpty().withMessage('Payment method is required').isIn(['Cash', 'BankTransfer', 'Cheque']).withMessage('Invalid payment method'),
   body('amount').notEmpty().withMessage('Amount is required').isFloat({ min: 0.01 }).withMessage('Amount must be greater than 0'),
   body('referenceNumber').optional().isString(),
-  body('bankAccount').optional().isString(),
+  body('bankAccount').optional({ nullable: true }).isString(),
+  body('bankAccountId').optional({ nullable: true }).isUUID(),
+  body('cashAccount').optional({ nullable: true }).isString(),
+  body('cashAccountId').optional({ nullable: true }).isUUID(),
   body('notes').optional().isString(),
   body('allocations').optional().isArray(),
   body('allocations.*.purchaseInvoiceId').optional().isUUID(),
@@ -27,7 +30,10 @@ const validateUpdate = [
   body('paymentMethod').optional().isIn(['Cash', 'BankTransfer', 'Cheque']).withMessage('Invalid payment method'),
   body('amount').optional().isFloat({ min: 0.01 }).withMessage('Amount must be greater than 0'),
   body('referenceNumber').optional().isString(),
-  body('bankAccount').optional().isString(),
+  body('bankAccount').optional({ nullable: true }).isString(),
+  body('bankAccountId').optional({ nullable: true }).isUUID(),
+  body('cashAccount').optional({ nullable: true }).isString(),
+  body('cashAccountId').optional({ nullable: true }).isUUID(),
   body('notes').optional().isString(),
   (req, res, next) => {
     const errors = validationResult(req);

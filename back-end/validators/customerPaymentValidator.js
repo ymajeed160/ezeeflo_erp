@@ -30,8 +30,8 @@ const customerPaymentValidation = {
       .withMessage('Invalid payment date format'),
     body('paymentMethod')
       .optional()
-      .isIn(['cash', 'bank_transfer', 'cheque', 'credit_card', 'other'])
-      .withMessage('Payment method must be cash, bank_transfer, cheque, credit_card, or other'),
+      .isIn(['cash', 'bank_transfer', 'cheque', 'online', 'credit_card', 'other'])
+      .withMessage('Payment method must be cash, bank_transfer, cheque, online, credit_card, or other'),
     body('amount')
       .optional()
       .isFloat({ min: 0 })
@@ -44,6 +44,14 @@ const customerPaymentValidation = {
       .optional({ nullable: true })
       .isUUID()
       .withMessage('Valid bank account ID is required'),
+    body('bankAccountRefId')
+      .optional({ nullable: true })
+      .isUUID()
+      .withMessage('Valid bank account reference ID is required'),
+    body('cashAccountId')
+      .optional({ nullable: true })
+      .isUUID()
+      .withMessage('Valid cash account ID is required'),
     body('paymentAccountId')
       .optional({ nullable: true })
       .isUUID()
@@ -82,8 +90,8 @@ const customerPaymentValidation = {
       .withMessage('Invalid payment date format'),
     body('paymentMethod')
       .optional()
-      .isIn(['cash', 'bank_transfer', 'cheque', 'credit_card', 'other'])
-      .withMessage('Payment method must be cash, bank_transfer, cheque, credit_card, or other'),
+      .isIn(['cash', 'bank_transfer', 'cheque', 'online', 'credit_card', 'other'])
+      .withMessage('Payment method must be cash, bank_transfer, cheque, online, credit_card, or other'),
     body('amount')
       .optional()
       .isFloat({ min: 0 })
@@ -96,6 +104,14 @@ const customerPaymentValidation = {
       .optional({ nullable: true })
       .isUUID()
       .withMessage('Valid bank account ID is required'),
+    body('bankAccountRefId')
+      .optional({ nullable: true })
+      .isUUID()
+      .withMessage('Valid bank account reference ID is required'),
+    body('cashAccountId')
+      .optional({ nullable: true })
+      .isUUID()
+      .withMessage('Valid cash account ID is required'),
     body('paymentAccountId')
       .optional({ nullable: true })
       .isUUID()

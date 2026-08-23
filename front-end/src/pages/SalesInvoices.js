@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Box,
@@ -72,6 +72,7 @@ import { confirmDialog, apiSuccess, apiError } from '../utils/toast';
 import accountApi from '../services/accountApi';
 import itemApi from '../services/itemApi';
 import SalesInvoiceApi from '../services/salesInvoiceApi';
+import salesOrderApi from '../services/salesOrderApi';
 import { generateSalesInvoicePdf } from '../utils/pdfInvoice';
 import PdfViewer from '../components/PdfViewer';
 import {
@@ -90,6 +91,7 @@ const statusColors = {
 const SalesInvoices = () => {
   const navigate = useNavigate();
   const { id } = useParams();
+  const location = useLocation();
   const dispatch = useDispatch();
   const { items, selected, loading, error, count, page, limit, totalPages } = useSelector((s) => s.salesInvoices);
   const customersList = useSelector((s) => s.customers?.customers || []);
@@ -109,6 +111,7 @@ const SalesInvoices = () => {
   const [taxAccounts, setTaxAccounts] = useState([]);
   const [openPostDialog, setOpenPostDialog] = useState(false);
   const [postTarget, setPostTarget] = useState(null);
+  const [postPreview, setPostPreview] = useState(null);
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
   const [pdfBlobUrl, setPdfBlobUrl] = useState(null);
   const [pdfFilename, setPdfFilename] = useState('');
@@ -172,6 +175,51 @@ const SalesInvoices = () => {
     };
     loadAccounts();
   }, []);
+
+  // Prefill a new invoice from a sales order (navigate ?salesOrderId=X)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const salesOrderId = params.get('salesOrderId');
+    if (!salesOrderId) return;
+    (async () => {
+      try {
+        const res = await salesOrderApi.getInvoiceableLines(salesOrderId);
+        const data = res.data?.data || res.data;
+        const lines = (data.lines || []).filter((l) => l.remainingQuantity > 0);
+        setViewMode(false);
+        setEditId(null);
+        setGenerateFromSO(false);
+        setGenerateFromDN(false);
+        reset({
+          customerId: data.customerId || '',
+          invoiceDate: new Date().toISOString().split('T')[0],
+          dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          warehouseId: data.warehouseId || '',
+          salesOrderId: data.id || null,
+          deliveryNoteId: null,
+          notes: data.orderNumber ? `Invoice for Sales Order ${data.orderNumber}` : '',
+          termsConditions: '',
+          isInventoryImpact: false,
+          customerAccountId: '',
+          revenueAccountId: '',
+          taxAccountId: '',
+          details: lines.length > 0 ? lines.map((l) => ({
+            salesOrderDetailId: l.salesOrderDetailId,
+            itemId: l.itemId,
+            description: l.description || '',
+            quantity: l.remainingQuantity,
+            unitPrice: l.unitPrice,
+            taxPercent: l.taxPercentage,
+            discountPercent: l.discountPercentage,
+            costPrice: 0,
+          })) : [{ itemId: '', description: '', quantity: 1, unitPrice: 0, taxPercent: 0, discountPercent: 0, costPrice: 0 }],
+        });
+        setOpenForm(true);
+      } catch (e) {
+        apiError('Could not load sales order for invoicing');
+      }
+    })();
+  }, [location.search]);
 
   // Populate account fields in post dialog when invoice data is loaded
   useEffect(() => {
@@ -272,26 +320,30 @@ const SalesInvoices = () => {
   };
 
   const handlePost = async (invoice) => {
-    // Fetch full invoice details to get current accounts
-    dispatch(fetchInvoice(invoice.id));
     setPostTarget(invoice);
+    setPostPreview(null);
     setOpenPostDialog(true);
+    try {
+      const res = await SalesInvoiceApi.getPostingPreview(invoice.id);
+      const preview = res.data?.data || res.data || res;
+      setPostPreview(preview);
+    } catch (e) {
+      apiError(e.response?.data?.message || 'Could not load posting accounts');
+      setOpenPostDialog(false);
+      setPostTarget(null);
+    }
   };
 
   const handlePostSubmit = async () => {
     if (!postTarget) return;
-    const customerAccountId = watch('customerAccountId');
-    const revenueAccountId = watch('revenueAccountId');
-    const taxAccountId = watch('taxAccountId');
-    const payload = { customerAccountId, revenueAccountId, taxAccountId };
-    // Only include non-empty values
-    Object.keys(payload).forEach(k => { if (!payload[k]) delete payload[k]; });
     try {
-      const response = await SalesInvoiceApi.post(postTarget.id, payload);
+      // Backend resolves accounts from Customer profile + System Config automatically
+      const response = await SalesInvoiceApi.post(postTarget.id, {});
       if (response) {
         apiSuccess('Invoice posted successfully - Journal entry created');
         setOpenPostDialog(false);
         setPostTarget(null);
+        setPostPreview(null);
         loadData();
       }
     } catch (error) {
@@ -302,6 +354,7 @@ const SalesInvoices = () => {
   const handleClosePost = () => {
     setOpenPostDialog(false);
     setPostTarget(null);
+    setPostPreview(null);
   };
 
   const handleViewPdf = async (invoice) => {
@@ -422,6 +475,8 @@ const SalesInvoices = () => {
         discountPercent: parseFloat(d.discountPercent) || 0,
         lineTotal: (parseFloat(d.quantity) || 0) * (parseFloat(d.unitPrice) || 0),
         costPrice: parseFloat(d.costPrice) || 0,
+        salesOrderDetailId: d.salesOrderDetailId || null,
+        deliveryNoteDetailId: d.deliveryNoteDetailId || null,
       })),
     };
 
@@ -1039,70 +1094,47 @@ const SalesInvoices = () => {
         <DialogContent dividers>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             This will create a journal entry and update inventory (if configured).
-            Please review the accounts below before posting.
+            The Chart of Accounts below were resolved automatically:
           </Typography>
           <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}>
-            <Grid container spacing={2}>
+            <Grid container spacing={1.5}>
               <Grid item xs={12}>
-                <Controller
-                  name="customerAccountId"
-                  control={control}
-                  render={({ field }) => (
-                    <Autocomplete
-                      value={arAccounts.find((a) => a.id === field.value) || null}
-                      onChange={(_, val) => field.onChange(val ? val.id : '')}
-                      options={arAccounts}
-                      getOptionLabel={(opt) => `${opt.code} - ${opt.name}`}
-                      isOptionEqualToValue={(opt, val) => opt.id === val.id}
-                      renderInput={(params) => (
-                        <TextField {...params} label="Customer Account (A/R)" size="small" fullWidth />
-                      )}
-                    />
-                  )}
-                />
+                <Typography variant="caption" color="text.secondary">Customer Account (A/R)</Typography>
+                <Typography variant="body1" fontWeight={600}>
+                  {postPreview?.customerAccount
+                    ? `${postPreview.customerAccount.code} - ${postPreview.customerAccount.name}`
+                    : 'Not configured'}
+                </Typography>
               </Grid>
               <Grid item xs={12}>
-                <Controller
-                  name="revenueAccountId"
-                  control={control}
-                  render={({ field }) => (
-                    <Autocomplete
-                      value={revenueAccounts.find((a) => a.id === field.value) || null}
-                      onChange={(_, val) => field.onChange(val ? val.id : '')}
-                      options={revenueAccounts}
-                      getOptionLabel={(opt) => `${opt.code} - ${opt.name}`}
-                      isOptionEqualToValue={(opt, val) => opt.id === val.id}
-                      renderInput={(params) => (
-                        <TextField {...params} label="Sales Revenue Account" size="small" fullWidth />
-                      )}
-                    />
-                  )}
-                />
+                <Typography variant="caption" color="text.secondary">Sales Revenue Account</Typography>
+                <Typography variant="body1" fontWeight={600}>
+                  {postPreview?.revenueAccount
+                    ? `${postPreview.revenueAccount.code} - ${postPreview.revenueAccount.name}`
+                    : 'Not configured'}
+                </Typography>
               </Grid>
               <Grid item xs={12}>
-                <Controller
-                  name="taxAccountId"
-                  control={control}
-                  render={({ field }) => (
-                    <Autocomplete
-                      value={taxAccounts.find((a) => a.id === field.value) || null}
-                      onChange={(_, val) => field.onChange(val ? val.id : '')}
-                      options={taxAccounts}
-                      getOptionLabel={(opt) => `${opt.code} - ${opt.name}`}
-                      isOptionEqualToValue={(opt, val) => opt.id === val.id}
-                      renderInput={(params) => (
-                        <TextField {...params} label="Tax Account (VAT Payable)" size="small" fullWidth />
-                      )}
-                    />
-                  )}
-                />
+                <Typography variant="caption" color="text.secondary">Tax Account (VAT Payable)</Typography>
+                <Typography variant="body1" fontWeight={600}>
+                  {postPreview?.taxAccount
+                    ? `${postPreview.taxAccount.code} - ${postPreview.taxAccount.name}`
+                    : 'No tax'}
+                </Typography>
+              </Grid>
+              <Grid item xs={12}>
+                <Divider sx={{ mb: 1 }} />
+                <Typography variant="body2">
+                  Customer: <strong>{postPreview?.customer?.name || '-'}</strong>
+                  &nbsp;|&nbsp; Grand Total: <strong>{Number(postPreview?.grandTotal || postTarget?.grandTotal || 0).toFixed(2)}</strong>
+                </Typography>
               </Grid>
             </Grid>
           </Paper>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleClosePost}>Cancel</Button>
-          <Button onClick={handlePostSubmit} variant="contained" color="primary">
+          <Button onClick={handlePostSubmit} variant="contained" color="primary" disabled={!postPreview}>
             Post Invoice
           </Button>
         </DialogActions>

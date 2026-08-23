@@ -163,20 +163,11 @@ class SalesInvoiceService {
 
     const t = await sequelize.transaction();
     try {
-      // Apply account overrides from the post dialog if provided
-      if (body.customerAccountId || body.revenueAccountId || body.taxAccountId) {
-        const updateData = {};
-        if (body.customerAccountId) updateData.customerAccountId = body.customerAccountId;
-        if (body.revenueAccountId) updateData.revenueAccountId = body.revenueAccountId;
-        if (body.taxAccountId) updateData.taxAccountId = body.taxAccountId;
-        await SalesInvoiceRepository.update(tenantId, id, updateData, t);
-        // Apply the updated values to the existing object (no re-fetch needed)
-        if (body.customerAccountId) existing.customerAccountId = body.customerAccountId;
-        if (body.revenueAccountId) existing.revenueAccountId = body.revenueAccountId;
-        if (body.taxAccountId) existing.taxAccountId = body.taxAccountId;
-      }
+      // Auto-resolve posting accounts (customer A/R + revenue/VAT from System Config),
+      // then apply any explicit overrides from the request body.
+      await SalesInvoiceService._resolveAndSetAccounts(tenantId, id, existing, body, t);
 
-      // Use existing (with potential account overrides) for posting
+      // Use existing (with resolved accounts) for posting
       const invoice = existing;
 
       // Validate accounts before posting
@@ -222,6 +213,98 @@ class SalesInvoiceService {
       await t.rollback();
       throw error;
     }
+  }
+
+  /**
+   * Resolve and persist the posting accounts for an invoice:
+   * - Customer A/R  → Customer profile (arAccountId)
+   * - Sales Revenue → System Config (accounting → revenue_account)
+   * - VAT Payable   → System Config (accounting → vat_payable)
+   * Explicit body values take precedence.
+   */
+  static async _resolveAndSetAccounts(tenantId, id, invoice, body, t) {
+    const { Customer, SystemConfig } = require('../models');
+    const resolved = {};
+
+    // Customer A/R from customer profile
+    if (!invoice.customerAccountId) {
+      const customer = invoice.customer || (await Customer.findOne({ where: { id: invoice.customerId, tenantId }, transaction: t }));
+      if (customer && customer.arAccountId) resolved.customerAccountId = customer.arAccountId;
+    }
+
+    // Sales Revenue from System Config
+    if (!invoice.revenueAccountId) {
+      const cfg = await SystemConfig.findOne({ where: { tenantId, category: 'accounting', configKey: 'revenue_account' }, transaction: t });
+      if (cfg && cfg.configValue) resolved.revenueAccountId = cfg.configValue;
+    }
+
+    // VAT Payable from System Config (only when tax exists)
+    if (!invoice.taxAccountId && parseFloat(invoice.taxTotal) > 0) {
+      const cfg = await SystemConfig.findOne({ where: { tenantId, category: 'accounting', configKey: 'vat_payable' }, transaction: t });
+      if (cfg && cfg.configValue) resolved.taxAccountId = cfg.configValue;
+    }
+
+    // Explicit overrides win
+    if (body.customerAccountId) resolved.customerAccountId = body.customerAccountId;
+    if (body.revenueAccountId) resolved.revenueAccountId = body.revenueAccountId;
+    if (body.taxAccountId) resolved.taxAccountId = body.taxAccountId;
+
+    if (Object.keys(resolved).length) {
+      await SalesInvoiceRepository.update(tenantId, id, resolved, t);
+      Object.assign(invoice, resolved);
+    }
+  }
+
+  /**
+   * Preview the resolved posting accounts for an invoice (for the confirm dialog).
+   */
+  static async getPostingPreview(tenantId, id) {
+    const invoice = await SalesInvoiceRepository.findById(tenantId, id);
+    if (!invoice) {
+      const error = new Error('Sales Invoice not found');
+      error.status = 404;
+      throw error;
+    }
+
+    const { Customer, Account, SystemConfig } = require('../models');
+
+    let customerAccountId = invoice.customerAccountId;
+    if (!customerAccountId && invoice.customer && invoice.customer.arAccountId) customerAccountId = invoice.customer.arAccountId;
+    if (!customerAccountId) {
+      const c = await Customer.findOne({ where: { id: invoice.customerId, tenantId } });
+      if (c && c.arAccountId) customerAccountId = c.arAccountId;
+    }
+
+    let revenueAccountId = invoice.revenueAccountId;
+    if (!revenueAccountId) {
+      const cfg = await SystemConfig.findOne({ where: { tenantId, category: 'accounting', configKey: 'revenue_account' } });
+      if (cfg && cfg.configValue) revenueAccountId = cfg.configValue;
+    }
+
+    let taxAccountId = invoice.taxAccountId;
+    if (!taxAccountId && parseFloat(invoice.taxTotal) > 0) {
+      const cfg = await SystemConfig.findOne({ where: { tenantId, category: 'accounting', configKey: 'vat_payable' } });
+      if (cfg && cfg.configValue) taxAccountId = cfg.configValue;
+    }
+
+    const ids = [customerAccountId, revenueAccountId, taxAccountId].filter(Boolean);
+    const accounts = await Account.findAll({ where: { id: { [Op.in]: ids }, tenantId } });
+    const byId = {};
+    accounts.forEach((a) => { byId[a.id] = a; });
+    const fmt = (aid) => (byId[aid] ? { id: byId[aid].id, code: byId[aid].code, name: byId[aid].name, type: byId[aid].type } : null);
+
+    return {
+      id: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      grandTotal: parseFloat(invoice.grandTotal),
+      subTotal: parseFloat(invoice.subTotal),
+      taxTotal: parseFloat(invoice.taxTotal),
+      discountTotal: parseFloat(invoice.discountTotal),
+      customer: invoice.customer ? { id: invoice.customer.id, name: invoice.customer.name } : null,
+      customerAccount: fmt(customerAccountId),
+      revenueAccount: fmt(revenueAccountId),
+      taxAccount: fmt(taxAccountId),
+    };
   }
 
   /**
@@ -542,8 +625,8 @@ class SalesInvoiceService {
   /**
    * Generate invoice from Sales Order
    */
-  static async generateFromSalesOrder(tenantId, salesOrderId, userId) {
-    const { SalesOrder, SalesOrderDetail } = require('../models');
+  static async generateFromSalesOrder(tenantId, salesOrderId, userId, body = {}) {
+    const { SalesOrder, SalesOrderDetail, Item } = require('../models');
 
     const order = await SalesOrder.findOne({
       where: { tenantId, id: salesOrderId },
@@ -551,7 +634,7 @@ class SalesInvoiceService {
         {
           model: SalesOrderDetail,
           as: 'details',
-          include: [{ model: require('../models').Item, as: 'item' }],
+          include: [{ model: Item, as: 'item' }],
         },
       ],
     });
@@ -561,42 +644,106 @@ class SalesInvoiceService {
       error.status = 404;
       throw error;
     }
-    if (!['approved', 'partially_delivered', 'delivered'].includes(order.status)) {
-      const error = new Error('Sales Order must be approved or delivered to generate invoice');
+    if (!['approved', 'confirmed', 'partially_delivered', 'delivered', 'partially_invoiced'].includes(order.status)) {
+      const error = new Error('Sales Order must be approved to generate invoice');
+      error.status = 400;
+      throw error;
+    }
+
+    const requestedLines = body.lines || body.details || null;
+    const lineItems = [];
+    let hasAny = false;
+
+    for (const line of order.details || []) {
+      const ordered = parseFloat(line.quantity);
+      const invoiced = parseFloat(line.invoicedQuantity || 0);
+      const remaining = ordered - invoiced;
+
+      let qty = remaining;
+      if (requestedLines) {
+        const req = requestedLines.find((l) => l.salesOrderDetailId === line.id);
+        if (!req) continue;
+        qty = parseFloat(req.quantity || 0);
+      }
+
+      if (qty <= 0) continue;
+      if (qty > remaining + 0.001) {
+        const error = new Error(
+          `Invoice quantity for ${line.item ? line.item.name : line.itemId} exceeds remaining order quantity. Remaining: ${remaining}`
+        );
+        error.status = 400;
+        throw error;
+      }
+
+      hasAny = true;
+      const price = parseFloat(line.unitPrice);
+      const taxPct = parseFloat(line.taxPercentage || 0);
+      const discPct = parseFloat(line.discountPercentage || 0);
+      const gross = qty * price;
+      const discAmt = gross * (discPct / 100);
+      const taxAmt = (gross - discAmt) * (taxPct / 100);
+
+      lineItems.push({
+        salesOrderDetailId: line.id,
+        itemId: line.itemId,
+        description: line.description || (line.item ? line.item.name : ''),
+        quantity: qty,
+        unitPrice: price,
+        taxPercent: taxPct,
+        discountPercent: discPct,
+        lineTotal: parseFloat((gross - discAmt + taxAmt).toFixed(2)),
+        costPrice: parseFloat(line.costPrice || (line.item ? line.item.costPrice : 0)),
+      });
+    }
+
+    if (!hasAny) {
+      const error = new Error('No remaining quantity available to invoice');
       error.status = 400;
       throw error;
     }
 
     const invoiceNumber = await SalesInvoiceService.generateInvoiceNumber(tenantId);
 
-    const body = {
+    const newBody = {
       invoiceNumber,
       customerId: order.customerId,
       salesOrderId: order.id,
       warehouseId: order.warehouseId,
       invoiceDate: new Date().toISOString().split('T')[0],
       dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      isInventoryImpact: false, // Can be changed by user before posting
-      details: (order.details || []).map((line) => ({
-        itemId: line.itemId,
-        description: line.description,
-        quantity: parseFloat(line.quantity),
-        unitPrice: parseFloat(line.unitPrice),
-        taxPercent: parseFloat(line.taxPercent || 0),
-        discountPercent: parseFloat(line.discountPercent || 0),
-        lineTotal: parseFloat(line.quantity) * parseFloat(line.unitPrice),
-        costPrice: parseFloat(line.costPrice || 0),
-      })),
+      isInventoryImpact: false,
+      details: lineItems,
     };
 
-    return SalesInvoiceService.create(tenantId, body, userId);
+    const result = await SalesInvoiceService.create(tenantId, newBody, userId);
+
+    // Update sales order invoiced quantities and status
+    const t = await sequelize.transaction();
+    try {
+      for (const li of lineItems) {
+        const detail = order.details.find((d) => d.id === li.salesOrderDetailId);
+        if (!detail) continue;
+        const newInvoiced = parseFloat(detail.invoicedQuantity || 0) + parseFloat(li.quantity);
+        await SalesOrderDetail.update(
+          { invoicedQuantity: newInvoiced },
+          { where: { id: detail.id, tenantId }, transaction: t }
+        );
+      }
+      await t.commit();
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
+
+    await SalesInvoiceService._syncSalesOrderInvoiceStatus(tenantId, order.id);
+    return result;
   }
 
   /**
    * Generate invoice from Delivery Note
    */
-  static async generateFromDeliveryNote(tenantId, deliveryNoteId, userId) {
-    const { DeliveryNote, DeliveryNoteDetail, Item } = require('../models');
+  static async generateFromDeliveryNote(tenantId, deliveryNoteId, userId, body = {}) {
+    const { DeliveryNote, DeliveryNoteDetail, SalesInvoiceDetail, Item } = require('../models');
 
     const deliveryNote = await DeliveryNote.findOne({
       where: { tenantId, id: deliveryNoteId },
@@ -620,9 +767,66 @@ class SalesInvoiceService {
       throw error;
     }
 
+    const requestedLines = body.lines || body.details || null;
+    const lineItems = [];
+    let hasAny = false;
+
+    for (const line of deliveryNote.details || []) {
+      const delivered = parseFloat(line.quantity) || 0;
+
+      // How much of this DN line has already been invoiced
+      const alreadyInvoiced = await SalesInvoiceDetail.sum('quantity', {
+        where: { tenantId, deliveryNoteDetailId: line.id },
+      });
+      const remaining = delivered - parseFloat(alreadyInvoiced || 0);
+
+      let qty = remaining;
+      if (requestedLines) {
+        const req = requestedLines.find((l) => l.deliveryNoteDetailId === line.id);
+        if (!req) continue;
+        qty = parseFloat(req.quantity || 0);
+      }
+
+      if (qty <= 0) continue;
+      if (qty > remaining + 0.001) {
+        const error = new Error(
+          `Invoice quantity for ${line.item ? line.item.name : line.itemId} exceeds remaining delivered quantity. Remaining: ${remaining}`
+        );
+        error.status = 400;
+        throw error;
+      }
+
+      hasAny = true;
+      const price = parseFloat(line.unitPrice) || (line.item ? parseFloat(line.item.sellingPrice) : 0);
+      const taxPct = parseFloat(line.taxPercentage || 0);
+      const discPct = parseFloat(line.discountPercentage || 0);
+      const gross = qty * price;
+      const discAmt = gross * (discPct / 100);
+      const taxAmt = (gross - discAmt) * (taxPct / 100);
+
+      lineItems.push({
+        deliveryNoteDetailId: line.id,
+        salesOrderDetailId: line.salesOrderDetailId || null,
+        itemId: line.itemId,
+        description: line.description || (line.item ? line.item.name : ''),
+        quantity: qty,
+        unitPrice: price,
+        taxPercent: taxPct,
+        discountPercent: discPct,
+        lineTotal: parseFloat((gross - discAmt + taxAmt).toFixed(2)),
+        costPrice: parseFloat(line.costPrice) || (line.item ? parseFloat(line.item.costPrice) : 0),
+      });
+    }
+
+    if (!hasAny) {
+      const error = new Error('No remaining delivered quantity available to invoice');
+      error.status = 400;
+      throw error;
+    }
+
     const invoiceNumber = await SalesInvoiceService.generateInvoiceNumber(tenantId);
 
-    const body = {
+    const newBody = {
       invoiceNumber,
       customerId: deliveryNote.customerId,
       salesOrderId: deliveryNote.salesOrderId,
@@ -631,28 +835,59 @@ class SalesInvoiceService {
       invoiceDate: new Date().toISOString().split('T')[0],
       dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       isInventoryImpact: false,
-      details: (deliveryNote.details || []).map((line) => {
-        const qty = parseFloat(line.quantity) || 0;
-        const price = parseFloat(line.unitPrice) || (line.item ? parseFloat(line.item.sellingPrice) : 0);
-        const taxPct = parseFloat(line.taxPercentage || 0);
-        const discPct = parseFloat(line.discountPercentage || 0);
-        const gross = qty * price;
-        const discAmt = gross * (discPct / 100);
-        const taxAmt = (gross - discAmt) * (taxPct / 100);
-        return {
-          itemId: line.itemId,
-          description: line.description || (line.item ? line.item.name : ''),
-          quantity: qty,
-          unitPrice: price,
-          taxPercent: taxPct,
-          discountPercent: discPct,
-          lineTotal: parseFloat((gross - discAmt + taxAmt).toFixed(2)),
-          costPrice: parseFloat(line.costPrice) || (line.item ? parseFloat(line.item.costPrice) : 0),
-        };
-      }),
+      details: lineItems,
     };
 
-    return SalesInvoiceService.create(tenantId, body, userId);
+    const result = await SalesInvoiceService.create(tenantId, newBody, userId);
+
+    // If the DN came from a sales order, sync that order's invoiced quantities/status too
+    if (deliveryNote.salesOrderId) {
+      await SalesInvoiceService._syncSalesOrderInvoiceStatus(tenantId, deliveryNote.salesOrderId);
+    }
+
+    return result;
+  }
+
+  /**
+   * Recompute a sales order's invoiced quantity per line from its invoices,
+   * then set partially_invoiced / fully_invoiced status.
+   */
+  static async _syncSalesOrderInvoiceStatus(tenantId, salesOrderId) {
+    const { SalesOrder, SalesOrderDetail, SalesInvoiceDetail } = require('../models');
+
+    const order = await SalesOrder.findOne({
+      where: { tenantId, id: salesOrderId },
+      include: [{ model: SalesOrderDetail, as: 'details' }],
+    });
+    if (!order) return;
+
+    const detailIds = (order.details || []).map((d) => d.id);
+    const totals = await SalesInvoiceDetail.findAll({
+      where: { tenantId, salesOrderDetailId: { [Op.in]: detailIds } },
+      attributes: ['salesOrderDetailId', [sequelize.fn('SUM', sequelize.col('quantity')), 'invoicedQty']],
+      group: ['salesOrderDetailId'],
+    });
+    const invoicedByDetail = {};
+    totals.forEach((t) => { invoicedByDetail[t.salesOrderDetailId] = parseFloat(t.get('invoicedQty') || 0); });
+
+    let totalOrdered = 0;
+    let totalInvoiced = 0;
+    for (const d of order.details || []) {
+      const inv = invoicedByDetail[d.id] || 0;
+      totalOrdered += parseFloat(d.quantity);
+      totalInvoiced += inv;
+      if (parseFloat(d.invoicedQuantity || 0) !== inv) {
+        await SalesOrderDetail.update({ invoicedQuantity: inv }, { where: { id: d.id, tenantId } });
+      }
+    }
+
+    let status = order.status;
+    if (totalInvoiced > 0 && totalInvoiced < totalOrdered) status = 'partially_invoiced';
+    else if (totalInvoiced >= totalOrdered) status = 'fully_invoiced';
+
+    if (status !== order.status) {
+      await SalesOrder.update({ status }, { where: { id: salesOrderId, tenantId } });
+    }
   }
 }
 

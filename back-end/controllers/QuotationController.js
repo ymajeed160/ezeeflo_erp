@@ -73,6 +73,26 @@ class QuotationController {
     }
   }
 
+  async confirm(req, res, next) {
+    try {
+      const { tenantId, id: userId } = req.user;
+      const quotation = await quotationService.confirm(tenantId, req.params.id, userId);
+      res.json(quotation);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async cancel(req, res, next) {
+    try {
+      const { tenantId, id: userId } = req.user;
+      const quotation = await quotationService.cancel(tenantId, req.params.id, userId);
+      res.json(quotation);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async reject(req, res, next) {
     try {
       const { tenantId, id: userId } = req.user;
@@ -86,8 +106,18 @@ class QuotationController {
   async convertToSalesOrder(req, res, next) {
     try {
       const { tenantId, id: userId } = req.user;
-      const salesOrder = await quotationService.convertToSalesOrder(tenantId, req.params.id, userId);
+      const salesOrder = await quotationService.convertToSalesOrder(tenantId, req.params.id, userId, req.body || {});
       res.status(201).json(salesOrder);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getConvertibleLines(req, res, next) {
+    try {
+      const { tenantId } = req.user;
+      const result = await quotationService.getConvertibleLines(tenantId, req.params.id);
+      res.json(result);
     } catch (error) {
       next(error);
     }

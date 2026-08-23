@@ -9,6 +9,8 @@ module.exports = (sequelize, DataTypes) => {
       CustomerPayment.belongsTo(models.Account, { foreignKey: 'bankAccountId', as: 'bankAccount' });
       CustomerPayment.belongsTo(models.Account, { foreignKey: 'paymentAccountId', as: 'paymentAccount' });
       CustomerPayment.belongsTo(models.Account, { foreignKey: 'customerAccountId', as: 'customerAccount' });
+      CustomerPayment.belongsTo(models.Account, { foreignKey: 'cashAccountId', as: 'cashAccount' });
+      CustomerPayment.belongsTo(models.BankAccount, { foreignKey: 'bankAccountRefId', as: 'bankAccountRef' });
       CustomerPayment.belongsTo(models.JournalEntry, { foreignKey: 'journalEntryId', as: 'journalEntry' });
       CustomerPayment.belongsTo(models.User, { foreignKey: 'createdBy', as: 'creator' });
       CustomerPayment.belongsTo(models.User, { foreignKey: 'updatedBy', as: 'updater' });
@@ -41,7 +43,7 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
       },
       paymentMethod: {
-        type: DataTypes.ENUM('cash', 'bank_transfer', 'cheque', 'credit_card', 'other'),
+        type: DataTypes.ENUM('cash', 'bank_transfer', 'cheque', 'online', 'credit_card', 'other'),
         allowNull: false,
         defaultValue: 'bank_transfer',
       },
@@ -55,6 +57,14 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
       },
       bankAccountId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+      bankAccountRefId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+      cashAccountId: {
         type: DataTypes.UUID,
         allowNull: true,
       },

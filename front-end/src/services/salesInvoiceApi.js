@@ -104,6 +104,14 @@ class SalesInvoiceApi {
   }
 
   /**
+   * Preview auto-resolved posting accounts before posting
+   */
+  static async getPostingPreview(id) {
+    const response = await api.get(`/sales-invoices/${id}/posting-preview`);
+    return response.data;
+  }
+
+  /**
    * Cancel invoice
    */
   static async cancel(id) {

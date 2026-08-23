@@ -8,6 +8,8 @@ const { authorize } = require('../middleware/rbac');
 router.use(authenticate);
 
 router.get('/', authorize('salesorder.view'), (req, res, next) => ctrl.list(req, res, next));
+router.get('/:id/deliverable-lines', authorize('salesorder.view'), (req, res, next) => ctrl.getDeliverableLines(req, res, next));
+router.get('/:id/invoiceable-lines', authorize('salesorder.view'), (req, res, next) => ctrl.getInvoiceableLines(req, res, next));
 router.get('/:id', authorize('salesorder.view'), (req, res, next) => ctrl.getById(req, res, next));
 router.post('/', authorize('salesorder.create'), (req, res, next) => ctrl.create(req, res, next));
 router.put('/:id', authorize('salesorder.edit'), (req, res, next) => ctrl.update(req, res, next));

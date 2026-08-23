@@ -73,7 +73,7 @@ const Quotation = sequelize.define('Quotation', {
     field: 'terms_conditions',
   },
   status: {
-    type: DataTypes.ENUM('draft', 'sent', 'approved', 'rejected', 'converted'),
+    type: DataTypes.ENUM('draft', 'sent', 'approved', 'rejected', 'converted', 'partially_ordered', 'fully_ordered', 'cancelled'),
     allowNull: false,
     defaultValue: 'draft',
   },
@@ -96,6 +96,16 @@ const Quotation = sequelize.define('Quotation', {
     type: DataTypes.UUID,
     allowNull: true,
     field: 'updated_by',
+  },
+  confirmedBy: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    field: 'confirmed_by',
+  },
+  confirmedAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'confirmed_at',
   },
 }, {
   tableName: 'quotations',
@@ -143,6 +153,12 @@ const QuotationDetail = sequelize.define('QuotationDetail', {
     type: DataTypes.DECIMAL(18, 4),
     allowNull: false,
     defaultValue: 0,
+  },
+  orderedQuantity: {
+    type: DataTypes.DECIMAL(18, 4),
+    allowNull: false,
+    defaultValue: 0,
+    field: 'ordered_quantity',
   },
   unitPrice: {
     type: DataTypes.DECIMAL(18, 2),

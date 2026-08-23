@@ -56,7 +56,25 @@ class SupplierPaymentController {
   async confirm(req, res) {
     try {
       const record = await SupplierPaymentService.confirm(req.tenantId, req.userId, req.params.id);
-      return res.json({ success: true, message: 'Supplier Payment confirmed', data: record });
+      return res.json({ success: true, message: 'Supplier Payment confirmed and posted successfully', data: record });
+    } catch (error) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+  }
+
+  async getPostingPreview(req, res) {
+    try {
+      const record = await SupplierPaymentService.getPostingPreview(req.tenantId, req.params.id);
+      return res.json({ success: true, data: record });
+    } catch (error) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+  }
+
+  async reverse(req, res) {
+    try {
+      const record = await SupplierPaymentService.reverse(req.tenantId, req.userId, req.params.id);
+      return res.json({ success: true, message: 'Supplier Payment reversed', data: record });
     } catch (error) {
       return res.status(400).json({ success: false, message: error.message });
     }

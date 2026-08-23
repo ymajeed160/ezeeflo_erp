@@ -19,6 +19,8 @@ class QuotationDTO {
     this.convertedToId = data.convertedToId;
     this.createdBy = data.createdBy;
     this.updatedBy = data.updatedBy;
+    this.confirmedBy = data.confirmedBy || null;
+    this.confirmedAt = data.confirmedAt || null;
     this.createdAt = data.createdAt;
     this.updatedAt = data.updatedAt;
 

@@ -230,56 +230,40 @@ class DeliveryNoteRepository {
 
   /**
    * Process inventory reduction for delivery (when status changes to delivered)
-   * Uses weighted average cost for COGS
+   * Uses the shared InventoryTransactionService (weighted average cost).
    */
   async processInventoryImpact(deliveryNote, { transaction } = {}) {
-    const { id, warehouseId, tenantId, details } = deliveryNote;
+    const { id, warehouseId, tenantId, details, deliveryNumber } = deliveryNote;
 
     // Skip inventory processing for service-only items (no warehouse)
     if (!warehouseId) return;
 
+    const InventoryTransactionService = require('../services/InventoryTransactionService');
+
     for (const detail of details) {
       const itemId = detail.itemId;
-      const quantity = parseFloat(detail.quantity);
+      const quantity = parseFloat(detail.quantity) || 0;
+      if (quantity <= 0) continue;
 
-      // Get current inventory balance
+      // Weighted average cost from current balance
       const balance = await InventoryBalance.findOne({
         where: { itemId, warehouseId, tenantId },
         transaction,
       });
+      const unitCost = balance ? parseFloat(balance.averageCost) || 0 : 0;
 
-      if (!balance || parseFloat(balance.quantity) < quantity) {
-        throw new Error(`Insufficient stock for item ID ${itemId}. Available: ${balance ? parseFloat(balance.quantity) : 0}, Required: ${quantity}`);
-      }
-
-      // Calculate weighted average cost
-      const currentQty = parseFloat(balance.quantity);
-      const currentValue = parseFloat(balance.totalValue);
-      const avgCost = currentQty > 0 ? currentValue / currentQty : 0;
-
-      // Reduce inventory
-      const newQty = currentQty - quantity;
-      const newValue = parseFloat((newQty * avgCost).toFixed(2));
-
-      await InventoryBalance.update(
-        { quantity: newQty, totalValue: newValue },
-        { where: { id: balance.id }, transaction }
-      );
-
-      // Create inventory transaction (OUT)
-      await InventoryTransaction.create({
+      await InventoryTransactionService.recordTransaction({
+        tenantId,
         itemId,
         warehouseId,
-        transactionType: 'out',
-        referenceType: 'delivery_note',
+        transactionType: 'sale',
         referenceId: id,
+        referenceType: 'DeliveryNote',
+        referenceNumber: deliveryNumber,
         quantity: -quantity,
-        unitCost: avgCost,
-        totalCost: parseFloat((quantity * avgCost).toFixed(2)),
-        balanceAfter: newQty,
-        description: `Delivery Note: ${deliveryNote.deliveryNumber}`,
-        tenantId,
-      }, { transaction });
+        unitCost,
+        totalCost: -(quantity * unitCost),
+      }, transaction);
     }
   }
 
@@ -287,48 +271,36 @@ class DeliveryNoteRepository {
    * Reverse inventory impact (for cancelled delivery notes)
    */
   async reverseInventoryImpact(deliveryNote, { transaction } = {}) {
-    const { id, warehouseId, tenantId, details } = deliveryNote;
+    const { id, warehouseId, tenantId, details, deliveryNumber } = deliveryNote;
 
     // Skip inventory processing for service-only items (no warehouse)
     if (!warehouseId) return;
 
+    const InventoryTransactionService = require('../services/InventoryTransactionService');
+
     for (const detail of details) {
       const itemId = detail.itemId;
-      const quantity = parseFloat(detail.quantity);
+      const quantity = parseFloat(detail.quantity) || 0;
+      if (quantity <= 0) continue;
 
       const balance = await InventoryBalance.findOne({
         where: { itemId, warehouseId, tenantId },
         transaction,
       });
+      const unitCost = balance ? parseFloat(balance.averageCost) || 0 : 0;
 
-      const currentQty = balance ? parseFloat(balance.quantity) : 0;
-      const currentValue = balance ? parseFloat(balance.totalValue) : 0;
-      const avgCost = currentQty > 0 ? currentValue / currentQty : 0;
-
-      const newQty = currentQty + quantity;
-      const newValue = parseFloat((currentValue + quantity * avgCost).toFixed(2));
-
-      if (balance) {
-        await InventoryBalance.update(
-          { quantity: newQty, totalValue: newValue },
-          { where: { id: balance.id }, transaction }
-        );
-      }
-
-      // Create inventory transaction (IN - reversal)
-      await InventoryTransaction.create({
+      await InventoryTransactionService.recordTransaction({
+        tenantId,
         itemId,
         warehouseId,
-        transactionType: 'in',
-        referenceType: 'delivery_note_cancel',
+        transactionType: 'return',
         referenceId: id,
+        referenceType: 'DeliveryNoteCancel',
+        referenceNumber: deliveryNumber,
         quantity,
-        unitCost: avgCost,
-        totalCost: parseFloat((quantity * avgCost).toFixed(2)),
-        balanceAfter: newQty,
-        description: `Cancelled Delivery Note: ${deliveryNote.deliveryNumber}`,
-        tenantId,
-      }, { transaction });
+        unitCost,
+        totalCost: quantity * unitCost,
+      }, transaction);
     }
   }
 }

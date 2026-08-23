@@ -113,6 +113,19 @@ export const rejectReturn = createAsyncThunk(
   }
 );
 
+// Post return (confirm & post: accounting + inventory)
+export const postReturn = createAsyncThunk(
+  'salesReturn/postReturn',
+  async (id, { rejectWithValue }) => {
+    try {
+      const response = await SalesReturnApi.post(id, {});
+      return response;
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || error.message);
+    }
+  }
+);
+
 const salesReturnSlice = createSlice({
   name: 'salesReturn',
   initialState,
@@ -241,6 +254,23 @@ const salesReturnSlice = createSlice({
         state.selected = action.payload;
       })
       .addCase(rejectReturn.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      });
+
+    // Post
+    builder
+      .addCase(postReturn.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(postReturn.fulfilled, (state, action) => {
+        state.loading = false;
+        const index = state.items.findIndex((i) => i.id === action.payload.id);
+        if (index !== -1) state.items[index] = action.payload;
+        state.selected = action.payload;
+      })
+      .addCase(postReturn.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       });

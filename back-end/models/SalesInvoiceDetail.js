@@ -26,6 +26,14 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
       },
+      deliveryNoteDetailId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+      salesOrderDetailId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
       itemId: {
         type: DataTypes.UUID,
         allowNull: false,

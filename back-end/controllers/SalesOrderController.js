@@ -97,6 +97,28 @@ class SalesOrderController {
     }
   }
 
+  async getDeliverableLines(req, res, next) {
+    try {
+      const tenantId = req.user.tenantId;
+      const { id } = req.params;
+      const result = await salesOrderService.getDeliverableLines(tenantId, id);
+      res.json({ success: true, data: result });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async getInvoiceableLines(req, res, next) {
+    try {
+      const tenantId = req.user.tenantId;
+      const { id } = req.params;
+      const result = await salesOrderService.getInvoiceableLines(tenantId, id);
+      res.json({ success: true, data: result });
+    } catch (err) {
+      next(err);
+    }
+  }
+
   /**
    * POST /api/sales-orders/:id/send-email
    * Send sales order via email with PDF attachment

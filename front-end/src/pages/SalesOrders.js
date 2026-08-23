@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Box,
@@ -45,6 +45,8 @@ import {
   PictureAsPdf as PdfIcon,
   Email as EmailIcon,
   Print as PrintIcon,
+  LocalShipping as DeliveryIcon,
+  ReceiptLong as InvoiceIcon,
 } from '@mui/icons-material';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import {
@@ -63,6 +65,7 @@ import { fetchWarehouses } from '../store/slices/warehouseSlice';
 import { confirmDialog, apiSuccess, apiError } from '../utils/toast';
 import { generateSalesOrderPdf } from '../utils/pdfSalesOrder';
 import salesOrderApi from '../services/salesOrderApi';
+import quotationApi from '../services/quotationApi';
 import PdfViewer from '../components/PdfViewer';
 
 const statusColors = {
@@ -76,6 +79,7 @@ const statusColors = {
 const SalesOrders = () => {
   const navigate = useNavigate();
   const { id } = useParams();
+  const location = useLocation();
   const dispatch = useDispatch();
   const { list, total, page, limit, selectedOrder, loading, submitting } = useSelector((s) => s.salesOrders);
   const { customers: customersList } = useSelector((s) => s.customers);
@@ -97,6 +101,9 @@ const SalesOrders = () => {
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody, setEmailBody] = useState('');
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [sourceQuotationId, setSourceQuotationId] = useState(null);
+  const [sourceQuotationNumber, setSourceQuotationNumber] = useState('');
+  const [quotationDetailIds, setQuotationDetailIds] = useState([]);
   const activeCompany = useSelector((s) => s.company?.activeCompany || null);
 
   const { register, handleSubmit, control, reset, watch, setValue, formState: { errors } } = useForm({
@@ -155,6 +162,9 @@ const SalesOrders = () => {
   const handleAdd = () => {
     setViewMode(false);
     setEditId(null);
+    setSourceQuotationId(null);
+    setSourceQuotationNumber('');
+    setQuotationDetailIds([]);
     dispatch(clearSelectedOrder());
     reset({
       customerId: '',
@@ -167,6 +177,44 @@ const SalesOrders = () => {
     });
     setOpenForm(true);
   };
+
+  // Prefill new order from a quotation (navigate ?quotationId=X)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const quotationId = params.get('quotationId');
+    if (!quotationId) return;
+    (async () => {
+      try {
+        const res = await quotationApi.getConvertibleLines(quotationId);
+        const data = res.data?.data || res.data;
+        const lines = (data.lines || []).filter((l) => l.availableQuantity > 0);
+        setViewMode(false);
+        setEditId(null);
+        setSourceQuotationId(data.id);
+        setSourceQuotationNumber(data.quotationNumber);
+        setQuotationDetailIds(lines.map((l) => l.quotationDetailId));
+        reset({
+          customerId: data.customerId || '',
+          orderDate: new Date().toISOString().split('T')[0],
+          warehouseId: data.warehouseId || '',
+          reference: '',
+          notes: data.quotationNumber ? `Converted from Quotation ${data.quotationNumber}` : '',
+          status: 'draft',
+          details: lines.map((l) => ({
+            itemId: l.itemId,
+            description: l.description || '',
+            quantity: l.availableQuantity,
+            unitPrice: l.unitPrice,
+            taxPercentage: l.taxPercentage,
+            discountPercentage: l.discountPercentage,
+          })),
+        });
+        setOpenForm(true);
+      } catch (e) {
+        apiError('Could not load quotation for conversion');
+      }
+    })();
+  }, [location.search]);
 
   const handleEdit = (order) => {
     setViewMode(false);
@@ -289,13 +337,24 @@ const SalesOrders = () => {
   };
 
   const onSubmit = async (data) => {
+    const payload = {
+      ...data,
+      quotationId: sourceQuotationId || null,
+      details: (data.details || []).map((d, i) => ({
+        ...d,
+        quotationDetailId: quotationDetailIds[i] || d.quotationDetailId || null,
+      })),
+    };
     if (editId) {
-      await dispatch(updateSalesOrder({ id: editId, data }));
+      await dispatch(updateSalesOrder({ id: editId, data: payload }));
     } else {
-      await dispatch(createSalesOrder(data));
+      await dispatch(createSalesOrder(payload));
     }
     setOpenForm(false);
     setEditId(null);
+    setSourceQuotationId(null);
+    setSourceQuotationNumber('');
+    setQuotationDetailIds([]);
     dispatch(clearSelectedOrder());
     loadData();
   };
@@ -381,9 +440,13 @@ const SalesOrders = () => {
               <MenuItem value="">All</MenuItem>
               <MenuItem value="draft">Draft</MenuItem>
               <MenuItem value="approved">Approved</MenuItem>
+              <MenuItem value="confirmed">Confirmed</MenuItem>
               <MenuItem value="partially_delivered">Partially Delivered</MenuItem>
               <MenuItem value="delivered">Delivered</MenuItem>
+              <MenuItem value="partially_invoiced">Partially Invoiced</MenuItem>
+              <MenuItem value="fully_invoiced">Fully Invoiced</MenuItem>
               <MenuItem value="closed">Closed</MenuItem>
+              <MenuItem value="cancelled">Cancelled</MenuItem>
             </TextField>
           </Grid>
           <Grid item xs={12} sm={2}>
@@ -429,6 +492,12 @@ const SalesOrders = () => {
                     )}
                     {['approved', 'partially_delivered'].includes(order.status) && (
                       <Tooltip title="Close"><IconButton size="small" color="warning" onClick={() => handleClose(order)}><CloseIcon fontSize="small" /></IconButton></Tooltip>
+                    )}
+                    {['approved', 'confirmed', 'partially_delivered', 'delivered', 'partially_invoiced'].includes(order.status) && (
+                      <Tooltip title="Create Delivery Note"><IconButton size="small" color="info" onClick={() => navigate(`/app/sales/delivery-notes/new?salesOrderId=${order.id}`)}><DeliveryIcon fontSize="small" /></IconButton></Tooltip>
+                    )}
+                    {['approved', 'confirmed', 'partially_delivered', 'delivered', 'partially_invoiced'].includes(order.status) && (
+                      <Tooltip title="Create Invoice"><IconButton size="small" color="secondary" onClick={() => navigate(`/app/sales/invoices/new?salesOrderId=${order.id}`)}><InvoiceIcon fontSize="small" /></IconButton></Tooltip>
                     )}
                     <Tooltip title="Delete"><IconButton size="small" color="error" onClick={() => handleDelete(order)} disabled={order.status !== 'draft'}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
                   </Stack>

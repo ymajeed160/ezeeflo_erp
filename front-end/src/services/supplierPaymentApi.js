@@ -9,6 +9,8 @@ const supplierPaymentApi = {
   approve: (id) => api.post(`/supplier-payments/${id}/approve`),
   confirm: (id) => api.post(`/supplier-payments/${id}/confirm`),
   postToJournal: (id, data = {}) => api.post(`/supplier-payments/${id}/post-to-journal`, data),
+  getPostingPreview: (id) => api.get(`/supplier-payments/${id}/posting-preview`),
+  reverse: (id) => api.post(`/supplier-payments/${id}/reverse`),
 };
 
 export default supplierPaymentApi;

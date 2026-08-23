@@ -76,6 +76,15 @@ export const postToJournalSupplierPayment = createAsyncThunk('supplierPayment/po
   }
 });
 
+export const reverseSupplierPayment = createAsyncThunk('supplierPayment/reverse', async (id, { rejectWithValue }) => {
+  try {
+    const response = await supplierPaymentApi.reverse(id);
+    return response.data.data;
+  } catch (error) {
+    return rejectWithValue(error.response?.data?.message || 'Failed to reverse supplier payment');
+  }
+});
+
 const supplierPaymentSlice = createSlice({
   name: 'supplierPayment',
   initialState,
@@ -131,7 +140,16 @@ const supplierPaymentSlice = createSlice({
         if (idx >= 0) state.items[idx] = action.payload;
         if (state.currentItem && state.currentItem.id === action.payload.id) state.currentItem = action.payload;
       })
-      .addCase(postToJournalSupplierPayment.rejected, (state, action) => { state.submitting = false; state.error = action.payload; });
+      .addCase(postToJournalSupplierPayment.rejected, (state, action) => { state.submitting = false; state.error = action.payload; })
+
+      .addCase(reverseSupplierPayment.pending, (state) => { state.submitting = true; state.error = null; })
+      .addCase(reverseSupplierPayment.fulfilled, (state, action) => {
+        state.submitting = false;
+        const idx = state.items.findIndex(i => i.id === action.payload.id);
+        if (idx >= 0) state.items[idx] = action.payload;
+        if (state.currentItem && state.currentItem.id === action.payload.id) state.currentItem = action.payload;
+      })
+      .addCase(reverseSupplierPayment.rejected, (state, action) => { state.submitting = false; state.error = action.payload; });
   }
 });
 

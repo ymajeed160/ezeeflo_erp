@@ -10,6 +10,8 @@ class SupplierPaymentDTO {
     this.referenceNumber = data.reference_number || data.referenceNumber || null;
     this.bankAccountId = data.bank_account_id || data.bankAccountId || null;
     this.bankAccount = data.bank_account || data.bankAccount || null;
+    this.cashAccountId = data.cash_account_id || data.cashAccountId || null;
+    this.cashAccount = data.cash_account || data.cashAccount || null;
     this.notes = data.notes || null;
     this.status = data.status || 'draft';
     this.journalEntryId = data.journal_entry_id || data.journalEntryId || null;
@@ -39,6 +41,8 @@ class SupplierPaymentDTO {
       referenceNumber: this.referenceNumber,
       bankAccountId: this.bankAccountId,
       bankAccount: this.bankAccount,
+      cashAccountId: this.cashAccountId,
+      cashAccount: this.cashAccount,
       notes: this.notes,
       status: this.status,
       journalEntryId: this.journalEntryId,

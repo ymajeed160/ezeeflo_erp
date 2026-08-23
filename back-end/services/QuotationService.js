@@ -66,9 +66,11 @@ class QuotationService {
     if (!quotation) throw new Error('Quotation not found');
 
     const validTransitions = {
-      draft: ['sent'],
-      sent: ['approved', 'rejected'],
-      approved: ['converted'],
+      draft: ['approved', 'rejected', 'cancelled'],
+      sent: ['approved', 'rejected', 'cancelled'],
+      approved: ['converted', 'partially_ordered', 'fully_ordered', 'cancelled'],
+      partially_ordered: ['fully_ordered', 'cancelled'],
+      rejected: ['draft'],
     };
 
     const currentStatus = quotation.status;
@@ -82,43 +84,132 @@ class QuotationService {
     return await this.getById(tenantId, id);
   }
 
+  /**
+   * Confirm/approve a quotation internally. Independent from sending.
+   */
+  async confirm(tenantId, id, userId) {
+    const quotation = await quotationRepo.findById(tenantId, id);
+    if (!quotation) throw new Error('Quotation not found');
+
+    if (quotation.status === 'cancelled') {
+      throw new Error('This quotation cannot be confirmed because it has already been cancelled.');
+    }
+    if (['converted', 'fully_ordered'].includes(quotation.status)) {
+      throw new Error('This quotation cannot be confirmed because it has already been fully ordered.');
+    }
+    if (!['draft', 'sent'].includes(quotation.status)) {
+      throw new Error(`Quotation with status ${quotation.status} cannot be confirmed`);
+    }
+
+    await quotationRepo.confirm(tenantId, id, userId);
+    await AuditLogService.log(tenantId, userId, 'Quotation', id, 'QUOTATION_CONFIRMED', {
+      from: quotation.status,
+      to: 'approved',
+    });
+
+    return await this.getById(tenantId, id);
+  }
+
   async approve(tenantId, id, userId) {
-    return await this.updateStatus(tenantId, id, 'approved', userId);
+    return await this.confirm(tenantId, id, userId);
   }
 
   async reject(tenantId, id, userId) {
     return await this.updateStatus(tenantId, id, 'rejected', userId);
   }
 
-  async convertToSalesOrder(tenantId, id, userId) {
+  async cancel(tenantId, id, userId) {
+    return await this.updateStatus(tenantId, id, 'cancelled', userId);
+  }
+
+  async convertToSalesOrder(tenantId, id, userId, data = {}) {
     const quotation = await quotationRepo.findById(tenantId, id);
     if (!quotation) throw new Error('Quotation not found');
-    if (quotation.status !== 'approved') {
-      throw new Error('Only approved quotations can be converted to sales orders');
+    if (!['approved', 'partially_ordered'].includes(quotation.status)) {
+      throw new Error('Only approved or partially ordered quotations can be converted to sales orders');
     }
 
-    // Build sales order data from quotation
+    const requestedLines = data.details || data.lines || null;
+
+    // Build the order lines (full remaining or requested partial quantities)
+    const orderLines = [];
+    for (const d of quotation.details) {
+      const quotedQty = parseFloat(d.quantity);
+      const orderedQty = parseFloat(d.orderedQuantity || 0);
+      const available = quotedQty - orderedQty;
+
+      let orderQty = available;
+      if (requestedLines) {
+        const req = requestedLines.find((l) => l.quotationDetailId === d.id);
+        if (!req) continue; // not selected in this partial conversion
+        orderQty = parseFloat(req.quantity || 0);
+      }
+
+      if (orderQty <= 0) continue;
+      if (orderQty > available + 0.001) {
+        throw new Error(
+          `Order quantity for ${d.item ? d.item.name : d.itemId} exceeds remaining quotation quantity. Available: ${available}`
+        );
+      }
+
+      orderLines.push({
+        quotationDetailId: d.id,
+        itemId: d.itemId,
+        description: d.description,
+        quantity: orderQty,
+        unitPrice: d.unitPrice,
+        taxPercentage: d.taxPercentage || 0,
+        discountPercentage: d.discountPercentage || 0,
+      });
+    }
+
+    if (orderLines.length === 0) {
+      throw new Error('No remaining quantity available to convert');
+    }
+
     const salesOrderService = require('./SalesOrderService');
     const soData = {
       customerId: quotation.customerId,
       quotationId: quotation.id,
+      warehouseId: quotation.warehouseId || null,
       orderDate: new Date().toISOString().split('T')[0],
       reference: quotation.reference,
       notes: `Converted from Quotation ${quotation.quotationNumber}`,
       termsConditions: quotation.termsConditions,
       status: 'draft',
-      details: quotation.details.map(d => ({
-        itemId: d.itemId,
-        description: d.description,
-        quantity: d.quantity,
-        unitPrice: d.unitPrice,
-        taxPercentage: d.taxPercentage,
-        discountPercentage: d.discountPercentage,
-        lineTotal: d.lineTotal,
-      })),
+      details: orderLines,
     };
 
     return await salesOrderService.create(tenantId, soData, userId);
+  }
+
+  async getConvertibleLines(tenantId, id) {
+    const quotation = await quotationRepo.findById(tenantId, id);
+    if (!quotation) throw new Error('Quotation not found');
+
+    return {
+      id: quotation.id,
+      quotationNumber: quotation.quotationNumber,
+      customerId: quotation.customerId,
+      warehouseId: quotation.warehouseId,
+      status: quotation.status,
+      lines: quotation.details.map((d) => {
+        const quotedQty = parseFloat(d.quantity);
+        const orderedQty = parseFloat(d.orderedQuantity || 0);
+        return {
+          quotationDetailId: d.id,
+          itemId: d.itemId,
+          itemName: d.item ? (d.item.name || d.item.itemName || '') : '',
+          description: d.description,
+          quotedQuantity: quotedQty,
+          orderedQuantity: orderedQty,
+          availableQuantity: Math.max(0, quotedQty - orderedQty),
+          unitPrice: parseFloat(d.unitPrice),
+          taxPercentage: parseFloat(d.taxPercentage || 0),
+          discountPercentage: parseFloat(d.discountPercentage || 0),
+        };
+      }),
+    };
   }
 
   _validateLines(details) {

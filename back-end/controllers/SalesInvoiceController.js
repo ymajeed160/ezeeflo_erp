@@ -31,7 +31,7 @@ class SalesInvoiceController {
       const tenantId = req.user.tenantId;
       const salesOrderId = req.params.id;
       const userId = req.user?.id;
-      const result = await SalesInvoiceService.generateFromSalesOrder(tenantId, salesOrderId, userId);
+      const result = await SalesInvoiceService.generateFromSalesOrder(tenantId, salesOrderId, userId, req.body || {});
       res.status(201).json(result);
     } catch (error) {
       next(error);
@@ -46,7 +46,7 @@ class SalesInvoiceController {
       const tenantId = req.user.tenantId;
       const deliveryNoteId = req.params.id;
       const userId = req.user?.id;
-      const result = await SalesInvoiceService.generateFromDeliveryNote(tenantId, deliveryNoteId, userId);
+      const result = await SalesInvoiceService.generateFromDeliveryNote(tenantId, deliveryNoteId, userId, req.body || {});
       res.status(201).json({ success: true, data: result, message: 'Sales Invoice generated from Delivery Note successfully' });
     } catch (error) {
       next(error);
@@ -99,6 +99,21 @@ class SalesInvoiceController {
       const id = req.params.id;
       const result = await SalesInvoiceService.getById(tenantId, id);
       res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/sales-invoices/:id/posting-preview
+   * Returns the auto-resolved posting accounts (customer A/R, revenue, VAT).
+   */
+  static async getPostingPreview(req, res, next) {
+    try {
+      const tenantId = req.user.tenantId;
+      const id = req.params.id;
+      const result = await SalesInvoiceService.getPostingPreview(tenantId, id);
+      res.json({ success: true, data: result });
     } catch (error) {
       next(error);
     }

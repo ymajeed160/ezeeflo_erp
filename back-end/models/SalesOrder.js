@@ -33,7 +33,7 @@ module.exports = (sequelize, DataTypes) => {
       discountAmount: { type: DataTypes.DECIMAL(15, 2), allowNull: false, defaultValue: 0 },
       taxAmount: { type: DataTypes.DECIMAL(15, 2), allowNull: false, defaultValue: 0 },
       totalAmount: { type: DataTypes.DECIMAL(15, 2), allowNull: false, defaultValue: 0 },
-      status: { type: DataTypes.ENUM('draft', 'approved', 'partially_delivered', 'delivered', 'closed'), allowNull: false, defaultValue: 'draft' },
+      status: { type: DataTypes.ENUM('draft', 'approved', 'confirmed', 'partially_delivered', 'delivered', 'partially_invoiced', 'fully_invoiced', 'closed', 'cancelled'), allowNull: false, defaultValue: 'draft' },
       approvedBy: { type: DataTypes.UUID, allowNull: true },
       approvedAt: { type: DataTypes.DATE, allowNull: true },
       createdBy: { type: DataTypes.UUID, allowNull: true },

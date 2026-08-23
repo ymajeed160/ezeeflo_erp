@@ -54,6 +54,7 @@ import {
   clearSelected,
 } from '../store/slices/customerPaymentSlice';
 import { fetchCustomers } from '../store/slices/customerSlice';
+import { fetchActiveBankAccounts } from '../store/slices/bankAccountSlice';
 import { confirmDialog, apiSuccess, apiError } from '../utils/toast';
 import accountApi from '../services/accountApi';
 import CustomerPaymentApi from '../services/customerPaymentApi';
@@ -69,6 +70,7 @@ const paymentMethods = [
   { value: 'cash', label: 'Cash' },
   { value: 'bank_transfer', label: 'Bank Transfer' },
   { value: 'cheque', label: 'Cheque' },
+  { value: 'online', label: 'Online Payment' },
   { value: 'credit_card', label: 'Credit Card' },
   { value: 'other', label: 'Other' },
 ];
@@ -79,6 +81,7 @@ const CustomerPayments = () => {
   const dispatch = useDispatch();
   const { items, selected, loading, error, count, page, limit, totalPages } = useSelector((s) => s.customerPayments);
   const customersList = useSelector((s) => s.customers?.customers || []);
+  const activeBankAccounts = useSelector((s) => s.bankAccounts?.activeBankAccounts || []);
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -88,10 +91,11 @@ const CustomerPayments = () => {
   const [editId, setEditId] = useState(null);
   const [filteredInvoices, setFilteredInvoices] = useState([]);
   const [formCustomerId, setFormCustomerId] = useState('');
-  const [bankAccounts, setBankAccounts] = useState([]);
-  const [arAccounts, setArAccounts] = useState([]);
+  const [cashAccounts, setCashAccounts] = useState([]);
   const [openPostDialog, setOpenPostDialog] = useState(false);
   const [postTarget, setPostTarget] = useState(null);
+  const [postPreview, setPostPreview] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const { register, handleSubmit, control, reset, watch, setValue, formState: { errors } } = useForm({
     defaultValues: {
@@ -100,9 +104,8 @@ const CustomerPayments = () => {
       amount: 0,
       paymentMethod: 'bank_transfer',
       reference: '',
-      bankAccountId: '',
-      paymentAccountId: '',
-      customerAccountId: '',
+      cashAccountId: '',
+      bankAccountRefId: '',
       notes: '',
       allocations: [],
     },
@@ -110,9 +113,11 @@ const CustomerPayments = () => {
 
   const { fields, append, remove } = useFieldArray({ control, name: 'allocations' });
   const selectedCustomerId = formCustomerId;
+  const paymentMethod = watch('paymentMethod');
   const paymentAmount = watch('amount');
   const allocatedAmount = watch('allocations')?.reduce((sum, a) => sum + (parseFloat(a.allocatedAmount) || 0), 0) || 0;
   const unallocated = (parseFloat(paymentAmount) || 0) - allocatedAmount;
+  const customerOutstanding = filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.outstandingBalance) || 0), 0);
 
   const loadData = useCallback(() => {
     dispatch(fetchCustomerPayments({ search, status: statusFilter, customerId: customerFilter, page, limit }));
@@ -127,19 +132,18 @@ const CustomerPayments = () => {
   useEffect(() => {
     const fetchAccounts = async () => {
       try {
-        const [bankRes, arRes] = await Promise.all([
-          accountApi.getByType('asset'),
-          accountApi.getByType('asset'),
-        ]);
-        // Filter bank/cash accounts (from asset accounts)
-        setBankAccounts(bankRes?.data || bankRes || []);
-        setArAccounts(arRes?.data || arRes || []);
+        const res = await accountApi.getByType('asset');
+        const all = res?.data || res || [];
+        // Cash accounts: cash/petty-cash-like, excluding bank accounts
+        const cash = all.filter((a) => /cash|petty/i.test(`${a.code || ''} ${a.name || ''}`) && !/bank/i.test(`${a.code || ''} ${a.name || ''}`));
+        setCashAccounts(cash);
       } catch (e) {
         // Silently fail
       }
     };
     fetchAccounts();
-  }, []);
+    dispatch(fetchActiveBankAccounts());
+  }, [dispatch]);
 
   useEffect(() => {
     if (id && (id === 'new' || id === ':id')) return;
@@ -156,9 +160,8 @@ const CustomerPayments = () => {
         amount: selected.amount || 0,
         paymentMethod: selected.paymentMethod || 'bank_transfer',
         reference: selected.reference || '',
-        bankAccountId: selected.bankAccountId || '',
-        paymentAccountId: selected.paymentAccountId || '',
-        customerAccountId: selected.customerAccountId || '',
+        cashAccountId: selected.cashAccountId || '',
+        bankAccountRefId: selected.bankAccountRefId || '',
         notes: selected.notes || '',
         allocations: selected.allocations?.length ? selected.allocations.map((a) => ({
           invoiceId: a.salesInvoiceId || a.invoiceId || '',
@@ -196,9 +199,8 @@ const CustomerPayments = () => {
       amount: 0,
       paymentMethod: 'bank_transfer',
       reference: '',
-      bankAccountId: '',
-      paymentAccountId: '',
-      customerAccountId: '',
+      cashAccountId: '',
+      bankAccountRefId: '',
       notes: '',
       allocations: [],
     });
@@ -236,21 +238,30 @@ const CustomerPayments = () => {
 
   const handlePost = async (cp) => {
     setPostTarget(cp);
+    setPostPreview(null);
     setOpenPostDialog(true);
+    setPreviewLoading(true);
+    try {
+      const preview = await CustomerPaymentApi.getPostingPreview(cp.id);
+      setPostPreview(preview);
+    } catch (error) {
+      apiError(error.response?.data?.message || error.message || 'Failed to load posting preview');
+      setOpenPostDialog(false);
+      setPostTarget(null);
+    } finally {
+      setPreviewLoading(false);
+    }
   };
 
   const handlePostSubmit = async () => {
     if (!postTarget) return;
-    const paymentAccountId = watch('paymentAccountId');
-    const customerAccountId = watch('customerAccountId');
-    const payload = { paymentAccountId, customerAccountId };
-    Object.keys(payload).forEach(k => { if (!payload[k]) delete payload[k]; });
     try {
-      const response = await CustomerPaymentApi.post(postTarget.id, payload);
+      const response = await CustomerPaymentApi.post(postTarget.id, {});
       if (response) {
         apiSuccess('Payment posted successfully - Journal entry created');
         setOpenPostDialog(false);
         setPostTarget(null);
+        setPostPreview(null);
         loadData();
       }
     } catch (error) {
@@ -300,9 +311,8 @@ const CustomerPayments = () => {
       ...data,
       customerId: data.customerId,
       amount: parseFloat(data.amount),
-      bankAccountId: data.bankAccountId || null,
-      paymentAccountId: data.paymentAccountId || null,
-      customerAccountId: data.customerAccountId || null,
+      cashAccountId: data.cashAccountId || null,
+      bankAccountRefId: data.bankAccountRefId || null,
       allocations: data.allocations?.map((a) => ({
         salesInvoiceId: a.invoiceId || null,
         allocatedAmount: parseFloat(a.allocatedAmount) || 0,
@@ -535,6 +545,11 @@ const CustomerPayments = () => {
                     />
                   )}
                 />
+                {selectedCustomerId && (
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                    Customer Outstanding: AED {formatCurrency(customerOutstanding)}
+                  </Typography>
+                )}
               </Grid>
 
               {/* Payment Date */}
@@ -575,7 +590,13 @@ const CustomerPayments = () => {
                   size="small"
                   label="Payment Method"
                   disabled={viewMode}
-                  {...register('paymentMethod', { required: 'Method is required' })}
+                  {...register('paymentMethod', {
+                    required: 'Method is required',
+                    onChange: () => {
+                      setValue('cashAccountId', '');
+                      setValue('bankAccountRefId', '');
+                    },
+                  })}
                   error={!!errors.paymentMethod}
                   helperText={errors.paymentMethod?.message}
                 >
@@ -598,62 +619,65 @@ const CustomerPayments = () => {
                 />
               </Grid>
 
-              {/* Chart of Accounts Selection */}
+              {/* Account Selection (payment-method driven) */}
               <Grid item xs={12}>
                 <Typography variant="subtitle1" fontWeight={600} sx={{ mt: 1, mb: 1 }}>
-                  General Ledger Account Mapping
+                  Account Selection
                 </Typography>
               </Grid>
-              <Grid item xs={12} sm={6}>
-                <Controller
-                  name="paymentAccountId"
-                  control={control}
-                  rules={{ required: 'Payment account is required' }}
-                  render={({ field }) => (
-                    <Autocomplete
-                      disabled={viewMode}
-                      size="small"
-                      options={bankAccounts}
-                      getOptionLabel={(o) => `${o.code || ''} - ${o.name || ''}`}
-                      value={bankAccounts.find((a) => a.id === field.value) || null}
-                      onChange={(e, v) => field.onChange(v ? v.id : '')}
-                      renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          label="Payment Account (Bank/Cash)"
-                          error={!!errors.paymentAccountId}
-                          helperText={errors.paymentAccountId?.message}
-                        />
-                      )}
-                    />
-                  )}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Controller
-                  name="customerAccountId"
-                  control={control}
-                  rules={{ required: 'Customer account is required' }}
-                  render={({ field }) => (
-                    <Autocomplete
-                      disabled={viewMode}
-                      size="small"
-                      options={arAccounts}
-                      getOptionLabel={(o) => `${o.code || ''} - ${o.name || ''}`}
-                      value={arAccounts.find((a) => a.id === field.value) || null}
-                      onChange={(e, v) => field.onChange(v ? v.id : '')}
-                      renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          label="Customer Account (A/R)"
-                          error={!!errors.customerAccountId}
-                          helperText={errors.customerAccountId?.message}
-                        />
-                      )}
-                    />
-                  )}
-                />
-              </Grid>
+              {paymentMethod === 'cash' ? (
+                <Grid item xs={12} sm={6}>
+                  <Controller
+                    name="cashAccountId"
+                    control={control}
+                    rules={{ required: 'Cash account is required' }}
+                    render={({ field }) => (
+                      <Autocomplete
+                        disabled={viewMode}
+                        size="small"
+                        options={cashAccounts}
+                        getOptionLabel={(o) => `${o.code || ''} - ${o.name || ''}`}
+                        value={cashAccounts.find((a) => a.id === field.value) || null}
+                        onChange={(e, v) => field.onChange(v ? v.id : '')}
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            label="Cash Account"
+                            error={!!errors.cashAccountId}
+                            helperText={errors.cashAccountId?.message}
+                          />
+                        )}
+                      />
+                    )}
+                  />
+                </Grid>
+              ) : (
+                <Grid item xs={12} sm={6}>
+                  <Controller
+                    name="bankAccountRefId"
+                    control={control}
+                    rules={{ required: 'Bank account is required' }}
+                    render={({ field }) => (
+                      <Autocomplete
+                        disabled={viewMode}
+                        size="small"
+                        options={activeBankAccounts}
+                        getOptionLabel={(o) => `${o.accountName || o.name || ''}${o.bankName ? ` - ${o.bankName}` : ''}`}
+                        value={activeBankAccounts.find((a) => a.id === field.value) || null}
+                        onChange={(e, v) => field.onChange(v ? v.id : '')}
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            label="Bank Account"
+                            error={!!errors.bankAccountRefId}
+                            helperText={errors.bankAccountRefId?.message}
+                          />
+                        )}
+                      />
+                    )}
+                  />
+                </Grid>
+              )}
 
               {/* Notes */}
               <Grid item xs={12}>
@@ -715,7 +739,19 @@ const CustomerPayments = () => {
                               `${o.invoiceNumber || ''} | ${o.invoiceDate ? new Date(o.invoiceDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''} | Total: ${formatCurrency(o.grandTotal || 0)} | Due: ${formatCurrency(o.outstandingBalance || 0)}`
                             }
                             value={filteredInvoices.find((inv) => String(inv.id) === String(f.value)) || null}
-                            onChange={(e, v) => f.onChange(v ? String(v.id) : '')}
+                            onChange={(e, v) => {
+                              f.onChange(v ? String(v.id) : '');
+                              if (v) {
+                                const amt = parseFloat(v.outstandingBalance) || 0;
+                                setValue(`allocations.${index}.allocatedAmount`, amt);
+                                const allocs = watch('allocations') || [];
+                                const total = allocs.reduce(
+                                  (s, a, i2) => s + (i2 === index ? amt : parseFloat(a.allocatedAmount) || 0),
+                                  0
+                                );
+                                setValue('amount', total);
+                              }
+                            }}
                             renderInput={(params) => (
                               <TextField {...params} label="Invoice" />
                             )}
@@ -795,52 +831,48 @@ const CustomerPayments = () => {
         <DialogTitle>Post Payment #{postTarget?.paymentNumber || ''}</DialogTitle>
         <DialogContent dividers>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            This will create a journal entry. Please review the accounts below before posting.
+            This will create a journal entry. Please review the resolved accounts below before posting.
           </Typography>
           <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}>
-            <Grid container spacing={2}>
-              <Grid item xs={12}>
-                <Controller
-                  name="paymentAccountId"
-                  control={control}
-                  render={({ field }) => (
-                    <Autocomplete
-                      value={bankAccounts.find((a) => a.id === field.value) || null}
-                      onChange={(_, val) => field.onChange(val ? val.id : '')}
-                      options={bankAccounts}
-                      getOptionLabel={(opt) => `${opt.code} - ${opt.name}`}
-                      isOptionEqualToValue={(opt, val) => opt.id === val.id}
-                      renderInput={(params) => (
-                        <TextField {...params} label="Payment Account (Bank/Cash)" size="small" fullWidth />
-                      )}
-                    />
-                  )}
-                />
+            {previewLoading ? (
+              <Typography variant="body2">Loading resolved accounts...</Typography>
+            ) : postPreview ? (
+              <Grid container spacing={1}>
+                <Grid item xs={12}>
+                  <Typography variant="caption" color="text.secondary">DEBIT (Cash/Bank)</Typography>
+                  <Typography variant="body1" fontWeight={600}>
+                    {postPreview.paymentAccount
+                      ? `${postPreview.paymentAccount.code} - ${postPreview.paymentAccount.name}`
+                      : 'Not resolved'}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="caption" color="text.secondary">CREDIT (Customer A/R)</Typography>
+                  <Typography variant="body1" fontWeight={600}>
+                    {postPreview.customerAccount
+                      ? `${postPreview.customerAccount.code} - ${postPreview.customerAccount.name}`
+                      : 'Not resolved'}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} sx={{ mt: 1 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Amount: AED {formatCurrency(postPreview.amount)}
+                  </Typography>
+                </Grid>
               </Grid>
-              <Grid item xs={12}>
-                <Controller
-                  name="customerAccountId"
-                  control={control}
-                  render={({ field }) => (
-                    <Autocomplete
-                      value={arAccounts.find((a) => a.id === field.value) || null}
-                      onChange={(_, val) => field.onChange(val ? val.id : '')}
-                      options={arAccounts}
-                      getOptionLabel={(opt) => `${opt.code} - ${opt.name}`}
-                      isOptionEqualToValue={(opt, val) => opt.id === val.id}
-                      renderInput={(params) => (
-                        <TextField {...params} label="Customer Account (A/R)" size="small" fullWidth />
-                      )}
-                    />
-                  )}
-                />
-              </Grid>
-            </Grid>
+            ) : (
+              <Typography variant="body2">No preview available.</Typography>
+            )}
           </Paper>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleClosePost}>Cancel</Button>
-          <Button onClick={handlePostSubmit} variant="contained" color="primary">
+          <Button
+            onClick={handlePostSubmit}
+            variant="contained"
+            color="primary"
+            disabled={previewLoading || !postPreview}
+          >
             Post Payment
           </Button>
         </DialogActions>

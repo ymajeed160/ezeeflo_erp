@@ -42,8 +42,9 @@ import {
   Refresh as RefreshIcon,
   Print as PrintIcon,
   Email as EmailIcon,
-  CheckCircleOutline as ApproveIcon,
+  HowToReg as ConfirmIcon,
   Cancel as RejectIcon,
+  DoNotDisturb as CancelIcon,
   Send as SendIcon,
   SwapHoriz as ConvertIcon,
   PictureAsPdf as PdfIcon,
@@ -56,10 +57,10 @@ import {
   fetchQuotation,
   createQuotation,
   updateQuotation,
-  updateQuotationStatus,
   deleteQuotation,
-  approveQuotation,
+  confirmQuotation,
   rejectQuotation,
+  cancelQuotation,
   convertQuotationToSalesOrder,
   clearSelectedQuotation,
 } from '../store/slices/quotationSlice';
@@ -74,6 +75,9 @@ const statusColors = {
   approved: 'success',
   rejected: 'error',
   converted: 'primary',
+  partially_ordered: 'warning',
+  fully_ordered: 'success',
+  cancelled: 'error',
 };
 
 const Quotations = () => {
@@ -190,8 +194,20 @@ const Quotations = () => {
     }
   };
 
-  const handleApprove = (quotation) => {
-    dispatch(approveQuotation(quotation.id)).then(() => loadData());
+  const handleConfirm = async (quotation) => {
+    const confirmed = await confirmDialog(
+      'Confirm Quotation\n\nAre you sure you want to confirm this quotation? Once confirmed, it can be used to create a Sales Order.'
+    );
+    if (confirmed) {
+      dispatch(confirmQuotation(quotation.id)).then(() => loadData());
+    }
+  };
+
+  const handleCancel = async (quotation) => {
+    const confirmed = await confirmDialog('Are you sure you want to cancel this quotation?');
+    if (confirmed) {
+      dispatch(cancelQuotation(quotation.id)).then(() => loadData());
+    }
   };
 
   const handleReject = (quotation) => {
@@ -226,7 +242,6 @@ Total: ${q.totalAmount}`;
     } else {
       window.open(`mailto:?subject=${subject}&body=${body}`, '_blank');
     }
-    dispatch(updateQuotationStatus({ id: q.id, status: 'sent' })).then(() => loadData());
     setSendDialogOpen(false);
   };
 
@@ -239,20 +254,17 @@ Total: ${q.totalAmount}`;
     } else {
       window.open(`https://wa.me/?text=${text}`, '_blank');
     }
-    dispatch(updateQuotationStatus({ id: q.id, status: 'sent' })).then(() => loadData());
     setSendDialogOpen(false);
   };
 
   const handleMarkAsSent = (q) => {
-    dispatch(updateQuotationStatus({ id: q.id, status: 'sent' })).then(() => loadData());
     setSendDialogOpen(false);
   };
 
   const handleConvertToSO = async (quotation) => {
-    const confirmed = await confirmDialog('Convert this quotation to a Sales Order?');
-    if (confirmed) {
-      dispatch(convertQuotationToSalesOrder(quotation.id)).then(() => loadData());
-    }
+    // Open the New Sales Order screen pre-filled from this quotation,
+    // allowing partial quantities to be selected before creation.
+    navigate(`/app/sales/sales-orders/new?quotationId=${quotation.id}`);
   };
 
   const onSubmit = async (data) => {
@@ -352,9 +364,11 @@ Total: ${q.totalAmount}`;
             <TextField select fullWidth size="small" label="Status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
               <MenuItem value="">All</MenuItem>
               <MenuItem value="draft">Draft</MenuItem>
-              <MenuItem value="sent">Sent</MenuItem>
               <MenuItem value="approved">Approved</MenuItem>
+              <MenuItem value="partially_ordered">Partially Ordered</MenuItem>
+              <MenuItem value="fully_ordered">Fully Ordered</MenuItem>
               <MenuItem value="rejected">Rejected</MenuItem>
+              <MenuItem value="cancelled">Cancelled</MenuItem>
               <MenuItem value="converted">Converted</MenuItem>
             </TextField>
           </Grid>
@@ -394,21 +408,30 @@ Total: ${q.totalAmount}`;
                   <Chip label={q.status?.toUpperCase()} color={statusColors[q.status] || 'default'} size="small" />
                 </TableCell>
                 <TableCell align="center">
-                  <Tooltip title="View"><IconButton size="small" onClick={() => handleView(q)}><ViewIcon fontSize="small" /></IconButton></Tooltip>
-                  <Tooltip title="Edit"><IconButton size="small" onClick={() => handleEdit(q)}><EditIcon fontSize="small" /></IconButton></Tooltip>
-                  {q.status === 'draft' && (
-                    <Tooltip title="Send to Customer"><IconButton size="small" color="info" onClick={() => handleSend(q)}><SendIcon fontSize="small" /></IconButton></Tooltip>
-                  )}
-                  {q.status === 'sent' && (
-                    <Tooltip title="Approve"><IconButton size="small" color="success" onClick={() => handleApprove(q)}><ApproveIcon fontSize="small" /></IconButton></Tooltip>
-                  )}
-                  {q.status === 'sent' && (
-                    <Tooltip title="Reject"><IconButton size="small" color="error" onClick={() => handleReject(q)}><RejectIcon fontSize="small" /></IconButton></Tooltip>
-                  )}
-                  {q.status === 'approved' && (
-                    <Tooltip title="Convert to Sales Order"><IconButton size="small" color="primary" onClick={() => handleConvertToSO(q)}><ConvertIcon fontSize="small" /></IconButton></Tooltip>
-                  )}
-                  <Tooltip title="Delete"><IconButton size="small" color="error" onClick={() => handleDelete(q)}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
+                  <Stack direction="row" spacing={0.5} justifyContent="center">
+                    <Tooltip title="View"><IconButton size="small" onClick={() => handleView(q)}><ViewIcon fontSize="small" /></IconButton></Tooltip>
+                    {q.status === 'draft' && (
+                      <Tooltip title="Edit"><IconButton size="small" onClick={() => handleEdit(q)}><EditIcon fontSize="small" /></IconButton></Tooltip>
+                    )}
+                    {q.status === 'draft' && (
+                      <Tooltip title="Confirm"><IconButton size="small" color="success" onClick={() => handleConfirm(q)}><ConfirmIcon fontSize="small" /></IconButton></Tooltip>
+                    )}
+                    {['draft', 'approved', 'partially_ordered', 'fully_ordered'].includes(q.status) && (
+                      <Tooltip title="Send to Customer"><IconButton size="small" color="info" onClick={() => handleSend(q)}><SendIcon fontSize="small" /></IconButton></Tooltip>
+                    )}
+                    {['draft', 'sent'].includes(q.status) && (
+                      <Tooltip title="Reject"><IconButton size="small" color="error" onClick={() => handleReject(q)}><RejectIcon fontSize="small" /></IconButton></Tooltip>
+                    )}
+                    {['approved', 'partially_ordered'].includes(q.status) && (
+                      <Tooltip title="Create Sales Order"><IconButton size="small" color="primary" onClick={() => handleConvertToSO(q)}><ConvertIcon fontSize="small" /></IconButton></Tooltip>
+                    )}
+                    {['approved', 'partially_ordered', 'sent'].includes(q.status) && (
+                      <Tooltip title="Cancel"><IconButton size="small" color="warning" onClick={() => handleCancel(q)}><CancelIcon fontSize="small" /></IconButton></Tooltip>
+                    )}
+                    {q.status === 'draft' && (
+                      <Tooltip title="Delete"><IconButton size="small" color="error" onClick={() => handleDelete(q)}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
+                    )}
+                  </Stack>
                 </TableCell>
               </TableRow>
             ))}

@@ -6,7 +6,7 @@ import {
   TableHead, TableRow, Paper, IconButton, Chip, Dialog,
   DialogTitle, DialogContent, DialogActions, TextField, MenuItem,
   Alert, CircularProgress, Tooltip, Grid, InputAdornment,
-  TablePagination, Tabs, Tab, Card, CardContent, Divider,
+  TablePagination, Tabs, Tab, Card, CardContent, Divider, Autocomplete,
 } from '@mui/material';
 import {
   Add, Edit, Delete, Search, Refresh, Visibility, ArrowBack,
@@ -16,6 +16,7 @@ import {
   fetchCustomers, createCustomer, updateCustomer, deleteCustomer,
   toggleCustomerStatus, clearCustomerError, clearSelectedCustomer,
 } from '../store/slices/customerSlice';
+import accountApi from '../services/accountApi';
 
 const INITIAL_FORM = {
   code: '',
@@ -100,6 +101,7 @@ const Customers = () => {
   const [formErrors, setFormErrors] = useState({});
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [tabValue, setTabValue] = useState(0);
+  const [arAccounts, setArAccounts] = useState([]);
 
   const {
     customers,
@@ -125,6 +127,17 @@ const Customers = () => {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    const loadAccounts = async () => {
+      try {
+        const res = await accountApi.getByType('asset');
+        const data = res.data?.data || res.data || [];
+        setArAccounts(Array.isArray(data) ? data : []);
+      } catch (e) { /* ignore */ }
+    };
+    loadAccounts();
+  }, []);
 
   useEffect(() => {
     if ((isEditing || isNew) && id) {
@@ -822,6 +835,24 @@ const Customers = () => {
                   helperText={formErrors.creditLimit}
                   size="small"
                   inputProps={{ min: 0, step: '0.01' }}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <Autocomplete
+                  size="small"
+                  options={arAccounts}
+                  getOptionLabel={(opt) => (opt.code ? `${opt.code} - ${opt.name}` : opt.name || '')}
+                  value={arAccounts.find((a) => a.id === form.arAccountId) || null}
+                  onChange={(e, val) => setForm({ ...form, arAccountId: val ? val.id : '' })}
+                  isOptionEqualToValue={(opt, val) => opt.id === val.id}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Chart of Account (A/R)"
+                      helperText="Accounts Receivable account used when posting sales invoices"
+                      fullWidth
+                    />
+                  )}
                 />
               </Grid>
               <Grid item xs={12} md={6}>

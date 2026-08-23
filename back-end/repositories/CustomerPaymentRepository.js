@@ -1,5 +1,5 @@
 'use strict';
-const { CustomerPayment, CustomerPaymentAllocation, Customer, Account, SalesInvoice, User } = require('../models');
+const { CustomerPayment, CustomerPaymentAllocation, Customer, Account, SalesInvoice, User, BankAccount } = require('../models');
 
 class CustomerPaymentRepository {
   /**
@@ -43,6 +43,8 @@ class CustomerPaymentRepository {
         { model: Account, as: 'bankAccount', attributes: ['id', 'name', 'code'], required: false },
         { model: Account, as: 'paymentAccount', attributes: ['id', 'code', 'name'], required: false },
         { model: Account, as: 'customerAccount', attributes: ['id', 'code', 'name'], required: false },
+        { model: Account, as: 'cashAccount', attributes: ['id', 'code', 'name'], required: false },
+        { model: BankAccount, as: 'bankAccountRef', attributes: ['id', 'accountName', 'bankName', 'chartOfAccountId'], required: false },
         { model: User, as: 'creator', attributes: ['id', 'username'] },
       ],
       order,
@@ -71,6 +73,8 @@ class CustomerPaymentRepository {
         { model: Account, as: 'bankAccount', attributes: ['id', 'name', 'code'], required: false },
         { model: Account, as: 'paymentAccount', attributes: ['id', 'code', 'name'], required: false },
         { model: Account, as: 'customerAccount', attributes: ['id', 'code', 'name'], required: false },
+        { model: Account, as: 'cashAccount', attributes: ['id', 'code', 'name'], required: false },
+        { model: BankAccount, as: 'bankAccountRef', attributes: ['id', 'accountName', 'bankName', 'chartOfAccountId'], required: false },
         { model: User, as: 'creator', attributes: ['id', 'username'] },
         { model: User, as: 'updater', attributes: ['id', 'username'] },
         {

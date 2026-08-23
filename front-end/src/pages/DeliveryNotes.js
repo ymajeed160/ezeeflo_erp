@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Box,
@@ -55,6 +55,7 @@ import {
   clearSelectedDeliveryNote,
 } from '../store/slices/deliveryNoteSlice';
 import deliveryNoteApi from '../services/deliveryNoteApi';
+import salesOrderApi from '../services/salesOrderApi';
 import { fetchCustomers } from '../store/slices/customerSlice';
 import { fetchItems } from '../store/slices/itemSlice';
 import { fetchWarehouses } from '../store/slices/warehouseSlice';
@@ -76,6 +77,7 @@ const statusOptions = [
 const DeliveryNotes = () => {
   const navigate = useNavigate();
   const { id } = useParams();
+  const location = useLocation();
   const dispatch = useDispatch();
 
   const { items, pagination, selectedDeliveryNote, loading, createLoading, updateLoading } =
@@ -188,6 +190,42 @@ const DeliveryNotes = () => {
     setOpenForm(true);
   };
 
+  // Auto-open generate mode pre-filled from a sales order (?salesOrderId=X)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const salesOrderId = params.get('salesOrderId');
+    if (!salesOrderId) return;
+    setViewMode(false);
+    setEditId(null);
+    setGenerateMode(true);
+    (async () => {
+      try {
+        const res = await salesOrderApi.getDeliverableLines(salesOrderId);
+        const data = res.data?.data || res.data;
+        setSelectedSO(data);
+        setValue('salesOrderId', data.id);
+        setValue('customerId', data.customerId || '');
+        setValue('warehouseId', data.warehouseId || '');
+        setValue('reference', data.reference || '');
+        const lineItems = (data.lines || []).map((l) => ({
+          itemId: l.itemId || '',
+          salesOrderDetailId: l.salesOrderDetailId || null,
+          description: l.description || '',
+          orderedQuantity: parseFloat(l.orderedQuantity) || 0,
+          remainingQuantity: parseFloat(l.remainingQuantity) || 0,
+          quantity: 0,
+          unitPrice: parseFloat(l.unitPrice) || 0,
+          taxPercentage: parseFloat(l.taxPercentage) || 0,
+          discountPercentage: parseFloat(l.discountPercentage) || 0,
+        }));
+        setValue('details', lineItems.length > 0 ? lineItems : [{ itemId: '', description: '', orderedQuantity: 0, remainingQuantity: 0, quantity: 0, unitPrice: 0, taxPercentage: 0, discountPercentage: 0 }]);
+      } catch (e) {
+        apiError('Could not load sales order lines');
+      }
+    })();
+    setOpenForm(true);
+  }, [location.search]);
+
   const handleEdit = (dn) => {
     setViewMode(false);
     setEditId(dn.id);
@@ -212,12 +250,26 @@ const DeliveryNotes = () => {
     }
   };
 
-  const handleDeliver = (dn) => {
-    dispatch(updateDeliveryNoteStatus({ id: dn.id, status: 'delivered' })).then(() => loadData());
+  const handleDeliver = async (dn) => {
+    const result = await dispatch(updateDeliveryNoteStatus({ id: dn.id, status: 'delivered' }));
+    if (result.meta.requestStatus === 'fulfilled') {
+      apiSuccess('Delivery note marked as delivered');
+      loadData();
+    } else {
+      const msg = result.payload?.message || result.payload?.error || result.payload || 'Failed to mark as delivered';
+      apiError(typeof msg === 'string' ? msg : 'Failed to mark as delivered');
+    }
   };
 
-  const handleCancel = (dn) => {
-    dispatch(updateDeliveryNoteStatus({ id: dn.id, status: 'cancelled' })).then(() => loadData());
+  const handleCancel = async (dn) => {
+    const result = await dispatch(updateDeliveryNoteStatus({ id: dn.id, status: 'cancelled' }));
+    if (result.meta.requestStatus === 'fulfilled') {
+      apiSuccess('Delivery note cancelled');
+      loadData();
+    } else {
+      const msg = result.payload?.message || result.payload?.error || result.payload || 'Failed to cancel delivery note';
+      apiError(typeof msg === 'string' ? msg : 'Failed to cancel delivery note');
+    }
   };
 
   const handleGenerateInvoice = async (dn) => {
@@ -235,7 +287,7 @@ const DeliveryNotes = () => {
     }
   };
 
-  const handleSelectSalesOrder = (event, value) => {
+  const handleSelectSalesOrder = async (event, value) => {
     if (!value) {
       setSelectedSO(null);
       setValue('salesOrderId', '');
@@ -250,22 +302,24 @@ const DeliveryNotes = () => {
     setValue('warehouseId', value.warehouseId || '');
     setValue('reference', value.reference || '');
 
-    // Fetch full sales order details to get line items
-    dispatch(fetchSalesOrder(value.id)).then((result) => {
-      const so = result.payload?.data || result.payload;
-      if (so && so.details) {
-        const lineItems = so.details.map((d) => ({
-          itemId: d.itemId || '',
-          salesOrderDetailId: d.id || null,
-          description: d.description || '',
-          quantity: d.quantity || 0,
-          unitPrice: d.unitPrice || 0,
-          taxPercentage: d.taxPercentage || 0,
-          discountPercentage: d.discountPercentage || 0,
-        }));
-        setValue('details', lineItems.length > 0 ? lineItems : [{ itemId: '', description: '', quantity: 1, unitPrice: 0, taxPercentage: 0, discountPercentage: 0 }]);
-      }
-    });
+    try {
+      const res = await salesOrderApi.getDeliverableLines(value.id);
+      const data = res.data?.data || res.data;
+      const lineItems = (data.lines || []).map((l) => ({
+        itemId: l.itemId || '',
+        salesOrderDetailId: l.salesOrderDetailId || null,
+        description: l.description || '',
+        orderedQuantity: parseFloat(l.orderedQuantity) || 0,
+        remainingQuantity: parseFloat(l.remainingQuantity) || 0,
+        quantity: 0,
+        unitPrice: parseFloat(l.unitPrice) || 0,
+        taxPercentage: parseFloat(l.taxPercentage) || 0,
+        discountPercentage: parseFloat(l.discountPercentage) || 0,
+      }));
+      setValue('details', lineItems.length > 0 ? lineItems : [{ itemId: '', description: '', orderedQuantity: 0, remainingQuantity: 0, quantity: 0, unitPrice: 0, taxPercentage: 0, discountPercentage: 0 }]);
+    } catch (e) {
+      apiError('Could not load sales order lines');
+    }
   };
 
   const onSubmit = async (data) => {
@@ -536,7 +590,7 @@ const DeliveryNotes = () => {
                 <Grid item xs={12} sm={6}>
                   <Autocomplete
                     options={salesOrdersList}
-                    getOptionLabel={(opt) => `${opt.orderNumber || ''} - ${opt.customerName || ''}`}
+                    getOptionLabel={(opt) => `${opt.orderNumber || ''} - ${opt.customer?.name || opt.customerName || ''}`}
                     value={selectedSO}
                     onChange={handleSelectSalesOrder}
                     renderInput={(params) => (
@@ -562,7 +616,7 @@ const DeliveryNotes = () => {
                     render={({ field }) => (
                       <Autocomplete
                         options={salesOrdersList}
-                        getOptionLabel={(opt) => `${opt.orderNumber || ''} - ${opt.customerName || ''}`}
+                        getOptionLabel={(opt) => `${opt.orderNumber || ''} - ${opt.customer?.name || opt.customerName || ''}`}
                         value={salesOrdersList.find((so) => so.id === field.value) || null}
                         onChange={(e, val) => field.onChange(val?.id || '')}
                         renderInput={(params) => (
@@ -663,8 +717,17 @@ const DeliveryNotes = () => {
                     <TableHead>
                       <TableRow>
                         <TableCell width="25%">Item</TableCell>
-                        <TableCell width="20%">Description</TableCell>
-                        <TableCell width="10%">Qty</TableCell>
+                        {generateMode ? (
+                          <>
+                            <TableCell width="12%">Ordered Qty</TableCell>
+                            <TableCell width="12%">Received Qty</TableCell>
+                          </>
+                        ) : (
+                          <>
+                            <TableCell width="20%">Description</TableCell>
+                            <TableCell width="10%">Qty</TableCell>
+                          </>
+                        )}
                         <TableCell width="10%">Unit Price</TableCell>
                         <TableCell width="10%">Tax %</TableCell>
                         <TableCell width="10%">Disc %</TableCell>
@@ -712,27 +775,53 @@ const DeliveryNotes = () => {
                               )}
                             />
                           </TableCell>
-                          <TableCell>
-                            <TextField
-                              size="small"
-                              fullWidth
-                              {...register(`details.${index}.description`)}
-                              disabled={viewMode || generateMode}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <TextField
-                              size="small"
-                              type="number"
-                              fullWidth
-                              {...register(`details.${index}.quantity`, {
-                                required: 'Qty is required',
-                                valueAsNumber: true,
-                              })}
-                              disabled={viewMode}
-                              inputProps={{ min: 0, step: 0.001 }}
-                            />
-                          </TableCell>
+                          {generateMode ? (
+                            <>
+                              <TableCell>
+                                <Typography variant="body2" fontWeight={600}>
+                                  {watch(`details.${index}.orderedQuantity`) ?? 0}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <TextField
+                                  size="small"
+                                  type="number"
+                                  fullWidth
+                                  {...register(`details.${index}.quantity`, {
+                                    required: 'Received Qty is required',
+                                    valueAsNumber: true,
+                                  })}
+                                  disabled={viewMode}
+                                  inputProps={{ min: 0, step: 0.001 }}
+                                  helperText={`Remaining: ${watch(`details.${index}.remainingQuantity`) ?? 0}`}
+                                />
+                              </TableCell>
+                            </>
+                          ) : (
+                            <>
+                              <TableCell>
+                                <TextField
+                                  size="small"
+                                  fullWidth
+                                  {...register(`details.${index}.description`)}
+                                  disabled={viewMode}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <TextField
+                                  size="small"
+                                  type="number"
+                                  fullWidth
+                                  {...register(`details.${index}.quantity`, {
+                                    required: 'Qty is required',
+                                    valueAsNumber: true,
+                                  })}
+                                  disabled={viewMode}
+                                  inputProps={{ min: 0, step: 0.001 }}
+                                />
+                              </TableCell>
+                            </>
+                          )}
                           <TableCell>
                             <TextField
                               size="small"

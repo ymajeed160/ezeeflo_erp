@@ -11,11 +11,13 @@ router.use(authorizeTenant);
 router.use(hasTenant);
 
 router.get('/', checkPermission('supplierpayment.view'), SupplierPaymentController.getAll);
+router.get('/:id/posting-preview', checkPermission('supplierpayment.view'), SupplierPaymentController.getPostingPreview);
 router.get('/:id', checkPermission('supplierpayment.view'), SupplierPaymentController.getById);
 router.post('/', checkPermission('supplierpayment.create'), validateCreate, SupplierPaymentController.create);
 router.put('/:id', checkPermission('supplierpayment.edit'), validateUpdate, SupplierPaymentController.update);
 router.delete('/:id', checkPermission('supplierpayment.delete'), SupplierPaymentController.delete);
 router.post('/:id/confirm', checkPermission('supplierpayment.approve'), SupplierPaymentController.confirm);
 router.post('/:id/post-to-journal', checkPermission('supplierpayment.approve'), SupplierPaymentController.postToJournal);
+router.post('/:id/reverse', checkPermission('supplierpayment.approve'), SupplierPaymentController.reverse);
 
 module.exports = router;

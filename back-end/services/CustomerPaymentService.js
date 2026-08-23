@@ -148,17 +148,13 @@ class CustomerPaymentService {
 
     const t = await sequelize.transaction();
     try {
-      // Apply account overrides from the post dialog if provided
-      if (body.paymentAccountId || body.customerAccountId) {
-        const updateData = {};
-        if (body.paymentAccountId) updateData.paymentAccountId = body.paymentAccountId;
-        if (body.customerAccountId) updateData.customerAccountId = body.customerAccountId;
-        await CustomerPaymentRepository.update(tenantId, id, updateData, t);
-        if (body.paymentAccountId) existing.paymentAccountId = body.paymentAccountId;
-        if (body.customerAccountId) existing.customerAccountId = body.customerAccountId;
-      }
+      // Resolve posting accounts (customer A/R + cash/bank COA) from DB relationships
+      await CustomerPaymentService._resolveAccounts(tenantId, id, existing, body, t);
 
       const payment = existing;
+
+      // Validate allocations do not exceed invoice outstanding (backend authority)
+      await CustomerPaymentService.validateAllocations(tenantId, payment, t);
 
       // Validate accounts before posting
       await CustomerPaymentService.validatePostingAccounts(tenantId, payment);
@@ -221,6 +217,125 @@ class CustomerPaymentService {
     if (!arAccount) {
       throw new Error('Customer Account is invalid, inactive, or belongs to a different tenant');
     }
+  }
+
+  /**
+   * Resolve the posting accounts for a payment:
+   * - Debit  → Cash COA (cash) or selected Bank's linked COA (bank/cheque/online/card/other)
+   * - Credit → Customer's A/R account (arAccountId)
+   * The backend is the authority — bank COA is read from the BankAccount record.
+   */
+  static async _resolveAccounts(tenantId, id, payment, body, t) {
+    const { Customer, Account, BankAccount } = require('../models');
+    const resolved = {};
+
+    // Credit side: Customer A/R from customer profile
+    if (!payment.customerAccountId) {
+      const customer = payment.customer || (await Customer.findOne({ where: { id: payment.customerId, tenantId }, transaction: t }));
+      if (!customer) throw new Error('Customer not found');
+      if (!customer.arAccountId) throw new Error('Customer is not linked to a Chart of Account.');
+      resolved.customerAccountId = customer.arAccountId;
+    }
+
+    // Debit side: Cash COA or Bank COA
+    if (!payment.paymentAccountId) {
+      const method = String(payment.paymentMethod || '').toLowerCase();
+      if (method === 'cash') {
+        if (!payment.cashAccountId) throw new Error('Please select a Cash Account.');
+        const cashAcc = await Account.findOne({ where: { id: payment.cashAccountId, tenantId }, transaction: t });
+        if (!cashAcc) throw new Error('Selected Cash Account not found.');
+        if (cashAcc.type !== 'asset') throw new Error('Selected account is not configured as a Cash Account.');
+        resolved.paymentAccountId = cashAcc.id;
+      } else {
+        if (!payment.bankAccountRefId) throw new Error('Please select a Bank Account.');
+        const bank = await BankAccount.findOne({ where: { id: payment.bankAccountRefId, tenantId }, transaction: t });
+        if (!bank) throw new Error('Selected Bank Account not found.');
+        if (!bank.chartOfAccountId) throw new Error('Selected bank account is not linked to a Chart of Account.');
+        resolved.paymentAccountId = bank.chartOfAccountId;
+      }
+    }
+
+    // Explicit overrides win
+    if (body.paymentAccountId) resolved.paymentAccountId = body.paymentAccountId;
+    if (body.customerAccountId) resolved.customerAccountId = body.customerAccountId;
+
+    if (Object.keys(resolved).length) {
+      await CustomerPaymentRepository.update(tenantId, id, resolved, t);
+      Object.assign(payment, resolved);
+    }
+  }
+
+  /**
+   * Backend validation: each allocation must not exceed the invoice's
+   * outstanding balance (grandTotal - amounts allocated by other payments).
+   */
+  static async validateAllocations(tenantId, payment, t) {
+    const { CustomerPaymentAllocation, SalesInvoice } = require('../models');
+    for (const alloc of payment.allocations || []) {
+      if (!alloc.salesInvoiceId) continue;
+      const invoice = await SalesInvoice.findOne({ where: { id: alloc.salesInvoiceId, tenantId }, transaction: t });
+      if (!invoice) continue;
+
+      const otherAllocated = await CustomerPaymentAllocation.sum('allocatedAmount', {
+        where: { tenantId, salesInvoiceId: alloc.salesInvoiceId, customerPaymentId: { [Op.ne]: payment.id } },
+        transaction: t,
+      });
+
+      const total = parseFloat(invoice.grandTotal) || 0;
+      const already = parseFloat(otherAllocated || 0);
+      const thisAmt = parseFloat(alloc.allocatedAmount || 0);
+      if (already + thisAmt > total + 0.009) {
+        throw new Error(`Payment amount cannot exceed the invoice outstanding amount for invoice ${invoice.invoiceNumber}.`);
+      }
+    }
+  }
+
+  /**
+   * Preview the resolved posting accounts for a payment (for the confirm dialog).
+   */
+  static async getPostingPreview(tenantId, id) {
+    const payment = await CustomerPaymentRepository.findById(tenantId, id);
+    if (!payment) {
+      const error = new Error('Customer Payment not found');
+      error.status = 404;
+      throw error;
+    }
+
+    const { Customer, Account, BankAccount } = require('../models');
+
+    let customerAccountId = payment.customerAccountId;
+    if (!customerAccountId && payment.customer && payment.customer.arAccountId) customerAccountId = payment.customer.arAccountId;
+    if (!customerAccountId) {
+      const c = await Customer.findOne({ where: { id: payment.customerId, tenantId } });
+      if (c && c.arAccountId) customerAccountId = c.arAccountId;
+    }
+
+    let paymentAccountId = payment.paymentAccountId;
+    if (!paymentAccountId) {
+      const method = String(payment.paymentMethod || '').toLowerCase();
+      if (method === 'cash') {
+        paymentAccountId = payment.cashAccountId || null;
+      } else if (payment.bankAccountRefId) {
+        const bank = await BankAccount.findOne({ where: { id: payment.bankAccountRefId, tenantId } });
+        if (bank) paymentAccountId = bank.chartOfAccountId || null;
+      }
+    }
+
+    const ids = [customerAccountId, paymentAccountId].filter(Boolean);
+    const accounts = await Account.findAll({ where: { id: { [Op.in]: ids }, tenantId } });
+    const byId = {};
+    accounts.forEach((a) => { byId[a.id] = a; });
+    const fmt = (aid) => (byId[aid] ? { id: byId[aid].id, code: byId[aid].code, name: byId[aid].name } : null);
+
+    return {
+      id: payment.id,
+      paymentNumber: payment.paymentNumber,
+      paymentMethod: payment.paymentMethod,
+      amount: parseFloat(payment.amount),
+      customer: payment.customer ? { id: payment.customer.id, name: payment.customer.name } : null,
+      paymentAccount: fmt(paymentAccountId),
+      customerAccount: fmt(customerAccountId),
+    };
   }
 
   /**

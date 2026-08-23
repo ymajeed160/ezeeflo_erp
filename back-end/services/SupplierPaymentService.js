@@ -4,6 +4,9 @@ const SupplierPaymentDTO = require('../dto/SupplierPaymentDTO');
 const JournalEntryService = require('./JournalEntryService');
 const AuditService = require('./AuditService');
 
+const SOURCE_TYPE = 'SUPPLIER_PAYMENT';
+const REVERSAL_SOURCE_TYPE = 'SUPPLIER_PAYMENT_REVERSAL';
+
 class SupplierPaymentService {
   async findAll(tenantId, options) {
     const result = await SupplierPaymentRepository.findAll(tenantId, options);
@@ -50,96 +53,248 @@ class SupplierPaymentService {
     const existing = await SupplierPaymentRepository.findById(tenantId, id);
     if (!existing) throw new Error('Supplier Payment not found');
 
-    if (existing.status === 'Approved') throw new Error('Cannot edit approved payment');
+    if (['posted', 'cancelled'].includes(existing.status)) {
+      throw new Error('Cannot edit a posted or cancelled payment');
+    }
 
     const record = await SupplierPaymentRepository.update(tenantId, id, data);
+    await AuditService.log(tenantId, data.updatedBy || data.createdBy, 'supplier_payments', id, 'updated', data);
     return await this.findById(tenantId, record.id);
   }
 
   async delete(tenantId, id) {
     const existing = await SupplierPaymentRepository.findById(tenantId, id);
     if (!existing) throw new Error('Supplier Payment not found');
-    if (existing.status === 'Approved') throw new Error('Cannot delete approved payment');
+    if (['posted', 'cancelled'].includes(existing.status)) {
+      throw new Error('Posted payments cannot be deleted. Use Reversal instead.');
+    }
 
     await SupplierPaymentRepository.delete(tenantId, id);
     return true;
   }
 
+  /**
+   * Resolve the Chart of Accounts for a payment:
+   * - Supplier account  → debit  (from Supplier.apAccountId)
+   * - Credit account    → credit (bank COA for bank/cheque, cash COA for cash)
+   * Never hardcodes account IDs — always reads existing relationships.
+   */
+  async _resolvePosting(record, tenantId, transaction = null) {
+    const supplier = await db.Supplier.findOne({ where: { id: record.supplierId, tenantId }, transaction });
+    if (!supplier) throw new Error('Supplier not found');
+    if (!supplier.apAccountId) throw new Error('Supplier is not linked to a Chart of Account.');
+
+    const apAccount = await db.Account.findOne({ where: { id: supplier.apAccountId, tenantId }, transaction });
+    if (!apAccount) throw new Error('Supplier Chart of Account not found.');
+    if (!apAccount.isActive) throw new Error('Supplier Chart of Account is inactive.');
+
+    const method = String(record.paymentMethod || '').toLowerCase();
+    let creditAccount = null;
+
+    if (method === 'cash') {
+      if (!record.cashAccountId) throw new Error('Please select a Cash Account.');
+      creditAccount = await db.Account.findOne({ where: { id: record.cashAccountId, tenantId }, transaction });
+      if (!creditAccount) throw new Error('Selected Cash Account not found.');
+      if (creditAccount.type !== 'asset') throw new Error('Selected account is not configured as a Cash Account.');
+    } else {
+      // Bank Transfer, Cheque, or any other bank-based method
+      if (!record.bankAccountId) throw new Error('Selected bank account is not linked to a Chart of Account.');
+      creditAccount = await db.Account.findOne({ where: { id: record.bankAccountId, tenantId }, transaction });
+      if (!creditAccount) throw new Error('Selected bank account Chart of Account not found.');
+      if (creditAccount.type !== 'asset') throw new Error('Selected bank account Chart of Account is not an asset account.');
+    }
+
+    return { supplier, apAccount, creditAccount };
+  }
+
+  /**
+   * Atomic posting: validate accounts → create Journal Entry → post it →
+   * mark payment posted → audit. Either fully succeeds or fully rolls back.
+   */
+  async _executePosting(tenantId, userId, id, overrides = {}) {
+    const transaction = await db.sequelize.transaction();
+    try {
+      const record = await SupplierPaymentRepository.findById(tenantId, id);
+      if (!record) throw new Error('Supplier Payment not found');
+      if (record.status === 'posted') throw new Error('This Supplier Payment has already been posted.');
+
+      // Duplicate Journal Entry prevention
+      const duplicate = await SupplierPaymentRepository.findJournalEntryBySource(tenantId, SOURCE_TYPE, id, transaction);
+      if (duplicate) throw new Error('A Journal Entry already exists for this payment.');
+
+      const resolved = await this._resolvePosting(record, tenantId, transaction);
+
+      let apAccount = resolved.apAccount;
+      let creditAccount = resolved.creditAccount;
+
+      if (overrides.apAccountId) {
+        apAccount = await db.Account.findOne({ where: { id: overrides.apAccountId, tenantId }, transaction });
+        if (!apAccount) throw new Error('Accounts Payable account not found.');
+      }
+      if (overrides.creditAccountId) {
+        creditAccount = await db.Account.findOne({ where: { id: overrides.creditAccountId, tenantId }, transaction });
+        if (!creditAccount) throw new Error('Cash/Bank account not found.');
+      }
+
+      const amount = parseFloat(record.amount);
+      const supplierName = resolved.supplier.name;
+
+      // DR Supplier (Accounts Payable) / CR Bank or Cash
+      const journalEntry = await JournalEntryService.createEntry({
+        entryDate: record.paymentDate,
+        reference: record.paymentNumber,
+        description: `Supplier Payment - ${supplierName} (${record.paymentNumber})`,
+        source: SOURCE_TYPE,
+        sourceId: id,
+        isAutoGenerated: true,
+        lines: [
+          { accountId: apAccount.id, debit: amount, credit: 0, description: `Payment to ${supplierName}` },
+          { accountId: creditAccount.id, debit: 0, credit: amount, description: `Payment via ${record.paymentMethod}` },
+        ],
+      }, tenantId, userId, transaction);
+
+      await JournalEntryService.postEntry(journalEntry.id, tenantId, userId, transaction);
+
+      await SupplierPaymentRepository.update(tenantId, id, {
+        status: 'posted',
+        journalEntryId: journalEntry.id,
+        approvedBy: userId,
+        approvedAt: new Date(),
+      }, transaction);
+
+      await AuditService.log(tenantId, userId, 'supplier_payments', id, 'posted', {
+        status: 'posted',
+        journalEntryId: journalEntry.id,
+        paymentMethod: record.paymentMethod,
+        amount,
+        supplierId: record.supplierId,
+        bankAccountId: record.bankAccountId || null,
+        cashAccountId: record.cashAccountId || null,
+      });
+
+      await transaction.commit();
+      return await this.findById(tenantId, id);
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
+  }
+
+  /**
+   * Confirm a draft payment → automatically creates and posts the Journal Entry.
+   */
   async confirm(tenantId, userId, id) {
     const record = await SupplierPaymentRepository.findById(tenantId, id);
     if (!record) throw new Error('Supplier Payment not found');
     if (record.status !== 'draft') throw new Error('Only Draft payments can be confirmed');
 
-    await SupplierPaymentRepository.update(tenantId, id, {
-      status: 'confirmed',
-      updatedBy: userId
-    });
-
-    await AuditService.log(tenantId, userId, 'supplier_payments', id, 'confirmed', { status: 'confirmed' });
-    return await this.findById(tenantId, id);
+    return await this._executePosting(tenantId, userId, id);
   }
 
+  /**
+   * Legacy path for payments already in 'confirmed' status.
+   * Accepts optional account overrides from the caller.
+   */
   async postToJournal(tenantId, userId, id, accountData = {}) {
     const record = await SupplierPaymentRepository.findById(tenantId, id);
     if (!record) throw new Error('Supplier Payment not found');
     if (record.status !== 'confirmed') throw new Error('Only Confirmed payments can be posted to journal');
 
-    // Get supplier for AP account
-    const supplier = await db.Supplier.findOne({ where: { id: record.supplierId, tenantId } });
-    if (!supplier) throw new Error('Supplier not found');
+    const overrides = {};
+    if (accountData.apAccountId) overrides.apAccountId = accountData.apAccountId;
+    if (accountData.cashAccountId) overrides.creditAccountId = accountData.cashAccountId;
+    if (accountData.creditAccountId) overrides.creditAccountId = accountData.creditAccountId;
 
-    // Accounts Payable account (debit): from dialog or supplier's AP account
-    const accountsPayableAccountId = accountData.apAccountId || supplier.apAccountId;
-    if (!accountsPayableAccountId) throw new Error('Accounts Payable account is required. Please select an AP account.');
+    return await this._executePosting(tenantId, userId, id, overrides);
+  }
 
-    // Cash/Bank account (credit): from dialog, payment's bankAccountId, or fallback
-    let cashAccountId = accountData.cashAccountId || record.bankAccountId;
-    if (!cashAccountId) {
-      const fallbackAccount = await db.Account.findOne({
-        where: {
-          tenantId,
-          type: 'asset',
-          isActive: true,
-          name: { [db.Sequelize.Op.like]: '%Cash%' }
-        }
-      });
-      if (!fallbackAccount) throw new Error('Cash account is required. Please select a Cash/Bank account.');
-      cashAccountId = fallbackAccount.id;
-    }
+  /**
+   * Preview the Chart of Accounts that would be used when posting this payment.
+   */
+  async getPostingPreview(tenantId, id) {
+    const record = await SupplierPaymentRepository.findById(tenantId, id);
+    if (!record) throw new Error('Supplier Payment not found');
 
-    // Create Journal Entry: Accounts Payable DR, Cash/Bank CR
-    const journalEntryData = {
-      entryDate: record.paymentDate,
-      reference: record.paymentNumber,
-      description: `Supplier Payment: ${supplier.name} - ${record.paymentNumber}`,
+    const { supplier, apAccount, creditAccount } = await this._resolvePosting(record, tenantId);
+
+    return {
+      id: record.id,
+      paymentNumber: record.paymentNumber,
+      paymentDate: record.paymentDate,
+      amount: parseFloat(record.amount),
+      paymentMethod: record.paymentMethod,
+      supplier: {
+        id: supplier.id,
+        name: supplier.name,
+        account: { id: apAccount.id, code: apAccount.code, name: apAccount.name, type: apAccount.type },
+      },
+      creditAccount: { id: creditAccount.id, code: creditAccount.code, name: creditAccount.name, type: creditAccount.type },
       lines: [
-        {
-          accountId: accountsPayableAccountId,
-          debit: parseFloat(record.amount),
-          credit: 0,
-          description: `Payment to ${supplier.name}`
-        },
-        {
-          accountId: cashAccountId,
-          debit: 0,
-          credit: parseFloat(record.amount),
-          description: `Payment via ${record.paymentMethod}`
-        }
-      ]
+        { side: 'DEBIT', account: { code: apAccount.code, name: apAccount.name }, amount: parseFloat(record.amount) },
+        { side: 'CREDIT', account: { code: creditAccount.code, name: creditAccount.name }, amount: parseFloat(record.amount) },
+      ],
     };
+  }
 
-    const journalEntry = await JournalEntryService.createEntry(journalEntryData, tenantId, userId);
+  /**
+   * Reverse a posted payment: creates a reversal Journal Entry,
+   * restores invoice outstanding balances, and keeps audit history.
+   */
+  async reverse(tenantId, userId, id) {
+    const record = await SupplierPaymentRepository.findById(tenantId, id);
+    if (!record) throw new Error('Supplier Payment not found');
+    if (record.status !== 'posted') throw new Error('Only posted payments can be reversed');
+    if (!record.journalEntryId) throw new Error('Payment has no Journal Entry to reverse.');
 
-    await SupplierPaymentRepository.update(tenantId, id, {
-      status: 'posted',
-      journalEntryId: journalEntry.id,
-      approvedBy: userId,
-      approvedAt: new Date()
-    });
+    const transaction = await db.sequelize.transaction();
+    try {
+      const duplicate = await SupplierPaymentRepository.findJournalEntryBySource(tenantId, REVERSAL_SOURCE_TYPE, id, transaction);
+      if (duplicate) throw new Error('A reversal Journal Entry already exists for this payment.');
 
-    await AuditService.log(tenantId, userId, 'supplier_payments', id, 'posted', { status: 'posted', journalEntryId: journalEntry.id });
+      const resolved = await this._resolvePosting(record, tenantId, transaction);
+      const amount = parseFloat(record.amount);
 
-    return await this.findById(tenantId, id);
+      // Original: DR Supplier AP / CR Bank/Cash → Reversal: DR Bank/Cash / CR Supplier AP
+      const reversal = await JournalEntryService.createEntry({
+        entryDate: new Date().toISOString().split('T')[0],
+        reference: `REV-${record.paymentNumber}`,
+        description: `Reversal of Supplier Payment - ${resolved.supplier.name} (${record.paymentNumber})`,
+        source: REVERSAL_SOURCE_TYPE,
+        sourceId: id,
+        isAutoGenerated: true,
+        lines: [
+          { accountId: resolved.creditAccount.id, debit: amount, credit: 0, description: `Reversal of payment to ${resolved.supplier.name}` },
+          { accountId: resolved.apAccount.id, debit: 0, credit: amount, description: `Reversal of payment to ${resolved.supplier.name}` },
+        ],
+      }, tenantId, userId, transaction);
+
+      await JournalEntryService.postEntry(reversal.id, tenantId, userId, transaction);
+
+      // Restore invoice outstanding balances by removing this payment's allocations
+      const allocations = await db.SupplierPaymentAllocation.findAll({
+        where: { supplierPaymentId: id, tenantId },
+        transaction,
+      });
+      const invoiceIds = allocations.map((a) => a.purchaseInvoiceId);
+      await db.SupplierPaymentAllocation.destroy({ where: { supplierPaymentId: id, tenantId }, transaction });
+      await SupplierPaymentRepository._updateInvoiceStatuses(tenantId, invoiceIds, transaction);
+
+      await SupplierPaymentRepository.update(tenantId, id, {
+        status: 'cancelled',
+        updatedBy: userId,
+      }, transaction);
+
+      await AuditService.log(tenantId, userId, 'supplier_payments', id, 'reversed', {
+        status: 'cancelled',
+        reversalJournalEntryId: reversal.id,
+      });
+
+      await transaction.commit();
+      return await this.findById(tenantId, id);
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
   }
 }
 

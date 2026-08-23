@@ -99,6 +99,14 @@ class CustomerPaymentApi {
   }
 
   /**
+   * Get resolved posting accounts for the confirm dialog
+   */
+  static async getPostingPreview(id) {
+    const response = await api.get(`/customer-payments/${id}/posting-preview`);
+    return response.data;
+  }
+
+  /**
    * Cancel customer payment
    */
   static async cancel(id) {

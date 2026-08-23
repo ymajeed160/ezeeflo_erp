@@ -18,6 +18,7 @@ class SalesReturnDTO {
       taxPercent: parseFloat(line.taxPercent) || 0,
       discountPercent: parseFloat(line.discountPercent) || 0,
       lineTotal: parseFloat(line.lineTotal) || 0,
+      costPrice: parseFloat(line.costPrice) || 0,
       returnReason: line.returnReason || null,
     }));
 
@@ -70,6 +71,7 @@ class SalesReturnDTO {
       taxPercent: parseFloat(line.taxPercent) || 0,
       discountPercent: parseFloat(line.discountPercent) || 0,
       lineTotal: parseFloat(line.lineTotal) || 0,
+      costPrice: parseFloat(line.costPrice) || 0,
       returnReason: line.returnReason || null,
     }));
 
@@ -119,6 +121,7 @@ class SalesReturnDTO {
       warehouseName: record.warehouse ? record.warehouse.name : '',
       returnDate: record.returnDate,
       journalEntryId: record.journalEntryId || null,
+      journalEntryNumber: record.journalEntry ? record.journalEntry.entryNumber : '',
       subTotal: parseFloat(record.subTotal || 0),
       taxTotal: parseFloat(record.taxTotal || 0),
       discountTotal: parseFloat(record.discountTotal || 0),
@@ -151,6 +154,7 @@ class SalesReturnDTO {
       warehouseName: record.warehouse ? record.warehouse.name : '',
       returnDate: record.returnDate,
       journalEntryId: record.journalEntryId,
+      journalEntryNumber: record.journalEntry ? record.journalEntry.entryNumber : '',
       reference: record.reference,
       notes: record.notes,
       subTotal: parseFloat(record.subTotal || 0),
@@ -181,6 +185,7 @@ class SalesReturnDTO {
         taxPercent: parseFloat(line.taxPercent || 0),
         discountPercent: parseFloat(line.discountPercent || 0),
         lineTotal: parseFloat(line.lineTotal || 0),
+        costPrice: parseFloat(line.costPrice || 0),
         returnReason: line.returnReason,
       })),
     };

@@ -45,6 +45,13 @@ router.get(
   SalesInvoiceController.listForAllocation
 );
 
+// GET /api/:tenantId/sales-invoices/:id/posting-preview - auto-resolved posting accounts
+router.get(
+  '/:id/posting-preview',
+  authorize('salesinvoice.view'),
+  SalesInvoiceController.getPostingPreview
+);
+
 // GET /api/:tenantId/sales-invoices/:id - Get invoice by ID
 router.get(
   '/:id',

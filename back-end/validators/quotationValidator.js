@@ -38,7 +38,7 @@ const quotationUpdateRules = [
 
 const statusUpdateRules = [
   param('id').isUUID().withMessage('Invalid quotation ID'),
-  body('status').notEmpty().isIn(['sent', 'approved', 'rejected', 'converted']).withMessage('Invalid status'),
+  body('status').notEmpty().isIn(['sent', 'approved', 'rejected', 'converted', 'cancelled', 'partially_ordered', 'fully_ordered', 'draft']).withMessage('Invalid status'),
 ];
 
 const quotationIdParam = [

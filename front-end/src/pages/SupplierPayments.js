@@ -39,6 +39,7 @@ import {
   CheckCircleOutline as ApproveIcon,
   HowToReg as ConfirmIcon,
   Send as PostIcon,
+  Undo as ReverseIcon,
 } from '@mui/icons-material';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import {
@@ -49,6 +50,7 @@ import {
   deleteSupplierPayment,
   confirmSupplierPayment,
   postToJournalSupplierPayment,
+  reverseSupplierPayment,
   clearCurrent,
 } from '../store/slices/supplierPaymentSlice';
 import { fetchSuppliers } from '../store/slices/supplierSlice';
@@ -56,6 +58,7 @@ import { fetchPurchaseInvoices } from '../store/slices/purchaseInvoiceSlice';
 import { fetchActiveBankAccounts } from '../store/slices/bankAccountSlice';
 import { confirmDialog, apiSuccess, apiError } from '../utils/toast';
 import accountApi from '../services/accountApi';
+import supplierPaymentApi from '../services/supplierPaymentApi';
 
 const statusColors = {
   draft: 'default',
@@ -92,6 +95,10 @@ const SupplierPayments = () => {
   const [postAccounts, setPostAccounts] = useState({ apAccountId: '', cashAccountId: '' });
   const [assetAccounts, setAssetAccounts] = useState([]);
   const [liabilityAccounts, setLiabilityAccounts] = useState([]);
+  const [confirmPreviewOpen, setConfirmPreviewOpen] = useState(false);
+  const [confirmPreview, setConfirmPreview] = useState(null);
+  const [confirmTarget, setConfirmTarget] = useState(null);
+  const [confirmingId, setConfirmingId] = useState(null);
 
   const { register, handleSubmit, control, reset, watch, setValue, formState: { errors } } = useForm({
     defaultValues: {
@@ -101,6 +108,7 @@ const SupplierPayments = () => {
       paymentMethod: 'BankTransfer',
       referenceNumber: '',
       bankAccount: '',
+      cashAccount: '',
       notes: '',
       allocations: [],
     },
@@ -108,9 +116,11 @@ const SupplierPayments = () => {
 
   const { fields, append, remove } = useFieldArray({ control, name: 'allocations' });
   const selectedSupplierId = watch('supplierId');
+  const paymentMethod = watch('paymentMethod');
   const paymentAmount = watch('amount');
   const allocatedAmount = watch('allocations')?.reduce((sum, a) => sum + (parseFloat(a.allocatedAmount) || 0), 0) || 0;
   const unallocated = (parseFloat(paymentAmount) || 0) - allocatedAmount;
+  const cashAccounts = assetAccounts.filter((a) => /cash|petty/i.test(a.name || '') && !/bank/i.test(a.name || ''));
 
   // Auto-sum allocated invoice amounts into the payment Amount field
   useEffect(() => {
@@ -157,6 +167,7 @@ const SupplierPayments = () => {
         paymentMethod: currentItem.paymentMethod || 'BankTransfer',
         referenceNumber: currentItem.referenceNumber || '',
         bankAccount: currentItem.bankAccount?.id || currentItem.bankAccountId || currentItem.bankAccount || '',
+        cashAccount: currentItem.cashAccount?.id || currentItem.cashAccountId || currentItem.cashAccount || '',
         notes: currentItem.notes || '',
         allocations: currentItem.allocations?.length ? currentItem.allocations.map((a) => ({
           purchaseInvoiceId: a.purchaseInvoiceId || a.purchaseInvoice?.id || '',
@@ -188,6 +199,7 @@ const SupplierPayments = () => {
       paymentMethod: 'BankTransfer',
       referenceNumber: '',
       bankAccount: '',
+      cashAccount: '',
       notes: '',
       allocations: [],
     });
@@ -202,6 +214,7 @@ const SupplierPayments = () => {
       paymentMethod: sp.paymentMethod || 'BankTransfer',
       referenceNumber: sp.referenceNumber || '',
       bankAccount: sp.bankAccount?.id || sp.bankAccountId || sp.bankAccount || '',
+      cashAccount: sp.cashAccount?.id || sp.cashAccountId || sp.cashAccount || '',
       notes: sp.notes || '',
       allocations: sp.allocations?.length ? sp.allocations.map((a) => ({
         purchaseInvoiceId: a.purchaseInvoiceId || a.purchaseInvoice?.id || '',
@@ -244,10 +257,41 @@ const SupplierPayments = () => {
   };
 
   const handleConfirm = async (sp) => {
-    const confirmed = await confirmDialog(`Confirm Payment #${sp.paymentNumber}?`);
+    setConfirmingId(sp.id);
+    try {
+      const res = await supplierPaymentApi.getPostingPreview(sp.id);
+      const preview = res.data?.data || res.data;
+      setConfirmTarget(sp);
+      setConfirmPreview(preview);
+      setConfirmPreviewOpen(true);
+    } catch (e) {
+      apiError(e.response?.data?.message || 'Could not load posting preview');
+    } finally {
+      setConfirmingId(null);
+    }
+  };
+
+  const handleConfirmPost = async () => {
+    if (!confirmTarget) return;
+    const res = await dispatch(confirmSupplierPayment(confirmTarget.id));
+    if (res.meta.requestStatus === 'fulfilled') {
+      apiSuccess('Payment confirmed and posted');
+      setConfirmPreviewOpen(false);
+      setConfirmTarget(null);
+      setConfirmPreview(null);
+      handleClose();
+      loadData();
+    } else {
+      apiError(res.payload || 'Payment could not be posted. No accounting changes were made.');
+    }
+  };
+
+  const handleReverse = async (sp) => {
+    const confirmed = await confirmDialog(`Reverse Payment #${sp.paymentNumber}? A reversal journal entry will be created.`);
     if (confirmed) {
-      const res = await dispatch(confirmSupplierPayment(sp.id));
-      if (!res.error) { apiSuccess('Payment confirmed'); loadData(); }
+      const res = await dispatch(reverseSupplierPayment(sp.id));
+      if (res.meta.requestStatus === 'fulfilled') { apiSuccess('Payment reversed'); loadData(); }
+      else { apiError(res.payload || 'Failed to reverse payment'); }
     }
   };
 
@@ -286,11 +330,15 @@ const SupplierPayments = () => {
       ...data,
       supplierId: data.supplierId,
       amount: parseFloat(data.amount),
+      bankAccountId: data.bankAccount || null,
+      cashAccountId: data.cashAccount || null,
       allocations: data.allocations?.map((a) => ({
         purchaseInvoiceId: a.purchaseInvoiceId || null,
         allocatedAmount: parseFloat(a.allocatedAmount) || 0,
       })) || [],
     };
+    delete payload.bankAccount;
+    delete payload.cashAccount;
 
     let result;
     if (editId) {
@@ -373,7 +421,8 @@ const SupplierPayments = () => {
                 <MenuItem value="">All</MenuItem>
                 <MenuItem value="draft">Draft</MenuItem>
                 <MenuItem value="confirmed">Confirmed</MenuItem>
-                <MenuItem value="approved">Approved</MenuItem>
+                <MenuItem value="posted">Posted</MenuItem>
+                <MenuItem value="cancelled">Cancelled</MenuItem>
               </TextField>
             </Grid>
             <Grid item xs={12} sm={3}>
@@ -452,8 +501,8 @@ const SupplierPayments = () => {
                               <DeleteIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>
-                          <Tooltip title="Confirm">
-                            <IconButton size="small" color="info" onClick={() => handleConfirm(sp)}>
+                          <Tooltip title="Confirm & Post">
+                            <IconButton size="small" color="info" disabled={confirmingId === sp.id} onClick={() => handleConfirm(sp)}>
                               <ConfirmIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>
@@ -472,6 +521,13 @@ const SupplierPayments = () => {
                             </IconButton>
                           </Tooltip>
                         </>
+                      )}
+                      {sp.status === 'posted' && (
+                        <Tooltip title="Reverse">
+                          <IconButton size="small" color="warning" onClick={() => handleReverse(sp)}>
+                            <ReverseIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
                       )}
                     </Stack>
                   </TableCell>
@@ -594,30 +650,67 @@ const SupplierPayments = () => {
                 />
               </Grid>
 
-              {/* Bank Account */}
-              <Grid item xs={12} sm={6}>
-                <Controller
-                  name="bankAccount"
-                  control={control}
-                  render={({ field }) => (
-                    <Autocomplete
-                      disabled={viewMode}
-                      size="small"
-                      options={bankAccountsList || []}
-                      getOptionLabel={(o) =>
-                        o.bankName && o.accountName
-                          ? `${o.bankName} - ${o.accountName}${o.accountNumber ? ' (' + o.accountNumber + ')' : ''}`
-                          : o.accountName || o.bankName || ''
-                      }
-                      value={bankAccountsList?.find((b) => String(b.chartOfAccountId) === String(field.value)) || null}
-                      onChange={(e, v) => field.onChange(v ? v.chartOfAccountId || v.id : '')}
-                      renderInput={(params) => (
-                        <TextField {...params} label="Bank Account" />
-                      )}
-                    />
-                  )}
-                />
-              </Grid>
+              {/* Bank Account (shown for Bank Transfer / Cheque) */}
+              {paymentMethod !== 'Cash' && (
+                <Grid item xs={12} sm={6}>
+                  <Controller
+                    name="bankAccount"
+                    control={control}
+                    rules={{ required: 'Bank Account is required' }}
+                    render={({ field }) => (
+                      <Autocomplete
+                        disabled={viewMode}
+                        size="small"
+                        options={bankAccountsList || []}
+                        getOptionLabel={(o) =>
+                          o.bankName && o.accountName
+                            ? `${o.bankName} - ${o.accountName}${o.accountNumber ? ' (' + o.accountNumber + ')' : ''}`
+                            : o.accountName || o.bankName || ''
+                        }
+                        value={bankAccountsList?.find((b) => String(b.chartOfAccountId) === String(field.value)) || null}
+                        onChange={(e, v) => field.onChange(v ? v.chartOfAccountId || v.id : '')}
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            label="Bank Account *"
+                            error={!!errors.bankAccount}
+                            helperText={errors.bankAccount?.message || 'Accounting account will be taken from the selected bank account.'}
+                          />
+                        )}
+                      />
+                    )}
+                  />
+                </Grid>
+              )}
+
+              {/* Cash Account (shown only for Cash payments) */}
+              {paymentMethod === 'Cash' && (
+                <Grid item xs={12} sm={6}>
+                  <Controller
+                    name="cashAccount"
+                    control={control}
+                    rules={{ required: 'Please select a Cash Account.' }}
+                    render={({ field }) => (
+                      <Autocomplete
+                        disabled={viewMode}
+                        size="small"
+                        options={cashAccounts}
+                        getOptionLabel={(o) => (o.code ? `${o.code} - ${o.name}` : o.name || '')}
+                        value={cashAccounts.find((a) => String(a.id) === String(field.value)) || null}
+                        onChange={(e, v) => field.onChange(v ? String(v.id) : '')}
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            label="Cash Account *"
+                            error={!!errors.cashAccount}
+                            helperText={errors.cashAccount?.message || 'Select the Cash-in-Hand account to be used for this payment.'}
+                          />
+                        )}
+                      />
+                    )}
+                  />
+                </Grid>
+              )}
 
               {/* Notes */}
               <Grid item xs={12}>
@@ -732,19 +825,9 @@ const SupplierPayments = () => {
                 variant="contained"
                 color="info"
                 disabled={submitting}
-                onClick={async () => {
-                  const confirmed = await confirmDialog(`Confirm Payment #${currentItem.paymentNumber}?`);
-                  if (confirmed) {
-                    const res = await dispatch(confirmSupplierPayment(currentItem.id));
-                    if (!res.error) {
-                      apiSuccess('Payment confirmed');
-                      handleClose();
-                      loadData();
-                    }
-                  }
-                }}
+                onClick={() => handleConfirm(currentItem)}
               >
-                Confirm
+                Confirm & Post
               </Button>
             )}
             {viewMode && currentItem?.status === 'confirmed' && (
@@ -810,6 +893,54 @@ const SupplierPayments = () => {
           <Button onClick={() => { setPostDialogOpen(false); setPostTarget(null); }}>Cancel</Button>
           <Button onClick={handlePost} variant="contained" color="primary" disabled={submitting}>
             {submitting ? 'Posting...' : 'Post'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Confirm & Post preview dialog */}
+      <Dialog open={confirmPreviewOpen} onClose={() => { setConfirmPreviewOpen(false); setConfirmTarget(null); setConfirmPreview(null); }} maxWidth="sm" fullWidth>
+        <DialogTitle>Confirm &amp; Post Supplier Payment</DialogTitle>
+        <DialogContent>
+          {confirmPreview && (
+            <Box sx={{ mt: 1 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Payment: {confirmPreview.paymentNumber} — Amount: {formatCurrency(confirmPreview.amount)}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                This will create the following Journal Entry (posted automatically):
+              </Typography>
+
+              <TableContainer component={Paper} variant="outlined" sx={{ mt: 1 }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Side</TableCell>
+                      <TableCell>Account</TableCell>
+                      <TableCell align="right">Amount</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {confirmPreview.lines?.map((line, idx) => (
+                      <TableRow key={idx}>
+                        <TableCell>
+                          <Chip label={line.side} size="small" color={line.side === 'DEBIT' ? 'primary' : 'success'} />
+                        </TableCell>
+                        <TableCell>
+                          {line.account?.code ? `${line.account.code} - ${line.account.name}` : line.account?.name || '-'}
+                        </TableCell>
+                        <TableCell align="right">{formatCurrency(line.amount)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setConfirmPreviewOpen(false); setConfirmTarget(null); setConfirmPreview(null); }}>Cancel</Button>
+          <Button onClick={handleConfirmPost} variant="contained" color="primary" disabled={submitting}>
+            {submitting ? 'Posting...' : 'Confirm & Post'}
           </Button>
         </DialogActions>
       </Dialog>

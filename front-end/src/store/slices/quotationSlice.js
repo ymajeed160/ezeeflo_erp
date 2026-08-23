@@ -67,6 +67,28 @@ export const approveQuotation = createAsyncThunk('quotations/approve', async (id
   }
 });
 
+export const confirmQuotation = createAsyncThunk('quotations/confirm', async (id, { rejectWithValue }) => {
+  try {
+    const response = await quotationApi.confirm(id);
+    apiSuccess('Quotation confirmed');
+    return response.data;
+  } catch (error) {
+    apiError(error.response?.data?.message || 'Failed to confirm quotation');
+    return rejectWithValue(error.response?.data);
+  }
+});
+
+export const cancelQuotation = createAsyncThunk('quotations/cancel', async (id, { rejectWithValue }) => {
+  try {
+    const response = await quotationApi.cancel(id);
+    apiSuccess('Quotation cancelled');
+    return response.data;
+  } catch (error) {
+    apiError(error.response?.data?.message || 'Failed to cancel quotation');
+    return rejectWithValue(error.response?.data);
+  }
+});
+
 export const rejectQuotation = createAsyncThunk('quotations/reject', async (id, { rejectWithValue }) => {
   try {
     const response = await quotationApi.reject(id);

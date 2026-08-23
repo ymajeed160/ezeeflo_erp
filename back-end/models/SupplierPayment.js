@@ -10,7 +10,8 @@ module.exports = (sequelize, DataTypes) => {
     paymentMethod: { type: DataTypes.ENUM('Cash', 'BankTransfer', 'Cheque'), defaultValue: 'BankTransfer' },
     amount: { type: DataTypes.DECIMAL(18, 2), allowNull: false, defaultValue: 0.00 },
     referenceNumber: { type: DataTypes.STRING(100), allowNull: true },
-    bankAccountId: { type: DataTypes.UUID, allowNull: true },
+    bankAccountId: { type: DataTypes.UUID, allowNull: true, comment: 'Linked Chart of Account for bank/cheque payments (accounts.id)' },
+    cashAccountId: { type: DataTypes.UUID, allowNull: true, comment: 'Selected Cash-in-Hand Chart of Account for cash payments (accounts.id)' },
     notes: { type: DataTypes.TEXT, allowNull: true },
     status: { type: DataTypes.ENUM('draft', 'confirmed', 'posted', 'cancelled'), defaultValue: 'draft' },
     journalEntryId: { type: DataTypes.UUID, allowNull: true },
@@ -28,6 +29,7 @@ module.exports = (sequelize, DataTypes) => {
     SupplierPayment.belongsTo(models.Tenant, { foreignKey: 'tenantId' });
     SupplierPayment.belongsTo(models.Supplier, { foreignKey: 'supplierId', as: 'supplier' });
     SupplierPayment.belongsTo(models.Account, { foreignKey: 'bankAccountId', as: 'bankAccount' });
+    SupplierPayment.belongsTo(models.Account, { foreignKey: 'cashAccountId', as: 'cashAccount' });
     SupplierPayment.belongsTo(models.JournalEntry, { foreignKey: 'journalEntryId', as: 'journalEntry' });
     SupplierPayment.belongsTo(models.User, { foreignKey: 'createdBy', as: 'creator' });
     SupplierPayment.belongsTo(models.User, { foreignKey: 'updatedBy', as: 'updater' });

@@ -27,6 +27,7 @@ class SupplierPaymentRepository {
       include: [
         { model: db.Supplier, as: 'supplier', attributes: ['id', 'code', 'name'] },
         { model: db.Account, as: 'bankAccount', attributes: ['id', 'code', 'name'], required: false },
+        { model: db.Account, as: 'cashAccount', attributes: ['id', 'code', 'name'], required: false },
         { model: db.JournalEntry, as: 'journalEntry', attributes: ['id', 'entry_number'], required: false },
         { model: db.User, as: 'creator', attributes: ['id', 'username'] },
         { model: db.SupplierPaymentAllocation, as: 'allocations', include: [{ model: db.PurchaseInvoice, as: 'invoice', attributes: ['id', 'invoice_number'] }] }
@@ -46,6 +47,7 @@ class SupplierPaymentRepository {
       include: [
         { model: db.Supplier, as: 'supplier' },
         { model: db.Account, as: 'bankAccount', required: false },
+        { model: db.Account, as: 'cashAccount', required: false },
         { model: db.JournalEntry, as: 'journalEntry', required: false },
         { model: db.User, as: 'creator', attributes: ['id', 'username'] },
         { model: db.User, as: 'approver', attributes: ['id', 'username'] },
@@ -56,6 +58,13 @@ class SupplierPaymentRepository {
 
   async findByNumber(tenantId, paymentNumber) {
     return await db.SupplierPayment.findOne({ where: { tenantId, paymentNumber } });
+  }
+
+  async findJournalEntryBySource(tenantId, source, sourceId, transaction = null) {
+    return await db.JournalEntry.findOne({
+      where: { tenantId, source, sourceId },
+      transaction,
+    });
   }
 
   async create(tenantId, data, transaction = null) {
@@ -70,6 +79,7 @@ class SupplierPaymentRepository {
         amount: data.amount,
         referenceNumber: data.referenceNumber,
         bankAccountId: data.bankAccountId || data.bankAccount || null,
+        cashAccountId: data.cashAccountId || data.cashAccount || null,
         notes: data.notes,
         status: data.status || 'draft',
         journalEntryId: data.journalEntryId || null,
@@ -111,6 +121,8 @@ class SupplierPaymentRepository {
       if (data.referenceNumber !== undefined) updateFields.referenceNumber = data.referenceNumber;
       if (data.bankAccountId !== undefined) updateFields.bankAccountId = data.bankAccountId || null;
       if (data.bankAccount !== undefined) updateFields.bankAccountId = data.bankAccount || null;
+      if (data.cashAccountId !== undefined) updateFields.cashAccountId = data.cashAccountId || null;
+      if (data.cashAccount !== undefined) updateFields.cashAccountId = data.cashAccount || null;
       if (data.notes !== undefined) updateFields.notes = data.notes;
       if (data.status !== undefined) updateFields.status = data.status;
       if (data.journalEntryId !== undefined) updateFields.journalEntryId = data.journalEntryId;

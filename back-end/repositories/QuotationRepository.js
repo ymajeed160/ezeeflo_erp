@@ -156,8 +156,25 @@ class QuotationRepository {
     return await Quotation.destroy({ where: { id, tenantId } });
   }
 
-  async updateStatus(tenantId, id, status, userId) {
-    return await Quotation.update({ status, updatedBy: userId }, { where: { id, tenantId } });
+  async updateStatus(tenantId, id, status, userId, options = {}) {
+    const updateData = { status };
+    if (userId) updateData.updatedBy = userId;
+    return await Quotation.update(updateData, {
+      where: { id, tenantId },
+      transaction: options.transaction,
+    });
+  }
+
+  async confirm(tenantId, id, userId, options = {}) {
+    return await Quotation.update(
+      {
+        status: 'approved',
+        confirmedBy: userId,
+        confirmedAt: new Date(),
+        updatedBy: userId,
+      },
+      { where: { id, tenantId }, transaction: options.transaction }
+    );
   }
 
   async convert(tenantId, id, convertedToType, convertedToId, userId, options = {}) {

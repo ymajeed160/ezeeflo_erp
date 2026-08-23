@@ -64,6 +64,11 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: 0,
       },
+      costPrice: {
+        type: DataTypes.DECIMAL(18, 4),
+        allowNull: false,
+        defaultValue: 0,
+      },
       returnReason: {
         type: DataTypes.STRING(255),
         allowNull: true,
