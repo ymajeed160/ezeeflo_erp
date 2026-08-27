@@ -48,3 +48,4 @@ coverage/
 # Deploy build artifacts (keep only .zip files)
 deploy-tezhost/nodejs_app/
 deploy-tezhost/hr_payroll_nodejs_app/
+deploy-tezhost/loyalty_nodejs_app/

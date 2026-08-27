@@ -189,6 +189,34 @@ app.use('/api/*', (req, res) => {
   ApiResponse.notFound(res, { message: `Route ${req.originalUrl} not found` });
 });
 
+// ═══════════════════════════════════════════════════════
+// Serve React frontend build (production)
+// The build folder is expected at ./front-end/build
+// ═══════════════════════════════════════════════════════
+const fs = require('fs');
+const BUILD_PATH = path.resolve(__dirname, './front-end/build');
+if (fs.existsSync(BUILD_PATH)) {
+  app.use(express.static(BUILD_PATH, {
+    maxAge: '1y',
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      }
+    },
+  }));
+
+  // SPA fallback — any non-API route serves index.html
+  app.get('*', (req, res) => {
+    if (!req.path.startsWith('/api')) {
+      res.sendFile(path.join(BUILD_PATH, 'index.html'));
+    }
+  });
+
+  logger.info(`Frontend build served from: ${BUILD_PATH}`);
+} else {
+  logger.info('Frontend build not found — API-only mode');
+}
+
 // Global error handler
 app.use(errorHandler);
 
