@@ -20,6 +20,7 @@ import {
 import { fetchActiveAssetCategories } from '../store/slices/assetCategorySlice';
 import { fetchSuppliers } from '../store/slices/supplierSlice';
 import { formatCurrency } from '../utils/currency';
+import QuickCreate from '../components/QuickCreate/QuickCreate';
 
 const STATUSES = [
   { value: 'draft', label: 'Draft', color: 'default' },
@@ -452,15 +453,25 @@ const Assets = () => {
               <TextField fullWidth label="Asset Name" name="assetName" value={form.assetName} onChange={handleChange} error={!!formErrors.assetName} helperText={formErrors.assetName} required size="small" />
             </Grid>
             <Grid item xs={12} sm={4}>
-              <FormControl fullWidth size="small" required>
-                <InputLabel>Category</InputLabel>
-                <Select name="categoryId" value={form.categoryId} onChange={handleChange} label="Category" error={!!formErrors.categoryId}>
-                  <MenuItem value=""><em>Select</em></MenuItem>
-                  {activeAssetCategories.map((cat) => (
-                    <MenuItem key={cat.id} value={cat.id}>{cat.categoryCode} - {cat.categoryName}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <FormControl fullWidth size="small" required>
+                  <InputLabel>Category</InputLabel>
+                  <Select name="categoryId" value={form.categoryId} onChange={handleChange} label="Category" error={!!formErrors.categoryId}>
+                    <MenuItem value=""><em>Select</em></MenuItem>
+                    {activeAssetCategories.map((cat) => (
+                      <MenuItem key={cat.id} value={cat.id}>{cat.categoryCode} - {cat.categoryName}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <QuickCreate
+                  entityKey="assetCategory"
+                  onCreated={(c) => {
+                    dispatch(fetchActiveAssetCategories());
+                    setForm((prev) => ({ ...prev, categoryId: c.id }));
+                    setFormErrors((prev) => ({ ...prev, categoryId: undefined }));
+                  }}
+                />
+              </Box>
             </Grid>
             <Grid item xs={12} sm={4}>
               <TextField fullWidth label="Purchase Cost" name="purchaseCost" type="number" value={form.purchaseCost} onChange={handleChange} error={!!formErrors.purchaseCost} helperText={formErrors.purchaseCost} required size="small" inputProps={{ min: 0, step: 0.01 }} />

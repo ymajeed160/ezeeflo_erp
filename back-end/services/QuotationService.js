@@ -1,6 +1,8 @@
 const quotationRepo = require('../repositories/QuotationRepository');
 const { QuotationDTO, QuotationDetailDTO } = require('../dto/QuotationDTO');
 const AuditLogService = require('./AuditLogService');
+const { sequelize, Quotation } = require('../models');
+const { requireDeletionEnabled } = require('../utils/deletionSettings');
 
 class QuotationService {
   async list(tenantId, query) {
@@ -54,11 +56,45 @@ class QuotationService {
     return QuotationDTO.toDetail(result);
   }
 
-  async delete(tenantId, id, userId) {
-    const rows = await quotationRepo.delete(tenantId, id);
-    if (rows === 0) throw new Error('Quotation not found');
-    await AuditLogService.log(tenantId, userId, 'Quotation', id, 'Deleted');
-    return true;
+  async delete(tenantId, id, userId, reason = null) {
+    const quotation = await quotationRepo.findById(tenantId, id);
+    if (!quotation) throw new Error('Quotation not found');
+    await requireDeletionEnabled(tenantId, 'quotations');
+    if (quotation.status !== 'draft') throw new Error('Only draft quotations can be deleted');
+
+    const t = await sequelize.transaction();
+    try {
+      await Quotation.update(
+        { deletedBy: userId, deleteReason: reason || null },
+        { where: { id, tenantId }, transaction: t }
+      );
+      const rows = await quotationRepo.delete(tenantId, id, { transaction: t });
+      if (rows === 0) throw new Error('Quotation not found');
+      await AuditLogService.log(tenantId, userId, 'Quotation', id, 'SOFT_DELETE', { reason: reason || null });
+      await t.commit();
+      return true;
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
+  }
+
+  async restore(tenantId, id, userId) {
+    const quotation = await quotationRepo.findById(tenantId, id, true);
+    if (!quotation) throw new Error('Quotation not found');
+    if (!quotation.deletedAt) throw new Error('Quotation is not deleted');
+    if (quotation.status !== 'draft') throw new Error('Only draft quotations can be restored');
+
+    const t = await sequelize.transaction();
+    try {
+      await quotationRepo.restore(tenantId, id, { transaction: t });
+      await AuditLogService.log(tenantId, userId, 'Quotation', id, 'RESTORE');
+      await t.commit();
+      return this.getById(tenantId, id);
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
   }
 
   async updateStatus(tenantId, id, status, userId) {
@@ -118,8 +154,13 @@ class QuotationService {
     return await this.updateStatus(tenantId, id, 'rejected', userId);
   }
 
-  async cancel(tenantId, id, userId) {
-    return await this.updateStatus(tenantId, id, 'cancelled', userId);
+  async cancel(tenantId, id, userId, reason = null) {
+    await this.updateStatus(tenantId, id, 'cancelled', userId);
+    await Quotation.update(
+      { cancelReason: reason || null },
+      { where: { id, tenantId } }
+    );
+    return await this.getById(tenantId, id);
   }
 
   async convertToSalesOrder(tenantId, id, userId, data = {}) {

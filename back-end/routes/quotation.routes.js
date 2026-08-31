@@ -24,6 +24,7 @@ router.patch('/:id/approve', rbac('quotations.approve'), quotationIdParam, valid
 router.post('/:id/confirm', rbac('quotations.approve'), quotationIdParam, validate, quotationController.confirm);
 router.patch('/:id/reject', rbac('quotations.update'), quotationIdParam, validate, quotationController.reject);
 router.patch('/:id/cancel', rbac('quotations.update'), quotationIdParam, validate, quotationController.cancel);
+router.post('/:id/restore', rbac('quotations.update'), quotationIdParam, validate, quotationController.restore);
 router.post('/:id/convert-to-sales-order', rbac('quotations.approve'), quotationIdParam, validate, quotationController.convertToSalesOrder);
 
 module.exports = router;

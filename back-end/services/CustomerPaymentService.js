@@ -1,9 +1,10 @@
 'use strict';
-const { sequelize } = require('../models');
+const { sequelize, CustomerPayment } = require('../models');
 const CustomerPaymentRepository = require('../repositories/CustomerPaymentRepository');
 const CustomerPaymentDTO = require('../dto/CustomerPaymentDTO');
 const AuditService = require('./AuditService');
 const { Op } = require('sequelize');
+const { requireDeletionEnabled } = require('../utils/deletionSettings');
 
 class CustomerPaymentService {
   /**
@@ -105,20 +106,25 @@ class CustomerPaymentService {
   /**
    * Delete customer payment (only draft)
    */
-  static async delete(tenantId, id) {
+  static async delete(tenantId, id, userId, reason = null) {
     const existing = await CustomerPaymentRepository.findById(tenantId, id);
     if (!existing) {
       const error = new Error('Customer Payment not found');
       error.status = 404;
       throw error;
     }
-    if (existing.status !== 'draft') {
-      const error = new Error('Only draft payments can be deleted');
+    await requireDeletionEnabled(tenantId, 'customer_payments');
+    if (existing.journalEntryId) {
+      const error = new Error('This Customer Payment is linked to a journal entry. Delete the journal entry first, then delete this payment.');
       error.status = 400;
       throw error;
     }
     const t = await sequelize.transaction();
     try {
+      await CustomerPayment.update(
+        { deletedBy: userId, deleteReason: reason || null },
+        { where: { id, tenantId }, transaction: t }
+      );
       await CustomerPaymentRepository.delete(tenantId, id, t);
       await t.commit();
       return { message: 'Customer Payment deleted successfully' };
@@ -126,6 +132,27 @@ class CustomerPaymentService {
       await t.rollback();
       throw error;
     }
+  }
+
+  /**
+   * Restore a soft-deleted customer payment
+   */
+  static async restore(tenantId, id, userId) {
+    const existing = await CustomerPaymentRepository.findById(tenantId, id, true);
+    if (!existing) {
+      const error = new Error('Customer Payment not found');
+      error.status = 404;
+      throw error;
+    }
+    if (!existing.deletedAt) {
+      const error = new Error('Customer Payment is not deleted');
+      error.status = 400;
+      throw error;
+    }
+
+    await CustomerPaymentRepository.restore(tenantId, id);
+    const updated = await CustomerPaymentRepository.findById(tenantId, id);
+    return CustomerPaymentDTO.toDetail(updated);
   }
 
   /**
@@ -341,7 +368,7 @@ class CustomerPaymentService {
   /**
    * Cancel customer payment
    */
-  static async cancel(tenantId, id, userId) {
+  static async cancel(tenantId, id, userId, reason = null) {
     const existing = await CustomerPaymentRepository.findById(tenantId, id);
     if (!existing) {
       const error = new Error('Customer Payment not found');
@@ -357,6 +384,10 @@ class CustomerPaymentService {
     const t = await sequelize.transaction();
     try {
       await CustomerPaymentRepository.updateStatus(tenantId, id, 'cancelled', userId, t);
+      await CustomerPayment.update(
+        { cancelReason: reason || null },
+        { where: { id, tenantId }, transaction: t }
+      );
 
       await AuditService.log({
         tenantId,
@@ -364,7 +395,7 @@ class CustomerPaymentService {
         action: 'CANCEL',
         entity: 'CustomerPayment',
         entityId: id,
-        newValues: { status: 'cancelled' },
+        newValues: { status: 'cancelled', cancelReason: reason || null },
       }, t);
 
       await t.commit();

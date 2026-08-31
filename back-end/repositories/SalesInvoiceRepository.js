@@ -7,6 +7,8 @@ class SalesInvoiceRepository {
    */
   static async findAll(tenantId, filters = {}) {
     const where = { tenantId };
+    const includeDeleted = filters.includeDeleted === 'true' || filters.includeDeleted === true;
+    if (!includeDeleted) where.deletedAt = null;
     if (filters.status) where.status = filters.status;
     if (filters.customerId) where.customerId = filters.customerId;
     if (filters.warehouseId) where.warehouseId = filters.warehouseId;
@@ -52,6 +54,7 @@ class SalesInvoiceRepository {
       limit,
       offset,
       distinct: true,
+      paranoid: !includeDeleted,
     });
 
     return {
@@ -110,9 +113,10 @@ class SalesInvoiceRepository {
   /**
    * Find invoice by ID with all associations
    */
-  static async findById(tenantId, id) {
+  static async findById(tenantId, id, includeDeleted = false) {
     return SalesInvoice.findOne({
-      where: { tenantId, id },
+      where: includeDeleted ? { tenantId, id } : { tenantId, id, deletedAt: null },
+      paranoid: !includeDeleted,
       include: [
         { model: Customer, as: 'customer', attributes: ['id', 'name', 'code', 'email', 'phone', 'mobile', 'taxNumber', 'vatNumber', 'billingAddress', 'shippingAddress', 'city', 'state', 'country', 'postalCode', 'arAccountId'], required: false },
         { model: SalesOrder, as: 'salesOrder', attributes: ['id', 'orderNumber'], required: false },
@@ -254,6 +258,23 @@ class SalesInvoiceRepository {
     return SalesInvoice.update(
       { status, updatedBy: userId },
       { where: { tenantId, id }, transaction }
+    );
+  }
+
+  /**
+   * Soft-delete only the header (details kept for restore)
+   */
+  static async softDeleteHeader(tenantId, id, transaction) {
+    return SalesInvoice.destroy({ where: { tenantId, id }, transaction });
+  }
+
+  /**
+   * Restore a soft-deleted invoice
+   */
+  static async restore(tenantId, id, transaction) {
+    return SalesInvoice.update(
+      { deletedAt: null, deletedBy: null, deleteReason: null },
+      { where: { tenantId, id }, paranoid: false, transaction }
     );
   }
 

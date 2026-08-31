@@ -76,6 +76,12 @@ router.post(
   purchaseInvoiceController.cancel.bind(purchaseInvoiceController)
 );
 
+router.post(
+  '/:id/restore',
+  authorize('purchaseinvoice.edit'),
+  purchaseInvoiceController.restore.bind(purchaseInvoiceController)
+);
+
 router.delete(
   '/:id',
   authorize('purchaseinvoice.delete'),

@@ -20,9 +20,11 @@ class PurchaseReturnRepository {
       page = 1,
       limit = 25,
       sortBy = 'createdAt',
-      sortOrder = 'DESC'
+      sortOrder = 'DESC',
+      includeDeleted
     } = filters;
 
+    const withDeleted = includeDeleted === 'true' || includeDeleted === true;
     const where = { tenantId };
 
     if (status) where.status = status;
@@ -55,15 +57,17 @@ class PurchaseReturnRepository {
       order: [[sortBy, sortOrder]],
       offset,
       limit,
-      distinct: true
+      distinct: true,
+      paranoid: !withDeleted
     });
 
     return { data: rows, total: count, page, limit };
   }
 
-  async findById(id, tenantId, transaction) {
+  async findById(id, tenantId, transaction, includeDeleted = false) {
     return await this.model.findOne({
-      where: { id, tenantId },
+      where: includeDeleted ? { id, tenantId } : { id, tenantId, deletedAt: null },
+      paranoid: !includeDeleted,
       transaction,
       include: [
         {
@@ -137,8 +141,15 @@ class PurchaseReturnRepository {
     return await this.findById(id, tenantId, transaction);
   }
 
-  async delete(id, tenantId) {
-    return await this.model.destroy({ where: { id, tenantId } });
+  async delete(id, tenantId, options = {}) {
+    return await this.model.destroy({ where: { id, tenantId }, transaction: options.transaction });
+  }
+
+  async restore(id, tenantId, options = {}) {
+    return await this.model.update(
+      { deletedAt: null, deletedBy: null, deleteReason: null },
+      { where: { id, tenantId }, paranoid: false, transaction: options.transaction }
+    );
   }
 }
 

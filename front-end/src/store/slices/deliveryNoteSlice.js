@@ -76,9 +76,33 @@ export const updateDeliveryNote = createAsyncThunk(
 
 export const deleteDeliveryNote = createAsyncThunk(
   'deliveryNotes/delete',
+  async ({ id, reason }, { rejectWithValue }) => {
+    try {
+      const response = await deliveryNoteApi.delete(id, reason);
+      return response;
+    } catch (error) {
+      return rejectWithValue(error.response?.data || error.message);
+    }
+  }
+);
+
+export const restoreDeliveryNote = createAsyncThunk(
+  'deliveryNotes/restore',
   async (id, { rejectWithValue }) => {
     try {
-      const response = await deliveryNoteApi.delete(id);
+      const response = await deliveryNoteApi.restore(id);
+      return response;
+    } catch (error) {
+      return rejectWithValue(error.response?.data || error.message);
+    }
+  }
+);
+
+export const cancelDeliveryNote = createAsyncThunk(
+  'deliveryNotes/cancel',
+  async ({ id, reason }, { rejectWithValue }) => {
+    try {
+      const response = await deliveryNoteApi.cancel(id, reason);
       return response;
     } catch (error) {
       return rejectWithValue(error.response?.data || error.message);

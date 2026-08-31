@@ -3,8 +3,10 @@ const { SalesOrder, SalesOrderDetail, Customer, Quotation, Warehouse, Item, User
 const { Op } = require('sequelize');
 
 class SalesOrderRepository {
-  async findAll({ tenantId, search, status, customerId, page = 1, limit = 20 }) {
+  async findAll({ tenantId, search, status, customerId, page = 1, limit = 20, includeDeleted }) {
     const where = { tenantId };
+    const withDeleted = includeDeleted === 'true' || includeDeleted === true;
+    if (!withDeleted) where.deletedAt = null;
     if (status) {
       where.status = status.includes(',') ? { [Op.in]: status.split(',').map(s => s.trim()) } : status;
     }
@@ -25,13 +27,15 @@ class SalesOrderRepository {
       order: [['createdAt', 'DESC']],
       offset,
       limit,
+      paranoid: !withDeleted,
     });
     return { list: rows, total: count, page, limit };
   }
 
-  async findById(id, tenantId) {
+  async findById(id, tenantId, includeDeleted = false) {
     return await SalesOrder.findOne({
-      where: { id, tenantId },
+      where: includeDeleted ? { id, tenantId } : { id, tenantId, deletedAt: null },
+      paranoid: !includeDeleted,
       include: [
         { model: Customer, as: 'customer' },
         { model: Quotation, as: 'quotation' },
@@ -72,10 +76,18 @@ class SalesOrderRepository {
     });
   }
 
-  async delete(id, tenantId) {
+  async delete(id, tenantId, { transaction } = {}) {
     return await SalesOrder.destroy({
       where: { id, tenantId },
+      transaction,
     });
+  }
+
+  async restore(id, tenantId, { transaction } = {}) {
+    return await SalesOrder.update(
+      { deletedAt: null, deletedBy: null, deleteReason: null },
+      { where: { id, tenantId }, paranoid: false, transaction }
+    );
   }
 
   async getNextOrderNumber(tenantId, year) {

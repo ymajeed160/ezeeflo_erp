@@ -97,13 +97,25 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: true,
       },
+      deletedBy: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+      deleteReason: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+      },
+      cancelReason: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+      },
     },
     {
       sequelize,
       modelName: 'CustomerPayment',
       tableName: 'customer_payments',
       timestamps: true,
-      paranoid: false,
+      paranoid: true,
     }
   );
 

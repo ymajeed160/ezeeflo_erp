@@ -12,6 +12,7 @@ import { Add, Edit, Delete, Visibility, Receipt, Undo, Cancel, PostAdd } from '@
 import cpvApi from '../services/cpvApi';
 import accountApi from '../services/accountApi';
 import { formatCurrency } from '../utils/currency';
+import { apiSuccess, apiError } from '../utils/toast';
 
 const CASH_ACCOUNT_TYPES = ['Cash', 'Bank', 'cash', 'bank'];
 
@@ -40,6 +41,8 @@ const CashPaymentVouchers = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [defaultCashAccountId, setDefaultCashAccountId] = useState('');
+  const [reasonDialog, setReasonDialog] = useState({ open: false, action: null, target: null });
+  const [reasonText, setReasonText] = useState('');
 
   const makeEmptyForm = () => ({
     voucherDate: new Date().toISOString().split('T')[0],
@@ -55,7 +58,8 @@ const CashPaymentVouchers = () => {
   const loadVouchers = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await cpvApi.list({ limit: 50 });
+      const params = { limit: 50 };
+      const res = await cpvApi.list(params);
       setVouchers(res.data || []);
       setTotal(res.total || 0);
     } catch (err) { console.error(err); }
@@ -200,16 +204,32 @@ const CashPaymentVouchers = () => {
     catch (err) { alert(err.response?.data?.message || 'Reverse failed'); }
   };
 
-  const handleCancel = async (id) => {
-    if (!window.confirm('Cancel this CPV?')) return;
-    try { await cpvApi.cancel(id); loadVouchers(); }
-    catch (err) { alert(err.response?.data?.message || 'Cancel failed'); }
+  const handleCancel = (id) => {
+    setReasonDialog({ open: true, action: 'cancel', target: id });
+    setReasonText('');
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this CPV?')) return;
-    try { await cpvApi.delete(id); loadVouchers(); }
-    catch (err) { alert(err.response?.data?.message || 'Delete failed'); }
+  const handleDelete = (id) => {
+    setReasonDialog({ open: true, action: 'delete', target: id });
+    setReasonText('');
+  };
+
+  const handleReasonConfirm = async () => {
+    const { action, target } = reasonDialog;
+    setReasonDialog({ open: false, action: null, target: null });
+    if (!target) return;
+    try {
+      if (action === 'delete') {
+        await cpvApi.delete(target, reasonText || null);
+      } else if (action === 'cancel') {
+        await cpvApi.cancel(target, reasonText || null);
+      }
+      apiSuccess(action === 'delete' ? 'CPV deleted' : 'CPV cancelled');
+      setReasonText('');
+      loadVouchers();
+    } catch (err) {
+      apiError(err.response?.data?.message || 'Operation failed');
+    }
   };
 
   const statusColor = (s) => {
@@ -410,6 +430,28 @@ const CashPaymentVouchers = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setViewDialog(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Reason Dialog for Delete/Cancel */}
+      <Dialog open={reasonDialog.open} onClose={() => setReasonDialog({ open: false, action: null, target: null })} fullWidth maxWidth="sm">
+        <DialogTitle>{reasonDialog.action === 'delete' ? 'Delete CPV' : 'Cancel CPV'}</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            multiline
+            minRows={2}
+            label="Reason (optional)"
+            value={reasonText}
+            onChange={(e) => setReasonText(e.target.value)}
+            autoFocus
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setReasonDialog({ open: false, action: null, target: null })}>Back</Button>
+          <Button variant="contained" color={reasonDialog.action === 'delete' ? 'error' : 'warning'} onClick={handleReasonConfirm}>
+            Confirm
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

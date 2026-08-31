@@ -80,6 +80,20 @@ router.delete(
   DeliveryNoteController.delete
 );
 
+// Restore delivery note
+router.post(
+  '/:id/restore',
+  checkPermission('deliverynote.edit'),
+  DeliveryNoteController.restore
+);
+
+// Cancel delivery note
+router.patch(
+  '/:id/cancel',
+  checkPermission('deliverynote.approve'),
+  DeliveryNoteController.cancel
+);
+
 // Update delivery note status
 router.patch(
   '/:id/status',

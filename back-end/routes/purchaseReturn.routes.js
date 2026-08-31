@@ -17,5 +17,7 @@ router.patch('/:id/approve', rbac('purchasereturn.approve'), controller.approve)
 router.patch('/:id/reject', rbac('purchasereturn.approve'), controller.reject);
 router.patch('/:id/reverse', rbac('purchasereturn.approve'), controller.reverse);
 router.delete('/:id', rbac('purchasereturn.create'), controller.delete);
+router.post('/:id/restore', rbac('purchasereturn.create'), controller.restore);
+router.patch('/:id/cancel', rbac('purchasereturn.approve'), controller.cancel);
 
 module.exports = router;

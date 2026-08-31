@@ -249,7 +249,7 @@ class PaymentVoucherService {
   async deleteVoucher(id, tenantId) {
     const voucher = await paymentVoucherRepository.findById(id, tenantId);
     if (!voucher) throw new NotFoundError('Payment voucher not found');
-    if (voucher.status !== 'Draft') throw new BadRequestError('Only draft vouchers can be deleted');
+    if (voucher.journalEntryId) throw new BadRequestError('This Payment Voucher is linked to a journal entry. Delete the journal entry first, then delete this voucher.');
     await paymentVoucherRepository.delete(id, tenantId, false);
     logger.info(`Payment voucher ${voucher.voucherNumber} deleted`);
     return true;

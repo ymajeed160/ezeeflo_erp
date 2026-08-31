@@ -59,6 +59,7 @@ import { confirmDialog, apiSuccess, apiError } from '../utils/toast';
 import accountApi from '../services/accountApi';
 import CustomerPaymentApi from '../services/customerPaymentApi';
 import SalesInvoiceApi from '../services/salesInvoiceApi';
+import QuickCreate from '../components/QuickCreate/QuickCreate';
 
 const statusColors = {
   draft: 'default',
@@ -96,6 +97,8 @@ const CustomerPayments = () => {
   const [postTarget, setPostTarget] = useState(null);
   const [postPreview, setPostPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [reasonDialog, setReasonDialog] = useState({ open: false, action: null, target: null });
+  const [reasonText, setReasonText] = useState('');
 
   const { register, handleSubmit, control, reset, watch, setValue, formState: { errors } } = useForm({
     defaultValues: {
@@ -120,7 +123,8 @@ const CustomerPayments = () => {
   const customerOutstanding = filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.outstandingBalance) || 0), 0);
 
   const loadData = useCallback(() => {
-    dispatch(fetchCustomerPayments({ search, status: statusFilter, customerId: customerFilter, page, limit }));
+    const params = { search, status: statusFilter, customerId: customerFilter, page, limit };
+    dispatch(fetchCustomerPayments(params));
   }, [dispatch, search, statusFilter, customerFilter, page, limit]);
 
   useEffect(() => {
@@ -225,15 +229,26 @@ const CustomerPayments = () => {
     setOpenForm(true);
   };
 
-  const handleDelete = async (cp) => {
+  const handleDelete = (cp) => {
     if (cp.status !== 'draft') {
       apiError('Only draft payments can be deleted');
       return;
     }
-    const confirmed = await confirmDialog('Are you sure you want to delete this payment?');
-    if (confirmed) {
-      dispatch(deleteCustomerPayment(cp.id)).then(() => loadData());
+    setReasonDialog({ open: true, action: 'delete', target: cp.id });
+    setReasonText('');
+  };
+
+  const handleReasonConfirm = async () => {
+    const { action, target } = reasonDialog;
+    setReasonDialog({ open: false, action: null, target: null });
+    if (!target) return;
+    if (action === 'delete') {
+      await dispatch(deleteCustomerPayment({ id: target, reason: reasonText || null }));
+    } else if (action === 'cancel') {
+      await dispatch(cancelCustomerPayment({ id: target, reason: reasonText || null }));
     }
+    setReasonText('');
+    loadData();
   };
 
   const handlePost = async (cp) => {
@@ -274,15 +289,9 @@ const CustomerPayments = () => {
     setPostTarget(null);
   };
 
-  const handleCancel = async (cp) => {
-    const confirmed = await confirmDialog(
-      `Cancel Payment #${cp.paymentNumber}? This will mark the payment as cancelled.`
-    );
-    if (confirmed) {
-      dispatch(cancelCustomerPayment(cp.id)).then((res) => {
-        if (res.payload) loadData();
-      });
-    }
+  const handleCancel = (cp) => {
+    setReasonDialog({ open: true, action: 'cancel', target: cp.id });
+    setReasonText('');
   };
 
   const onSubmit = async (data) => {
@@ -513,38 +522,52 @@ const CustomerPayments = () => {
             <Grid container spacing={2}>
               {/* Customer */}
               <Grid item xs={12} sm={6}>
-                <Controller
-                  name="customerId"
-                  control={control}
-                  rules={{ required: 'Customer is required' }}
-                  render={({ field }) => (
-                    <Autocomplete
-                      disabled={viewMode}
-                      size="small"
-                      options={customersList || []}
-                      getOptionLabel={(o) => o.name || o.companyName || ''}
-                      value={customersList?.find((c) => String(c.id) === String(field.value)) || null}
-                      onChange={(e, v) => {
-                        const newId = v ? String(v.id) : '';
-                        const oldId = formCustomerId;
-                        field.onChange(newId);
-                        setFormCustomerId(newId);
-                        // Clear allocations when user changes to a different customer
-                        if (newId !== oldId && fields.length > 0) {
-                          remove();
-                        }
-                      }}
-                      renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          label="Customer"
-                          error={!!errors.customerId}
-                          helperText={errors.customerId?.message}
-                        />
-                      )}
-                    />
-                  )}
-                />
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Controller
+                    name="customerId"
+                    control={control}
+                    rules={{ required: 'Customer is required' }}
+                    render={({ field }) => (
+                      <Autocomplete
+                        disabled={viewMode}
+                        size="small"
+                        options={customersList || []}
+                        getOptionLabel={(o) => o.name || o.companyName || ''}
+                        value={customersList?.find((c) => String(c.id) === String(field.value)) || null}
+                        onChange={(e, v) => {
+                          const newId = v ? String(v.id) : '';
+                          const oldId = formCustomerId;
+                          field.onChange(newId);
+                          setFormCustomerId(newId);
+                          // Clear allocations when user changes to a different customer
+                          if (newId !== oldId && fields.length > 0) {
+                            remove();
+                          }
+                        }}
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            label="Customer"
+                            error={!!errors.customerId}
+                            helperText={errors.customerId?.message}
+                          />
+                        )}
+                        sx={{ flex: 1 }}
+                      />
+                    )}
+                  />
+                  <QuickCreate
+                    entityKey="customer"
+                    disabled={viewMode}
+                    onCreated={(c) => {
+                      dispatch(fetchCustomers({ limit: 999 }));
+                      const newId = String(c.id);
+                      setValue('customerId', newId, { shouldValidate: true });
+                      setFormCustomerId(newId);
+                      if (fields.length > 0) remove();
+                    }}
+                  />
+                </Box>
                 {selectedCustomerId && (
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                     Customer Outstanding: AED {formatCurrency(customerOutstanding)}
@@ -874,6 +897,28 @@ const CustomerPayments = () => {
             disabled={previewLoading || !postPreview}
           >
             Post Payment
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Reason Dialog for Delete/Cancel */}
+      <Dialog open={reasonDialog.open} onClose={() => setReasonDialog({ open: false, action: null, target: null })} fullWidth maxWidth="sm">
+        <DialogTitle>{reasonDialog.action === 'delete' ? 'Delete Customer Payment' : 'Cancel Customer Payment'}</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            multiline
+            minRows={2}
+            label="Reason (optional)"
+            value={reasonText}
+            onChange={(e) => setReasonText(e.target.value)}
+            autoFocus
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setReasonDialog({ open: false, action: null, target: null })}>Back</Button>
+          <Button variant="contained" color={reasonDialog.action === 'delete' ? 'error' : 'warning'} onClick={handleReasonConfirm}>
+            Confirm
           </Button>
         </DialogActions>
       </Dialog>

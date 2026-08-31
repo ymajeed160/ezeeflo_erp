@@ -11,11 +11,12 @@ import {
 import {
   Add, Edit, Delete, Search, Refresh, Visibility,
   Send, ThumbUp, ThumbDown, Clear, ArrowBack, Receipt,
+  Cancel as CancelIcon,
 } from '@mui/icons-material';
 import {
   fetchPurchaseRequests, fetchPurchaseRequestById, createPurchaseRequest, updatePurchaseRequest,
   deletePurchaseRequest, submitPurchaseRequest, approvePurchaseRequest,
-  rejectPurchaseRequest, clearError, clearSelected,
+  rejectPurchaseRequest, cancelPurchaseRequest, clearError, clearSelected,
 } from '../store/slices/purchaseRequestSlice';
 import { fetchItems } from '../store/slices/itemSlice';
 import { generateFromPR } from '../store/slices/purchaseOrderSlice';
@@ -61,14 +62,17 @@ const PurchaseRequests = () => {
   const [statusFilter, setStatusFilter] = useState('');
   const [rowsPerPage, setRowsPerPage] = useState(20);
   const [currentPage, setCurrentPage] = useState(0);
+  const [reasonText, setReasonText] = useState('');
+  const [reasonAction, setReasonAction] = useState(null); // 'delete' | 'cancel'
 
   const loadData = useCallback((query = {}) => {
-    dispatch(fetchPurchaseRequests({
+    const params = {
       page: query.page || currentPage + 1,
       limit: query.limit || rowsPerPage,
       search: query.search !== undefined ? query.search : searchTerm,
       status: query.status !== undefined ? query.status : statusFilter,
-    }));
+    };
+    dispatch(fetchPurchaseRequests(params));
   }, [dispatch, currentPage, rowsPerPage, searchTerm, statusFilter]);
 
   useEffect(() => {
@@ -206,15 +210,38 @@ const PurchaseRequests = () => {
 
   const handleDelete = (record) => {
     setDeleteTarget(record);
+    setReasonAction('delete');
+    setReasonText('');
     setDialogOpen(true);
   };
 
   const confirmDelete = async () => {
     if (deleteTarget) {
-      await dispatch(deletePurchaseRequest(deleteTarget.id));
+      await dispatch(deletePurchaseRequest({ id: deleteTarget.id, reason: reasonText || null }));
     }
     setDialogOpen(false);
     setDeleteTarget(null);
+    setReasonAction(null);
+    setReasonText('');
+    loadData();
+  };
+
+  const handleCancel = (record) => {
+    setDeleteTarget(record);
+    setReasonAction('cancel');
+    setReasonText('');
+    setDialogOpen(true);
+  };
+
+  const confirmCancel = async () => {
+    if (deleteTarget) {
+      await dispatch(cancelPurchaseRequest({ id: deleteTarget.id, reason: reasonText || null }));
+    }
+    setDialogOpen(false);
+    setDeleteTarget(null);
+    setReasonAction(null);
+    setReasonText('');
+    loadData();
   };
 
   const handleAddLine = () => {
@@ -727,6 +754,13 @@ const PurchaseRequests = () => {
                           </Tooltip>
                         </>
                       )}
+                      {(row.status === 'draft' || row.status === 'submitted') && (
+                        <Tooltip title="Cancel">
+                          <IconButton size="small" color="warning" onClick={() => handleCancel(row)}>
+                            <CancelIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
                       {row.status === 'approved' && (
                         <Tooltip title="Convert to Purchase Order">
                           <IconButton
@@ -756,18 +790,35 @@ const PurchaseRequests = () => {
         />
       </TableContainer>
 
-      {/* Delete Confirmation Dialog */}
+      {/* Delete/Cancel Dialog */}
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)}>
-        <DialogTitle>Confirm Delete</DialogTitle>
+        <DialogTitle>{reasonAction === 'cancel' ? 'Cancel Purchase Request' : 'Confirm Delete'}</DialogTitle>
         <DialogContent>
-          Are you sure you want to delete Purchase Request{' '}
-          <strong>{deleteTarget?.requestNumber}</strong>?
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            {reasonAction === 'cancel'
+              ? `Cancel Purchase Request ${deleteTarget?.requestNumber}?`
+              : `Are you sure you want to delete Purchase Request ${deleteTarget?.requestNumber}?`}
+          </Typography>
+          <TextField
+            fullWidth
+            multiline
+            minRows={2}
+            label="Reason (optional)"
+            value={reasonText}
+            onChange={(e) => setReasonText(e.target.value)}
+          />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
-          <Button onClick={confirmDelete} color="error" variant="contained">
-            Delete
-          </Button>
+          {reasonAction === 'cancel' ? (
+            <Button onClick={confirmCancel} color="warning" variant="contained">
+              Confirm Cancel
+            </Button>
+          ) : (
+            <Button onClick={confirmDelete} color="error" variant="contained">
+              Delete
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
     </Box>

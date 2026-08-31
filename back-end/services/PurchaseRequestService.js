@@ -1,6 +1,8 @@
 const purchaseRequestRepo = require('../repositories/PurchaseRequestRepository');
 const { PurchaseRequestDTO } = require('../dto/PurchaseRequestDTO');
 const AuditLogService = require('./AuditLogService');
+const { sequelize, PurchaseRequest } = require('../models');
+const { requireDeletionEnabled } = require('../utils/deletionSettings');
 
 class PurchaseRequestService {
   async list(tenantId, query) {
@@ -66,11 +68,61 @@ class PurchaseRequestService {
     return PurchaseRequestDTO.toDetail(result);
   }
 
-  async delete(tenantId, id, userId) {
-    const rows = await purchaseRequestRepo.delete(tenantId, id);
-    if (rows === 0) throw new Error('Purchase Request not found');
-    await AuditLogService.log(tenantId, userId, 'PurchaseRequest', id, 'Deleted');
-    return true;
+  async delete(tenantId, id, userId, reason = null) {
+    const request = await purchaseRequestRepo.findById(tenantId, id);
+    if (!request) throw new Error('Purchase Request not found');
+    await requireDeletionEnabled(tenantId, 'purchase_requests');
+    if (request.status !== 'draft') throw new Error('Only draft purchase requests can be deleted');
+
+    const t = await sequelize.transaction();
+    try {
+      await PurchaseRequest.update(
+        { deletedBy: userId, deleteReason: reason || null },
+        { where: { id, tenantId }, transaction: t }
+      );
+      const rows = await purchaseRequestRepo.delete(tenantId, id, { transaction: t });
+      if (rows === 0) throw new Error('Purchase Request not found');
+      await AuditLogService.log(tenantId, userId, 'PurchaseRequest', id, 'SOFT_DELETE', { reason: reason || null });
+      await t.commit();
+      return true;
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
+  }
+
+  async restore(tenantId, id, userId) {
+    const request = await purchaseRequestRepo.findById(tenantId, id, true);
+    if (!request) throw new Error('Purchase Request not found');
+    if (!request.deletedAt) throw new Error('Purchase Request is not deleted');
+    if (request.status !== 'draft') throw new Error('Only draft purchase requests can be restored');
+
+    const t = await sequelize.transaction();
+    try {
+      await purchaseRequestRepo.restore(tenantId, id, { transaction: t });
+      await AuditLogService.log(tenantId, userId, 'PurchaseRequest', id, 'RESTORE');
+      await t.commit();
+      return this.getById(tenantId, id);
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
+  }
+
+  async cancel(tenantId, id, userId, reason = null) {
+    const request = await purchaseRequestRepo.findById(tenantId, id);
+    if (!request) throw new Error('Purchase Request not found');
+    if (!['draft', 'submitted'].includes(request.status)) {
+      throw new Error(`Purchase Request with status ${request.status} cannot be cancelled`);
+    }
+
+    await purchaseRequestRepo.updateStatus(tenantId, id, 'rejected', userId);
+    await PurchaseRequest.update(
+      { cancelReason: reason || null },
+      { where: { id, tenantId } }
+    );
+    await AuditLogService.log(tenantId, userId, 'PurchaseRequest', id, 'CANCELLED', { reason: reason || null });
+    return await this.getById(tenantId, id);
   }
 
   async updateStatus(tenantId, id, status, userId) {

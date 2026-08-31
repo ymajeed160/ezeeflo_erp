@@ -49,12 +49,30 @@ export const updateSupplierPayment = createAsyncThunk('supplierPayment/update', 
   }
 });
 
-export const deleteSupplierPayment = createAsyncThunk('supplierPayment/delete', async (id, { rejectWithValue }) => {
+export const deleteSupplierPayment = createAsyncThunk('supplierPayment/delete', async ({ id, reason }, { rejectWithValue }) => {
   try {
-    await supplierPaymentApi.delete(id);
+    await supplierPaymentApi.delete(id, reason);
     return id;
   } catch (error) {
     return rejectWithValue(error.response?.data?.message || 'Failed to delete supplier payment');
+  }
+});
+
+export const restoreSupplierPayment = createAsyncThunk('supplierPayment/restore', async (id, { rejectWithValue }) => {
+  try {
+    const response = await supplierPaymentApi.restore(id);
+    return response.data.data;
+  } catch (error) {
+    return rejectWithValue(error.response?.data?.message || 'Failed to restore supplier payment');
+  }
+});
+
+export const cancelSupplierPayment = createAsyncThunk('supplierPayment/cancel', async ({ id, reason }, { rejectWithValue }) => {
+  try {
+    const response = await supplierPaymentApi.cancel(id, reason);
+    return response.data.data;
+  } catch (error) {
+    return rejectWithValue(error.response?.data?.message || 'Failed to cancel supplier payment');
   }
 });
 

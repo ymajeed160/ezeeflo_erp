@@ -51,6 +51,7 @@ import {
   generateDeliveryFromSO,
   updateDeliveryNote,
   deleteDeliveryNote,
+  cancelDeliveryNote,
   updateDeliveryNoteStatus,
   clearSelectedDeliveryNote,
 } from '../store/slices/deliveryNoteSlice';
@@ -59,6 +60,7 @@ import salesOrderApi from '../services/salesOrderApi';
 import { fetchCustomers } from '../store/slices/customerSlice';
 import { fetchItems } from '../store/slices/itemSlice';
 import { fetchWarehouses } from '../store/slices/warehouseSlice';
+import QuickCreate from '../components/QuickCreate/QuickCreate';
 import { fetchSalesOrders, fetchSalesOrder } from '../store/slices/salesOrderSlice';
 import { confirmDialog, apiSuccess, apiError } from '../utils/toast';
 
@@ -94,6 +96,8 @@ const DeliveryNotes = () => {
   const [editId, setEditId] = useState(null);
   const [generateMode, setGenerateMode] = useState(false);
   const [selectedSO, setSelectedSO] = useState(null);
+  const [reasonDialog, setReasonDialog] = useState({ open: false, action: null, target: null });
+  const [reasonText, setReasonText] = useState('');
 
   const { register, handleSubmit, control, reset, watch, setValue, formState: { errors } } = useForm({
     defaultValues: {
@@ -110,7 +114,8 @@ const DeliveryNotes = () => {
   const { fields, append, remove } = useFieldArray({ control, name: 'details' });
 
   const loadData = useCallback(() => {
-    dispatch(fetchDeliveryNotes({ search, status: statusFilter, page: pagination.page, limit: pagination.limit || 10 }));
+    const params = { search, status: statusFilter, page: pagination.page, limit: pagination.limit || 10 };
+    dispatch(fetchDeliveryNotes(params));
   }, [dispatch, search, statusFilter, pagination.page, pagination.limit]);
 
   useEffect(() => {
@@ -243,11 +248,22 @@ const DeliveryNotes = () => {
     setOpenForm(true);
   };
 
-  const handleDelete = async (dn) => {
-    const confirmed = await confirmDialog('Are you sure you want to delete this delivery note?');
-    if (confirmed) {
-      dispatch(deleteDeliveryNote(dn.id)).then(() => loadData());
+  const handleDelete = (dn) => {
+    setReasonDialog({ open: true, action: 'delete', target: dn.id });
+    setReasonText('');
+  };
+
+  const handleReasonConfirm = async () => {
+    const { action, target } = reasonDialog;
+    setReasonDialog({ open: false, action: null, target: null });
+    if (!target) return;
+    if (action === 'delete') {
+      await dispatch(deleteDeliveryNote({ id: target, reason: reasonText || null }));
+    } else if (action === 'cancel') {
+      await dispatch(cancelDeliveryNote({ id: target, reason: reasonText || null }));
     }
+    setReasonText('');
+    loadData();
   };
 
   const handleDeliver = async (dn) => {
@@ -261,15 +277,9 @@ const DeliveryNotes = () => {
     }
   };
 
-  const handleCancel = async (dn) => {
-    const result = await dispatch(updateDeliveryNoteStatus({ id: dn.id, status: 'cancelled' }));
-    if (result.meta.requestStatus === 'fulfilled') {
-      apiSuccess('Delivery note cancelled');
-      loadData();
-    } else {
-      const msg = result.payload?.message || result.payload?.error || result.payload || 'Failed to cancel delivery note';
-      apiError(typeof msg === 'string' ? msg : 'Failed to cancel delivery note');
-    }
+  const handleCancel = (dn) => {
+    setReasonDialog({ open: true, action: 'cancel', target: dn.id });
+    setReasonText('');
   };
 
   const handleGenerateInvoice = async (dn) => {
@@ -505,15 +515,17 @@ const DeliveryNotes = () => {
                         <ViewIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
-                    <Tooltip title="Edit">
-                      <IconButton
-                        size="small"
-                        onClick={() => handleEdit(dn)}
-                        disabled={dn.status !== 'draft'}
-                      >
-                        <EditIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
+                    {(
+                      <Tooltip title="Edit">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleEdit(dn)}
+                          disabled={dn.status !== 'draft'}
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
                     {dn.status === 'draft' && (
                       <Tooltip title="Mark as Delivered">
                         <IconButton size="small" color="success" onClick={() => handleDeliver(dn)}>
@@ -535,16 +547,18 @@ const DeliveryNotes = () => {
                         </IconButton>
                       </Tooltip>
                     )}
-                    <Tooltip title="Delete">
-                      <IconButton
-                        size="small"
-                        color="error"
-                        onClick={() => handleDelete(dn)}
-                        disabled={dn.status !== 'draft'}
-                      >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
+                    {(
+                      <Tooltip title="Delete">
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => handleDelete(dn)}
+                          disabled={dn.status !== 'draft'}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
                   </TableCell>
                 </TableRow>
               ))
@@ -630,29 +644,40 @@ const DeliveryNotes = () => {
               )}
 
               <Grid item xs={12} sm={generateMode ? 6 : 4}>
-                <Controller
-                  name="customerId"
-                  control={control}
-                  rules={{ required: !generateMode ? 'Customer is required' : false }}
-                  render={({ field }) => (
-                    <Autocomplete
-                      options={customersList}
-                      getOptionLabel={(opt) => `${opt.code || ''} - ${opt.name || opt.customerName || ''}`}
-                      value={customersList.find((c) => c.id === field.value) || null}
-                      onChange={(e, val) => field.onChange(val?.id || '')}
-                      renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          label="Customer"
-                          error={!!errors.customerId}
-                          helperText={errors.customerId?.message}
-                          fullWidth
-                        />
-                      )}
-                      disabled={viewMode || generateMode}
-                    />
-                  )}
-                />
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Controller
+                    name="customerId"
+                    control={control}
+                    rules={{ required: !generateMode ? 'Customer is required' : false }}
+                    render={({ field }) => (
+                      <Autocomplete
+                        options={customersList}
+                        getOptionLabel={(opt) => `${opt.code || ''} - ${opt.name || opt.customerName || ''}`}
+                        value={customersList.find((c) => c.id === field.value) || null}
+                        onChange={(e, val) => field.onChange(val?.id || '')}
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            label="Customer"
+                            error={!!errors.customerId}
+                            helperText={errors.customerId?.message}
+                            fullWidth
+                          />
+                        )}
+                        disabled={viewMode || generateMode}
+                        sx={{ flex: 1 }}
+                      />
+                    )}
+                  />
+                  <QuickCreate
+                    entityKey="customer"
+                    disabled={viewMode || generateMode}
+                    onCreated={(c) => {
+                      dispatch(fetchCustomers({ limit: 999 }));
+                      setValue('customerId', c.id, { shouldValidate: true });
+                    }}
+                  />
+                </Box>
               </Grid>
 
               <Grid item xs={12} sm={4}>
@@ -942,6 +967,28 @@ const DeliveryNotes = () => {
             )}
           </DialogActions>
         </form>
+      </Dialog>
+
+      {/* Reason Dialog for Delete/Cancel */}
+      <Dialog open={reasonDialog.open} onClose={() => setReasonDialog({ open: false, action: null, target: null })} fullWidth maxWidth="sm">
+        <DialogTitle>{reasonDialog.action === 'delete' ? 'Delete Delivery Note' : 'Cancel Delivery Note'}</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            multiline
+            minRows={2}
+            label="Reason (optional)"
+            value={reasonText}
+            onChange={(e) => setReasonText(e.target.value)}
+            autoFocus
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setReasonDialog({ open: false, action: null, target: null })}>Back</Button>
+          <Button variant="contained" color={reasonDialog.action === 'delete' ? 'error' : 'warning'} onClick={handleReasonConfirm}>
+            Confirm
+          </Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );

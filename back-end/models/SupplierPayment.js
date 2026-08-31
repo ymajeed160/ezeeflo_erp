@@ -19,6 +19,9 @@ module.exports = (sequelize, DataTypes) => {
     updatedBy: { type: DataTypes.UUID, allowNull: true },
     approvedBy: { type: DataTypes.UUID, allowNull: true },
     approvedAt: { type: DataTypes.DATE, allowNull: true },
+    deletedBy: { type: DataTypes.UUID, allowNull: true },
+    deleteReason: { type: DataTypes.STRING(255), allowNull: true },
+    cancelReason: { type: DataTypes.STRING(255), allowNull: true },
   }, {
     tableName: 'supplier_payments',
     paranoid: true,

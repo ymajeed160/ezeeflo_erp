@@ -64,9 +64,10 @@ export const updatePurchaseInvoice = createAsyncThunk(
 
 export const deletePurchaseInvoice = createAsyncThunk(
   'purchaseInvoices/delete',
-  async (id, { rejectWithValue }) => {
+  async (payload, { rejectWithValue }) => {
     try {
-      const { data } = await purchaseInvoiceApi.delete(id);
+      const { id, reason } = typeof payload === 'string' ? { id: payload } : payload;
+      const { data } = await purchaseInvoiceApi.delete(id, reason);
       return { id, ...data };
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || 'Failed to delete purchase invoice');
@@ -101,12 +102,25 @@ export const confirmPurchaseInvoice = createAsyncThunk(
 
 export const cancelPurchaseInvoice = createAsyncThunk(
   'purchaseInvoices/cancel',
-  async (id, { rejectWithValue }) => {
+  async (payload, { rejectWithValue }) => {
     try {
-      const { data } = await purchaseInvoiceApi.cancel(id);
+      const { id, reason } = typeof payload === 'string' ? { id: payload } : payload;
+      const { data } = await purchaseInvoiceApi.cancel(id, reason);
       return data;
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || 'Failed to cancel purchase invoice');
+    }
+  }
+);
+
+export const restorePurchaseInvoice = createAsyncThunk(
+  'purchaseInvoices/restore',
+  async (id, { rejectWithValue }) => {
+    try {
+      const { data } = await purchaseInvoiceApi.restore(id);
+      return data;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || 'Failed to restore purchase invoice');
     }
   }
 );
@@ -219,6 +233,10 @@ const purchaseInvoiceSlice = createSlice({
         if (state.selectedItem?.id === action.payload.data.id) {
           state.selectedItem = action.payload.data;
         }
+      })
+      .addCase(restorePurchaseInvoice.fulfilled, (state, action) => {
+        state.items = state.items.filter((i) => i.id !== action.payload.data.id);
+        state.totalCount -= 1;
       });
   },
 });

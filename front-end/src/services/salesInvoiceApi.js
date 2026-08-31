@@ -88,10 +88,18 @@ class SalesInvoiceApi {
   }
 
   /**
-   * Delete sales invoice
+   * Delete sales invoice (soft delete for drafts)
    */
-  static async delete(id) {
-    const response = await api.delete(`/sales-invoices/${id}`);
+  static async delete(id, reason) {
+    const response = await api.delete(`/sales-invoices/${id}`, { data: { reason } });
+    return response.data;
+  }
+
+  /**
+   * Restore a soft-deleted draft invoice
+   */
+  static async restore(id) {
+    const response = await api.post(`/sales-invoices/${id}/restore`);
     return response.data;
   }
 
@@ -114,8 +122,8 @@ class SalesInvoiceApi {
   /**
    * Cancel invoice
    */
-  static async cancel(id) {
-    const response = await api.post(`/sales-invoices/${id}/cancel`);
+  static async cancel(id, reason) {
+    const response = await api.post(`/sales-invoices/${id}/cancel`, { reason });
     return response.data;
   }
 

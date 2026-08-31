@@ -34,6 +34,7 @@ class ReportController {
         summary: result.summary,
         data: result.data,
         pagination: result.pagination,
+        layers: result.layers || [],
         assets: result.assets || [],
         liabilitiesEquity: result.liabilitiesEquity || [],
       });

@@ -15,8 +15,11 @@ const purchaseInvoiceApi = {
   update: (id, data) =>
     api.put(`/purchase-invoices/${id}`, data),
 
-  delete: (id) =>
-    api.delete(`/purchase-invoices/${id}`),
+  delete: (id, reason) =>
+    api.delete(`/purchase-invoices/${id}`, { data: { reason } }),
+
+  restore: (id) =>
+    api.post(`/purchase-invoices/${id}/restore`),
 
   approve: (id, data = {}) =>
     api.post(`/purchase-invoices/${id}/approve`, data),
@@ -27,8 +30,8 @@ const purchaseInvoiceApi = {
   getPostingPreview: (id) =>
     api.get(`/purchase-invoices/${id}/posting-preview`),
 
-  cancel: (id) =>
-    api.post(`/purchase-invoices/${id}/cancel`),
+  cancel: (id, reason) =>
+    api.post(`/purchase-invoices/${id}/cancel`, { reason }),
 
   generateFromPO: (poId) =>
     api.post('/purchase-invoices/generate-from-po', { poId }),

@@ -223,6 +223,20 @@ const reportRegistry = {
     category: 'inventory',
     params: ['p_WarehouseId', 'p_CategoryId', 'p_Page', 'p_PageSize'],
   },
+  'inventory-valuation': {
+    procedure: 'sp_Report_InventoryAging',
+    permission: 'reports.inventory.view',
+    title: 'Inventory Valuation',
+    category: 'inventory',
+    params: ['p_ReportDate', 'p_WarehouseId', 'p_ItemId', 'p_CategoryId', 'p_ItemType', 'p_IncludeZeroStock', 'p_AgingBucket', 'p_Page', 'p_PageSize'],
+  },
+  'inventory-aging': {
+    procedure: 'sp_Report_InventoryAging',
+    permission: 'reports.inventory.view',
+    title: 'Inventory Aging',
+    category: 'inventory',
+    params: ['p_ReportDate', 'p_WarehouseId', 'p_ItemId', 'p_CategoryId', 'p_ItemType', 'p_IncludeZeroStock', 'p_AgingBucket', 'p_Page', 'p_PageSize'],
+  },
   'low-stock': {
     procedure: 'sp_Report_LowStock',
     permission: 'reports.inventory.view',

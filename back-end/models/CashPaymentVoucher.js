@@ -28,10 +28,14 @@ module.exports = (sequelize, DataTypes) => {
     postedAt: { type: DataTypes.DATE, allowNull: true, field: 'posted_at' },
     reversedBy: { type: DataTypes.UUID, allowNull: true, field: 'reversed_by' },
     reversedAt: { type: DataTypes.DATE, allowNull: true, field: 'reversed_at' },
+    deletedBy: { type: DataTypes.UUID, allowNull: true, field: 'deleted_by' },
+    deleteReason: { type: DataTypes.STRING(255), allowNull: true, field: 'delete_reason' },
+    cancelReason: { type: DataTypes.STRING(255), allowNull: true, field: 'cancel_reason' },
   }, {
     tableName: 'cash_payment_vouchers',
     timestamps: true,
     underscored: true,
+    paranoid: true,
   });
 
   CashPaymentVoucher.associate = (models) => {

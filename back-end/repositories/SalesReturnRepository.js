@@ -6,6 +6,7 @@ class SalesReturnRepository {
    * Find all returns with filtering, searching, sorting, pagination
    */
   static async findAll(tenantId, filters = {}) {
+    const withDeleted = filters.includeDeleted === 'true' || filters.includeDeleted === true;
     const where = { tenantId };
     if (filters.status) where.status = filters.status;
     if (filters.customerId) where.customerId = filters.customerId;
@@ -52,6 +53,7 @@ class SalesReturnRepository {
       limit,
       offset,
       distinct: true,
+      paranoid: !withDeleted,
     });
 
     return {
@@ -66,9 +68,10 @@ class SalesReturnRepository {
   /**
    * Find return by ID with all associations
    */
-  static async findById(tenantId, id) {
+  static async findById(tenantId, id, includeDeleted = false) {
     return SalesReturn.findOne({
-      where: { tenantId, id },
+      where: includeDeleted ? { tenantId, id } : { tenantId, id, deletedAt: null },
+      paranoid: !includeDeleted,
       include: [
         { model: Customer, as: 'customer', attributes: ['id', 'name', 'code', 'email', 'phone', 'mobile', 'taxNumber', 'arAccountId'], required: false },
         { model: SalesInvoice, as: 'salesInvoice', attributes: ['id', 'invoiceNumber', 'invoiceDate', 'warehouseId'] },
@@ -197,14 +200,17 @@ class SalesReturnRepository {
    * Delete return and its details in a transaction
    */
   static async delete(tenantId, id, transaction) {
-    await SalesReturnDetail.destroy({
-      where: { tenantId, salesReturnId: id },
-      transaction,
-    });
     return SalesReturn.destroy({
       where: { tenantId, id },
       transaction,
     });
+  }
+
+  static async restore(tenantId, id, transaction) {
+    return SalesReturn.update(
+      { deletedAt: null, deletedBy: null, deleteReason: null },
+      { where: { tenantId, id }, paranoid: false, transaction }
+    );
   }
 
   /**

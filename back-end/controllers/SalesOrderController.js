@@ -65,8 +65,32 @@ class SalesOrderController {
       const tenantId = req.user.tenantId;
       const userId = req.user.id;
       const { id } = req.params;
-      await salesOrderService.delete(tenantId, id, userId);
+      await salesOrderService.delete(tenantId, id, userId, req.body?.reason);
       res.json({ success: true, message: 'Sales Order deleted successfully' });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async restore(req, res, next) {
+    try {
+      const tenantId = req.user.tenantId;
+      const userId = req.user.id;
+      const { id } = req.params;
+      const result = await salesOrderService.restore(tenantId, id, userId);
+      res.json({ success: true, data: result, message: 'Sales Order restored successfully' });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async cancel(req, res, next) {
+    try {
+      const tenantId = req.user.tenantId;
+      const userId = req.user.id;
+      const { id } = req.params;
+      const result = await salesOrderService.cancel(tenantId, id, userId, req.body?.reason);
+      res.json({ success: true, data: result, message: 'Sales Order cancelled successfully' });
     } catch (err) {
       next(err);
     }

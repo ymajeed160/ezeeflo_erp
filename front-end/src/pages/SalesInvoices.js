@@ -70,10 +70,11 @@ import { fetchItems } from '../store/slices/itemSlice';
 import { fetchWarehouses } from '../store/slices/warehouseSlice';
 import { confirmDialog, apiSuccess, apiError } from '../utils/toast';
 import accountApi from '../services/accountApi';
-import itemApi from '../services/itemApi';
+import SystemConfigApi from '../services/systemConfigApi';
 import SalesInvoiceApi from '../services/salesInvoiceApi';
 import salesOrderApi from '../services/salesOrderApi';
 import { generateSalesInvoicePdf } from '../utils/pdfInvoice';
+import QuickCreate from '../components/QuickCreate/QuickCreate';
 import PdfViewer from '../components/PdfViewer';
 import {
   AccountBalance as AccountBalanceIcon,
@@ -109,6 +110,8 @@ const SalesInvoices = () => {
   const [arAccounts, setArAccounts] = useState([]);
   const [revenueAccounts, setRevenueAccounts] = useState([]);
   const [taxAccounts, setTaxAccounts] = useState([]);
+  const [configRevenueAccountId, setConfigRevenueAccountId] = useState('');
+  const [configVatPayableId, setConfigVatPayableId] = useState('');
   const [openPostDialog, setOpenPostDialog] = useState(false);
   const [postTarget, setPostTarget] = useState(null);
   const [postPreview, setPostPreview] = useState(null);
@@ -121,6 +124,8 @@ const SalesInvoices = () => {
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody, setEmailBody] = useState('');
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [reasonDialog, setReasonDialog] = useState({ open: false, action: null, target: null });
+  const [reasonText, setReasonText] = useState('');
   const activeCompany = useSelector((s) => s.company?.activeCompany || null);
 
   const { register, handleSubmit, control, reset, watch, setValue, formState: { errors } } = useForm({
@@ -144,7 +149,8 @@ const SalesInvoices = () => {
   const { fields, append, remove } = useFieldArray({ control, name: 'details' });
 
   const loadData = useCallback(() => {
-    dispatch(fetchInvoices({ search, status: statusFilter, customerId: customerFilter, page, limit }));
+    const params = { search, status: statusFilter, customerId: customerFilter, page, limit };
+    dispatch(fetchInvoices(params));
   }, [dispatch, search, statusFilter, customerFilter, page, limit]);
 
   useEffect(() => {
@@ -154,7 +160,7 @@ const SalesInvoices = () => {
     dispatch(fetchWarehouses({ limit: 999 }));
   }, [loadData, dispatch]);
 
-  // Fetch accounts for Accounting Information section
+  // Fetch accounts for Accounting Information section + system config defaults
   useEffect(() => {
     const loadAccounts = async () => {
       try {
@@ -173,8 +179,35 @@ const SalesInvoices = () => {
         console.error('Failed to load accounts:', err);
       }
     };
+
+    const loadConfigDefaults = async () => {
+      try {
+        const cfgRes = await SystemConfigApi.getAll();
+        const configMap = cfgRes.data?.configs || cfgRes.configs || cfgRes.data || {};
+        const accounting = configMap.accounting || {};
+        if (accounting.revenue_account) setConfigRevenueAccountId(accounting.revenue_account);
+        if (accounting.vat_payable) setConfigVatPayableId(accounting.vat_payable);
+      } catch (err) {
+        console.error('Failed to load accounting system config:', err);
+      }
+    };
+
     loadAccounts();
+    loadConfigDefaults();
   }, []);
+
+  // Auto-resolve Sales Revenue + VAT Payable from System Config (accounting tab)
+  useEffect(() => {
+    if (configRevenueAccountId && !watch('revenueAccountId')) {
+      setValue('revenueAccountId', configRevenueAccountId);
+    }
+  }, [configRevenueAccountId, watch, setValue]);
+
+  useEffect(() => {
+    if (configVatPayableId && !watch('taxAccountId')) {
+      setValue('taxAccountId', configVatPayableId);
+    }
+  }, [configVatPayableId, watch, setValue]);
 
   // Prefill a new invoice from a sales order (navigate ?salesOrderId=X)
   useEffect(() => {
@@ -201,8 +234,8 @@ const SalesInvoices = () => {
           termsConditions: '',
           isInventoryImpact: false,
           customerAccountId: '',
-          revenueAccountId: '',
-          taxAccountId: '',
+          revenueAccountId: configRevenueAccountId,
+          taxAccountId: configVatPayableId,
           details: lines.length > 0 ? lines.map((l) => ({
             salesOrderDetailId: l.salesOrderDetailId,
             itemId: l.itemId,
@@ -250,8 +283,8 @@ const SalesInvoices = () => {
         termsConditions: selected.termsConditions || '',
         isInventoryImpact: selected.isInventoryImpact || false,
         customerAccountId: selected.customerAccountId || '',
-        revenueAccountId: selected.revenueAccountId || '',
-        taxAccountId: selected.taxAccountId || '',
+        revenueAccountId: selected.revenueAccountId || configRevenueAccountId,
+        taxAccountId: selected.taxAccountId || configVatPayableId,
         details: selected.details?.length ? selected.details.map((d) => ({
           id: d.id,
           itemId: d.itemId || '',
@@ -283,8 +316,8 @@ const SalesInvoices = () => {
       termsConditions: '',
       isInventoryImpact: false,
       customerAccountId: '',
-      revenueAccountId: '',
-      taxAccountId: '',
+      revenueAccountId: configRevenueAccountId,
+      taxAccountId: configVatPayableId,
       details: [{ itemId: '', description: '', quantity: 1, unitPrice: 0, taxPercent: 0, discountPercent: 0, costPrice: 0 }],
     });
     setOpenForm(true);
@@ -313,10 +346,31 @@ const SalesInvoices = () => {
       apiError('Only draft invoices can be deleted');
       return;
     }
-    const confirmed = await confirmDialog('Are you sure you want to delete this invoice?');
-    if (confirmed) {
-      dispatch(deleteInvoice(invoice.id)).then(() => loadData());
+    setReasonDialog({ open: true, action: 'delete', target: invoice.id });
+    setReasonText('');
+  };
+
+  const handleReasonConfirm = async () => {
+    const { action, target } = reasonDialog;
+    setReasonDialog({ open: false, action: null, target: null });
+    if (!target) return;
+    if (action === 'delete') {
+      const result = await dispatch(deleteInvoice({ id: target, reason: reasonText || null }));
+      if (result.meta.requestStatus === 'fulfilled') {
+        apiSuccess('Invoice deleted successfully');
+      } else {
+        apiError(result.payload || 'Failed to delete invoice');
+      }
+    } else if (action === 'cancel') {
+      const result = await dispatch(cancelInvoice({ id: target, reason: reasonText || null }));
+      if (result.meta.requestStatus === 'fulfilled') {
+        apiSuccess('Invoice cancelled successfully');
+      } else {
+        apiError(result.payload || 'Failed to cancel invoice');
+      }
     }
+    setReasonText('');
+    loadData();
   };
 
   const handlePost = async (invoice) => {
@@ -447,14 +501,8 @@ const SalesInvoices = () => {
   };
 
   const handleCancel = async (invoice) => {
-    const confirmed = await confirmDialog(
-      `Cancel Invoice #${invoice.invoiceNumber}? This will reverse inventory impact.`
-    );
-    if (confirmed) {
-      dispatch(cancelInvoice(invoice.id)).then((res) => {
-        if (res.payload) loadData();
-      });
-    }
+    setReasonDialog({ open: true, action: 'cancel', target: invoice.id });
+    setReasonText('');
   };
 
   const onSubmit = async (data) => {
@@ -551,36 +599,9 @@ const SalesInvoices = () => {
     setValue(`details.${index}.unitPrice`, item.sellingPrice || 0);
     setValue(`details.${index}.costPrice`, item.costPrice || 0);
     setValue(`details.${index}.taxPercent`, item.taxPercent || item.taxPercentage || 0);
-
-    // Auto-populate revenue account from item's income account
-    const incomeAccountId = item.incomeAccountId;
-    if (incomeAccountId) {
-      setValue('revenueAccountId', incomeAccountId);
-    } else {
-      // Try fetching full item details if incomeAccountId not in list
-      try {
-        const res = await itemApi.getById(item.id);
-        const fullItem = res.data || res;
-        if (fullItem.incomeAccountId) {
-          setValue('revenueAccountId', fullItem.incomeAccountId);
-        }
-      } catch (e) {
-        // ignore - revenue account field stays empty
-      }
-    }
+    // Sales Revenue + VAT Payable are resolved from System Config (accounting tab) —
+    // do NOT override them from the item.
   };
-
-  // Auto-populate tax account when any invoice line has tax > 0
-  const hasTax = (details || []).some((line) => parseFloat(line?.taxPercent || 0) > 0);
-  useEffect(() => {
-    if (hasTax && taxAccounts.length > 0) {
-      const currentTaxId = watch('taxAccountId');
-      if (!currentTaxId) {
-        // Pick first tax/liability account as default
-        setValue('taxAccountId', taxAccounts[0].id);
-      }
-    }
-  }, [hasTax, taxAccounts, watch, setValue]);
 
   const renderFormDialog = () => (
     <Dialog open={openForm} onClose={handleClose} maxWidth="lg" fullWidth>
@@ -592,32 +613,44 @@ const SalesInvoices = () => {
           <Grid container spacing={2}>
             {/* Header Row 1 */}
             <Grid item xs={12} sm={4}>
-              <Controller
-                name="customerId"
-                control={control}
-                rules={{ required: 'Customer is required' }}
-                render={({ field }) => (
-                  <Autocomplete
-                    disabled={viewMode}
-                    value={customersList.find((c) => c.id === field.value) || null}
-                    onChange={(_, val) => {
-                      field.onChange(val ? val.id : '');
-                      // Auto-populate customer account from Customer's AR account
-                      if (val && val.arAccountId) {
-                        setValue('customerAccountId', val.arAccountId);
-                      } else if (!val) {
-                        setValue('customerAccountId', '');
-                      }
-                    }}
-                    options={customersList}
-                    getOptionLabel={(opt) => `${opt.code || ''} - ${opt.name || opt.customerName || ''}`}
-                    isOptionEqualToValue={(opt, val) => opt.id === val.id}
-                    renderInput={(params) => (
-                      <TextField {...params} label="Customer" error={!!errors.customerId} helperText={errors.customerId?.message} />
-                    )}
-                  />
-                )}
-              />
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Controller
+                  name="customerId"
+                  control={control}
+                  rules={{ required: 'Customer is required' }}
+                  render={({ field }) => (
+                    <Autocomplete
+                      disabled={viewMode}
+                      value={customersList.find((c) => c.id === field.value) || null}
+                      onChange={(_, val) => {
+                        field.onChange(val ? val.id : '');
+                        // Auto-populate customer account from Customer's AR account
+                        if (val && val.arAccountId) {
+                          setValue('customerAccountId', val.arAccountId);
+                        } else if (!val) {
+                          setValue('customerAccountId', '');
+                        }
+                      }}
+                      options={customersList}
+                      getOptionLabel={(opt) => `${opt.code || ''} - ${opt.name || opt.customerName || ''}`}
+                      isOptionEqualToValue={(opt, val) => opt.id === val.id}
+                      renderInput={(params) => (
+                        <TextField {...params} label="Customer" error={!!errors.customerId} helperText={errors.customerId?.message} />
+                      )}
+                      sx={{ flex: 1 }}
+                    />
+                  )}
+                />
+                <QuickCreate
+                  entityKey="customer"
+                  disabled={viewMode}
+                  onCreated={(c) => {
+                    dispatch(fetchCustomers({ limit: 999 }));
+                    setValue('customerId', c.id, { shouldValidate: true });
+                    if (c.arAccountId) setValue('customerAccountId', c.arAccountId);
+                  }}
+                />
+              </Box>
             </Grid>
             <Grid item xs={12} sm={4}>
               <TextField
@@ -701,14 +734,14 @@ const SalesInvoices = () => {
                   control={control}
                   render={({ field }) => (
                     <Autocomplete
-                      disabled={viewMode}
+                      disabled
                       value={arAccounts.find((a) => a.id === field.value) || null}
                       onChange={(_, val) => field.onChange(val ? val.id : '')}
                       options={arAccounts}
                       getOptionLabel={(opt) => `${opt.code} - ${opt.name}`}
                       isOptionEqualToValue={(opt, val) => opt.id === val.id}
                       renderInput={(params) => (
-                        <TextField {...params} label="Customer Account (A/R)" size="small" placeholder="Select Accounts Receivable account" />
+                        <TextField {...params} label="Customer Account (A/R)" size="small" helperText="Auto from customer profile" />
                       )}
                     />
                   )}
@@ -720,14 +753,14 @@ const SalesInvoices = () => {
                   control={control}
                   render={({ field }) => (
                     <Autocomplete
-                      disabled={viewMode}
+                      disabled
                       value={revenueAccounts.find((a) => a.id === field.value) || null}
                       onChange={(_, val) => field.onChange(val ? val.id : '')}
                       options={revenueAccounts}
                       getOptionLabel={(opt) => `${opt.code} - ${opt.name}`}
                       isOptionEqualToValue={(opt, val) => opt.id === val.id}
                       renderInput={(params) => (
-                        <TextField {...params} label="Sales Revenue Account" size="small" placeholder="Select Revenue account" />
+                        <TextField {...params} label="Sales Revenue Account" size="small" helperText="Auto from Settings → Accounting" />
                       )}
                     />
                   )}
@@ -739,14 +772,14 @@ const SalesInvoices = () => {
                   control={control}
                   render={({ field }) => (
                     <Autocomplete
-                      disabled={viewMode}
+                      disabled
                       value={taxAccounts.find((a) => a.id === field.value) || null}
                       onChange={(_, val) => field.onChange(val ? val.id : '')}
                       options={taxAccounts}
                       getOptionLabel={(opt) => `${opt.code} - ${opt.name}`}
                       isOptionEqualToValue={(opt, val) => opt.id === val.id}
                       renderInput={(params) => (
-                        <TextField {...params} label="Tax Account (VAT Payable)" size="small" placeholder="Select Tax/VAT account" />
+                        <TextField {...params} label="Tax Account (VAT Payable)" size="small" helperText="Auto from Settings → Accounting" />
                       )}
                     />
                   )}
@@ -971,7 +1004,7 @@ const SalesInvoices = () => {
               />
             </Grid>
             <Grid item xs={12} sm={3}>
-              <Stack direction="row" spacing={1}>
+              <Stack direction="row" spacing={1} alignItems="center">
                 <Button variant="outlined" startIcon={<RefreshIcon />} onClick={loadData}>
                   Refresh
                 </Button>
@@ -1136,6 +1169,39 @@ const SalesInvoices = () => {
           <Button onClick={handleClosePost}>Cancel</Button>
           <Button onClick={handlePostSubmit} variant="contained" color="primary" disabled={!postPreview}>
             Post Invoice
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete / Cancel reason dialog */}
+      <Dialog open={reasonDialog.open} onClose={() => setReasonDialog({ open: false, action: null, target: null })} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {reasonDialog.action === 'delete' ? 'Delete Invoice' : 'Cancel Invoice'}
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            {reasonDialog.action === 'delete'
+              ? 'This invoice will be deleted. If it has a journal entry, delete the journal entry first.'
+              : 'Cancelling a posted invoice reverses its journal entry and inventory.'}
+          </Typography>
+          <TextField
+            fullWidth
+            size="small"
+            label="Reason (optional)"
+            multiline
+            rows={2}
+            value={reasonText}
+            onChange={(e) => setReasonText(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setReasonDialog({ open: false, action: null, target: null })}>Back</Button>
+          <Button
+            onClick={handleReasonConfirm}
+            variant="contained"
+            color={reasonDialog.action === 'delete' ? 'error' : 'warning'}
+          >
+            {reasonDialog.action === 'delete' ? 'Delete' : 'Cancel Invoice'}
           </Button>
         </DialogActions>
       </Dialog>

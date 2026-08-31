@@ -320,8 +320,8 @@ class CashReceiptVoucherService {
 
   async delete(id, tenantId, userId) {
     const voucher = await this.getById(id, tenantId);
-    if (voucher.status !== 'draft' && voucher.status !== 'cancelled') {
-      throw new BadRequestError('Only draft or cancelled CRVs can be deleted');
+    if (voucher.journalEntryId) {
+      throw new BadRequestError('This Cash Receipt Voucher is linked to a journal entry. Delete the journal entry first, then delete this voucher.');
     }
 
     await crvRepo.softDelete(id, tenantId);

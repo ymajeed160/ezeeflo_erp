@@ -21,6 +21,10 @@ class QuotationDTO {
     this.updatedBy = data.updatedBy;
     this.confirmedBy = data.confirmedBy || null;
     this.confirmedAt = data.confirmedAt || null;
+    this.deletedAt = data.deletedAt || null;
+    this.deletedBy = data.deletedBy || null;
+    this.deleteReason = data.deleteReason || null;
+    this.cancelReason = data.cancelReason || null;
     this.createdAt = data.createdAt;
     this.updatedAt = data.updatedAt;
 

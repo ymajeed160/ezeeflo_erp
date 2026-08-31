@@ -20,6 +20,7 @@ import {
 import { fetchActiveAssetCategories } from '../store/slices/assetCategorySlice';
 import { fetchSuppliers } from '../store/slices/supplierSlice';
 import { formatCurrency } from '../utils/currency';
+import QuickCreate from '../components/QuickCreate/QuickCreate';
 
 const ACQ_TYPES = [
   { value: 'manual', label: 'Manual' },
@@ -193,13 +194,22 @@ const AssetAcquisitions = () => {
               </FormControl>
             </Grid>
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Supplier</InputLabel>
-                <Select value={form.supplierId} label="Supplier" onChange={(e) => setForm({ ...form, supplierId: e.target.value })}>
-                  <MenuItem value=""><em>None</em></MenuItem>
-                  {suppliers?.map((s) => <MenuItem key={s.id} value={s.id}>{s.code} - {s.name}</MenuItem>)}
-                </Select>
-              </FormControl>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Supplier</InputLabel>
+                  <Select value={form.supplierId} label="Supplier" onChange={(e) => setForm({ ...form, supplierId: e.target.value })}>
+                    <MenuItem value=""><em>None</em></MenuItem>
+                    {suppliers?.map((s) => <MenuItem key={s.id} value={s.id}>{s.code} - {s.name}</MenuItem>)}
+                  </Select>
+                </FormControl>
+                <QuickCreate
+                  entityKey="supplier"
+                  onCreated={(s) => {
+                    dispatch(fetchSuppliers({ limit: 999 }));
+                    setForm((prev) => ({ ...prev, supplierId: s.id }));
+                  }}
+                />
+              </Box>
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField fullWidth size="small" label="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />

@@ -32,6 +32,28 @@ class ReportRepository {
       };
     }
 
+    // Inventory Aging: returns [totals, summary rows, pagination, detailed layers]
+    if (procedureName === 'sp_Report_InventoryAging') {
+      const summary = Array.isArray(results[0]) && results[0].length > 0 ? results[0][0] : null;
+      const data = Array.isArray(results[1]) ? results[1].map((r) => this._parseNumeric(r)) : [];
+      const paginationRow = Array.isArray(results[2]) && results[2].length > 0 ? results[2][0] : null;
+      const layers = Array.isArray(results[3]) ? results[3].map((r) => this._parseNumeric(r)) : [];
+      return {
+        summary: summary ? this._parseNumeric(summary) : null,
+        data,
+        layers,
+        pagination: paginationRow
+          ? {
+              page: parseInt(paginationRow.page || 1, 10),
+              pageSize: parseInt(paginationRow.page_size || 50, 10),
+              totalRecords: parseInt(paginationRow.total || 0, 10),
+              totalPages: Math.ceil(parseInt(paginationRow.total || 0, 10) / (parseInt(paginationRow.page_size || 50, 10) || 1)),
+            }
+          : { page: 1, pageSize: 50, totalRecords: data.length, totalPages: 1 },
+        isStructured: false,
+      };
+    }
+
     // MySQL CALL returns multiple result sets
     // Convention: result[0] = summary, result[1] = data, result[2] = pagination
     const summary = Array.isArray(results[0]) && results[0].length > 0 ? results[0][0] : null;

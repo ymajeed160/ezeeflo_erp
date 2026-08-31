@@ -67,7 +67,8 @@ import {
 import { fetchCustomers } from '../store/slices/customerSlice';
 import { fetchItems } from '../store/slices/itemSlice';
 import { fetchWarehouses } from '../store/slices/warehouseSlice';
-import { confirmDialog, apiSuccess } from '../utils/toast';
+import { confirmDialog, apiSuccess, apiError } from '../utils/toast';
+import QuickCreate from '../components/QuickCreate/QuickCreate';
 
 const statusColors = {
   draft: 'default',
@@ -97,6 +98,8 @@ const Quotations = () => {
   const [editId, setEditId] = useState(null);
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
   const [quotationToSend, setQuotationToSend] = useState(null);
+  const [reasonDialog, setReasonDialog] = useState({ open: false, action: null, target: null });
+  const [reasonText, setReasonText] = useState('');
 
   const { register, handleSubmit, control, reset, watch, setValue, formState: { errors } } = useForm({
     defaultValues: {
@@ -115,7 +118,8 @@ const Quotations = () => {
   const { fields, append, remove } = useFieldArray({ control, name: 'details' });
 
   const loadData = useCallback(() => {
-    dispatch(fetchQuotations({ search, status: statusFilter, customerId: customerFilter, page, limit }));
+    const params = { search, status: statusFilter, customerId: customerFilter, page, limit };
+    dispatch(fetchQuotations(params));
   }, [dispatch, search, statusFilter, customerFilter, page, limit]);
 
   useEffect(() => {
@@ -187,11 +191,13 @@ const Quotations = () => {
     setOpenForm(true);
   };
 
-  const handleDelete = async (quotation) => {
-    const confirmed = await confirmDialog('Are you sure you want to delete this quotation?');
-    if (confirmed) {
-      dispatch(deleteQuotation(quotation.id)).then(() => loadData());
+  const handleDelete = (quotation) => {
+    if (quotation.status !== 'draft') {
+      apiError('Only draft quotations can be deleted');
+      return;
     }
+    setReasonDialog({ open: true, action: 'delete', target: quotation.id });
+    setReasonText('');
   };
 
   const handleConfirm = async (quotation) => {
@@ -203,11 +209,32 @@ const Quotations = () => {
     }
   };
 
-  const handleCancel = async (quotation) => {
-    const confirmed = await confirmDialog('Are you sure you want to cancel this quotation?');
-    if (confirmed) {
-      dispatch(cancelQuotation(quotation.id)).then(() => loadData());
+  const handleCancel = (quotation) => {
+    setReasonDialog({ open: true, action: 'cancel', target: quotation.id });
+    setReasonText('');
+  };
+
+  const handleReasonConfirm = async () => {
+    const { action, target } = reasonDialog;
+    setReasonDialog({ open: false, action: null, target: null });
+    if (!target) return;
+    if (action === 'delete') {
+      const result = await dispatch(deleteQuotation({ id: target, reason: reasonText || null }));
+      if (result.meta.requestStatus === 'fulfilled') {
+        apiSuccess('Quotation deleted successfully');
+      } else {
+        apiError(result.payload || 'Failed to delete quotation');
+      }
+    } else if (action === 'cancel') {
+      const result = await dispatch(cancelQuotation({ id: target, reason: reasonText || null }));
+      if (result.meta.requestStatus === 'fulfilled') {
+        apiSuccess('Quotation cancelled successfully');
+      } else {
+        apiError(result.payload || 'Failed to cancel quotation');
+      }
     }
+    setReasonText('');
+    loadData();
   };
 
   const handleReject = (quotation) => {
@@ -291,11 +318,13 @@ Total: ${q.totalAmount}`;
   };
 
   const handlePageChange = (e, newPage) => {
-    dispatch(fetchQuotations({ search, status: statusFilter, customerId: customerFilter, page: newPage + 1, limit }));
+    const params = { search, status: statusFilter, customerId: customerFilter, page: newPage + 1, limit };
+    dispatch(fetchQuotations(params));
   };
 
   const handleRowsPerPageChange = (e) => {
-    dispatch(fetchQuotations({ search, status: statusFilter, customerId: customerFilter, page: 1, limit: parseInt(e.target.value) }));
+    const params = { search, status: statusFilter, customerId: customerFilter, page: 1, limit: parseInt(e.target.value) };
+    dispatch(fetchQuotations(params));
   };
 
   const details = watch('details');
@@ -460,23 +489,34 @@ Total: ${q.totalAmount}`;
           <DialogContent dividers>
             <Grid container spacing={2}>
               <Grid item xs={12} sm={6}>
-                <Controller
-                  name="customerId"
-                  control={control}
-                  rules={{ required: 'Customer is required' }}
-                  render={({ field }) => (
-                    <Autocomplete
-                      options={customersList}
-                      getOptionLabel={(opt) => `${opt.code} - ${opt.name}`}
-                      value={customersList.find((c) => c.id === field.value) || null}
-                      onChange={(e, val) => field.onChange(val?.id || '')}
-                      renderInput={(params) => (
-                        <TextField {...params} label="Customer" error={!!errors.customerId} helperText={errors.customerId?.message} fullWidth disabled={viewMode} />
-                      )}
-                      disabled={viewMode}
-                    />
-                  )}
-                />
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Controller
+                    name="customerId"
+                    control={control}
+                    rules={{ required: 'Customer is required' }}
+                    render={({ field }) => (
+                      <Autocomplete
+                        options={customersList}
+                        getOptionLabel={(opt) => `${opt.code} - ${opt.name}`}
+                        value={customersList.find((c) => c.id === field.value) || null}
+                        onChange={(e, val) => field.onChange(val?.id || '')}
+                        renderInput={(params) => (
+                          <TextField {...params} label="Customer" error={!!errors.customerId} helperText={errors.customerId?.message} fullWidth disabled={viewMode} />
+                        )}
+                        disabled={viewMode}
+                        sx={{ flex: 1 }}
+                      />
+                    )}
+                  />
+                  <QuickCreate
+                    entityKey="customer"
+                    disabled={viewMode}
+                    onCreated={(c) => {
+                      dispatch(fetchCustomers({ limit: 999 }));
+                      setValue('customerId', c.id, { shouldValidate: true });
+                    }}
+                  />
+                </Box>
               </Grid>
               <Grid item xs={12} sm={3}>
                 <TextField label="Quotation Date" type="date" fullWidth InputLabelProps={{ shrink: true }} {...register('quotationDate', { required: true })} disabled={viewMode} />
@@ -526,30 +566,42 @@ Total: ${q.totalAmount}`;
                       {fields.map((field, index) => (
                         <TableRow key={field.id}>
                           <TableCell>
-                            <Controller
-                              name={`details.${index}.itemId`}
-                              control={control}
-                              rules={{ required: 'Item is required' }}
-                              render={({ field: f }) => (
-                                <Autocomplete
-                                  size="small"
-                                  options={itemsList}
-                                  getOptionLabel={(opt) => `${opt.itemCode || opt.code} - ${opt.name}`}
-                                  value={itemsList.find((i) => i.id === f.value) || null}
-                                  onChange={(e, val) => {
-                                    f.onChange(val?.id || '');
-                                    if (val) {
-                                      setValue(`details.${index}.unitPrice`, Number(val.sellingPrice) || 0);
-                                      setValue(`details.${index}.taxPercentage`, Number(val.taxPercentage) || 0);
-                                    }
-                                  }}
-                                  renderInput={(params) => (
-                                    <TextField {...params} error={!!errors.details?.[index]?.itemId} helperText={errors.details?.[index]?.itemId?.message} />
-                                  )}
-                                  disabled={viewMode}
-                                />
-                              )}
-                            />
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              <Controller
+                                name={`details.${index}.itemId`}
+                                control={control}
+                                rules={{ required: 'Item is required' }}
+                                render={({ field: f }) => (
+                                  <Autocomplete
+                                    size="small"
+                                    options={itemsList}
+                                    getOptionLabel={(opt) => `${opt.itemCode || opt.code} - ${opt.name}`}
+                                    value={itemsList.find((i) => i.id === f.value) || null}
+                                    onChange={(e, val) => {
+                                      f.onChange(val?.id || '');
+                                      if (val) {
+                                        setValue(`details.${index}.unitPrice`, Number(val.sellingPrice) || 0);
+                                        setValue(`details.${index}.taxPercentage`, Number(val.taxPercentage) || 0);
+                                      }
+                                    }}
+                                    renderInput={(params) => (
+                                      <TextField {...params} error={!!errors.details?.[index]?.itemId} helperText={errors.details?.[index]?.itemId?.message} />
+                                    )}
+                                    disabled={viewMode}
+                                    sx={{ flex: 1 }}
+                                  />
+                                )}
+                              />
+                              <QuickCreate
+                                entityKey="item"
+                                disabled={viewMode}
+                                onCreated={(it) => {
+                                  dispatch(fetchItems({ limit: 999 }));
+                                  setValue(`details.${index}.itemId`, it.id, { shouldValidate: true });
+                                  if (it.sellingPrice) setValue(`details.${index}.unitPrice`, Number(it.sellingPrice) || 0);
+                                }}
+                              />
+                            </Box>
                           </TableCell>
                           <TableCell>
                             <TextField size="small" fullWidth {...register(`details.${index}.description`)} disabled={viewMode} />
@@ -670,6 +722,28 @@ Total: ${q.totalAmount}`;
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setSendDialogOpen(false)}>Cancel</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Reason Dialog for Delete/Cancel */}
+      <Dialog open={reasonDialog.open} onClose={() => setReasonDialog({ open: false, action: null, target: null })} fullWidth maxWidth="sm">
+        <DialogTitle>{reasonDialog.action === 'delete' ? 'Delete Quotation' : 'Cancel Quotation'}</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            multiline
+            minRows={2}
+            label="Reason (optional)"
+            value={reasonText}
+            onChange={(e) => setReasonText(e.target.value)}
+            autoFocus
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setReasonDialog({ open: false, action: null, target: null })}>Back</Button>
+          <Button variant="contained" color={reasonDialog.action === 'delete' ? 'error' : 'warning'} onClick={handleReasonConfirm}>
+            Confirm
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

@@ -2,6 +2,8 @@
 const PurchaseOrderRepository = require('../repositories/PurchaseOrderRepository');
 const PurchaseOrderDTO = require('../dto/PurchaseOrderDTO');
 const ApiError = require('../utils/apiError');
+const { requireDeletionEnabled } = require('../utils/deletionSettings');
+const { PurchaseOrder, sequelize } = require('../models');
 
 class PurchaseOrderService {
   async getAll(tenantId, filters) {
@@ -33,10 +35,49 @@ class PurchaseOrderService {
     return PurchaseOrderDTO.toDTO(entity);
   }
 
-  async delete(id, tenantId) {
-    const entity = await PurchaseOrderRepository.delete(id, tenantId);
-    if (!entity) throw ApiError.notFound('Purchase Order not found');
-    return { message: 'Purchase Order deleted successfully' };
+  async delete(id, tenantId, userId, reason = null) {
+    const existing = await PurchaseOrderRepository.findById(id, tenantId);
+    if (!existing) throw ApiError.notFound('Purchase Order not found');
+    await requireDeletionEnabled(tenantId, 'purchase_orders');
+    if (existing.status !== 'draft') throw ApiError.badRequest('Only draft purchase orders can be deleted');
+
+    const t = await sequelize.transaction();
+    try {
+      await PurchaseOrder.update(
+        { deletedBy: userId, deleteReason: reason || null },
+        { where: { id, tenantId }, transaction: t }
+      );
+      const deleted = await PurchaseOrderRepository.delete(id, tenantId, { transaction: t });
+      if (!deleted) throw ApiError.notFound('Purchase Order not found');
+      await t.commit();
+      return { message: 'Purchase Order deleted successfully' };
+    } catch (err) {
+      await t.rollback();
+      throw err;
+    }
+  }
+
+  async restore(id, tenantId, userId) {
+    const existing = await PurchaseOrderRepository.findById(id, tenantId, true);
+    if (!existing) throw ApiError.notFound('Purchase Order not found');
+    if (!existing.deletedAt) throw ApiError.badRequest('Purchase Order is not deleted');
+
+    await PurchaseOrderRepository.restore(id, tenantId, {});
+    return this.getById(id, tenantId);
+  }
+
+  async cancel(id, tenantId, userId, reason = null) {
+    const existing = await PurchaseOrderRepository.findById(id, tenantId);
+    if (!existing) throw ApiError.notFound('Purchase Order not found');
+    if (['received', 'closed', 'cancelled'].includes(existing.status)) {
+      throw ApiError.badRequest(`Purchase Order with status ${existing.status} cannot be cancelled`);
+    }
+
+    await PurchaseOrder.update(
+      { status: 'cancelled', cancelReason: reason || null, updatedBy: userId },
+      { where: { id, tenantId } }
+    );
+    return this.getById(id, tenantId);
   }
 
   async approve(id, decision, approvedBy, tenantId) {

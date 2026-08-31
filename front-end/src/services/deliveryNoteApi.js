@@ -52,8 +52,18 @@ const deliveryNoteApi = {
   /**
    * Delete delivery note
    */
-  delete: async (id) => {
-    const response = await axiosInstance.delete(`/delivery-notes/${id}`);
+  delete: async (id, reason) => {
+    const response = await axiosInstance.delete(`/delivery-notes/${id}`, { data: { reason } });
+    return response.data;
+  },
+
+  restore: async (id) => {
+    const response = await axiosInstance.post(`/delivery-notes/${id}/restore`);
+    return response.data;
+  },
+
+  cancel: async (id, reason) => {
+    const response = await axiosInstance.patch(`/delivery-notes/${id}/cancel`, { reason });
     return response.data;
   },
 

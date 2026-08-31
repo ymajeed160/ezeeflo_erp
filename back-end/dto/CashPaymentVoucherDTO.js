@@ -20,6 +20,10 @@ class CashPaymentVoucherDTO {
       journalEntryId: v.journalEntryId,
       createdAt: v.createdAt,
       postedAt: v.postedAt,
+      deletedAt: v.deletedAt || null,
+      deletedBy: v.deletedBy || null,
+      deleteReason: v.deleteReason || null,
+      cancelReason: v.cancelReason || null,
     };
   }
 

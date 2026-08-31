@@ -17,8 +17,12 @@ const cpvApi = {
     const { data } = await axiosInstance.put(`/cash-payment-vouchers/${id}`, payload);
     return data;
   },
-  delete: async (id) => {
-    const { data } = await axiosInstance.delete(`/cash-payment-vouchers/${id}`);
+  delete: async (id, reason) => {
+    const { data } = await axiosInstance.delete(`/cash-payment-vouchers/${id}`, { data: { reason } });
+    return data;
+  },
+  restore: async (id) => {
+    const { data } = await axiosInstance.post(`/cash-payment-vouchers/${id}/restore`);
     return data;
   },
   post: async (id) => {
@@ -29,8 +33,8 @@ const cpvApi = {
     const { data } = await axiosInstance.post(`/cash-payment-vouchers/${id}/reverse`);
     return data;
   },
-  cancel: async (id) => {
-    const { data } = await axiosInstance.post(`/cash-payment-vouchers/${id}/cancel`);
+  cancel: async (id, reason) => {
+    const { data } = await axiosInstance.post(`/cash-payment-vouchers/${id}/cancel`, { reason });
     return data;
   },
 };

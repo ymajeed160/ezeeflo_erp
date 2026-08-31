@@ -51,10 +51,34 @@ export const updatePurchaseRequest = createAsyncThunk(
 
 export const deletePurchaseRequest = createAsyncThunk(
   'purchaseRequest/delete',
+  async ({ id, reason }, { rejectWithValue }) => {
+    try {
+      await purchaseRequestApi.delete(id, reason);
+      return id;
+    } catch (error) {
+      return rejectWithValue(error.response?.data || error.message);
+    }
+  }
+);
+
+export const restorePurchaseRequest = createAsyncThunk(
+  'purchaseRequest/restore',
   async (id, { rejectWithValue }) => {
     try {
-      await purchaseRequestApi.delete(id);
-      return id;
+      const response = await purchaseRequestApi.restore(id);
+      return response.data;
+    } catch (error) {
+      return rejectWithValue(error.response?.data || error.message);
+    }
+  }
+);
+
+export const cancelPurchaseRequest = createAsyncThunk(
+  'purchaseRequest/cancel',
+  async ({ id, reason }, { rejectWithValue }) => {
+    try {
+      const response = await purchaseRequestApi.cancel(id, reason);
+      return response.data;
     } catch (error) {
       return rejectWithValue(error.response?.data || error.message);
     }

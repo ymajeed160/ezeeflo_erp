@@ -58,8 +58,21 @@ class PurchaseInvoiceController {
       const tenantId = req.user.tenantId;
       const userId = req.user.id;
       const { id } = req.params;
-      const result = await purchaseInvoiceService.delete(id, tenantId, userId);
+      const reason = req.body?.reason || null;
+      const result = await purchaseInvoiceService.delete(id, tenantId, userId, reason);
       res.json({ success: true, ...result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async restore(req, res, next) {
+    try {
+      const tenantId = req.user.tenantId;
+      const userId = req.user.id;
+      const { id } = req.params;
+      const result = await purchaseInvoiceService.restore(id, tenantId, userId);
+      res.json({ success: true, data: result, message: 'Purchase Invoice restored successfully' });
     } catch (error) {
       next(error);
     }
@@ -106,7 +119,8 @@ class PurchaseInvoiceController {
       const tenantId = req.user.tenantId;
       const userId = req.user.id;
       const { id } = req.params;
-      const result = await purchaseInvoiceService.cancel(id, tenantId, userId);
+      const reason = req.body?.reason || null;
+      const result = await purchaseInvoiceService.cancel(id, tenantId, userId, reason);
       res.json({ success: true, data: result, message: 'Purchase Invoice cancelled successfully' });
     } catch (error) {
       next(error);

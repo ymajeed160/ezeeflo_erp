@@ -65,7 +65,23 @@ class CustomerPaymentController {
     try {
       const tenantId = req.user.tenantId;
       const id = req.params.id;
-      const result = await CustomerPaymentService.delete(tenantId, id);
+      const userId = req.user?.id;
+      const result = await CustomerPaymentService.delete(tenantId, id, userId, req.body?.reason);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/:tenantId/customer-payments/:id/restore
+   */
+  static async restore(req, res, next) {
+    try {
+      const tenantId = req.user.tenantId;
+      const id = req.params.id;
+      const userId = req.user?.id;
+      const result = await CustomerPaymentService.restore(tenantId, id, userId);
       res.json(result);
     } catch (error) {
       next(error);
@@ -109,7 +125,7 @@ class CustomerPaymentController {
       const tenantId = req.user.tenantId;
       const id = req.params.id;
       const userId = req.user?.id;
-      const result = await CustomerPaymentService.cancel(tenantId, id, userId);
+      const result = await CustomerPaymentService.cancel(tenantId, id, userId, req.body?.reason);
       res.json(result);
     } catch (error) {
       next(error);

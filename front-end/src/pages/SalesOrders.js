@@ -57,16 +57,18 @@ import {
   deleteSalesOrder,
   approveSalesOrder,
   closeSalesOrder,
+  cancelSalesOrder,
   clearSelectedOrder,
 } from '../store/slices/salesOrderSlice';
 import { fetchCustomers } from '../store/slices/customerSlice';
 import { fetchItems } from '../store/slices/itemSlice';
 import { fetchWarehouses } from '../store/slices/warehouseSlice';
-import { confirmDialog, apiSuccess, apiError } from '../utils/toast';
+import { apiSuccess, apiError } from '../utils/toast';
 import { generateSalesOrderPdf } from '../utils/pdfSalesOrder';
 import salesOrderApi from '../services/salesOrderApi';
 import quotationApi from '../services/quotationApi';
 import PdfViewer from '../components/PdfViewer';
+import QuickCreate from '../components/QuickCreate/QuickCreate';
 
 const statusColors = {
   draft: 'default',
@@ -74,6 +76,7 @@ const statusColors = {
   partially_delivered: 'warning',
   delivered: 'success',
   closed: 'secondary',
+  cancelled: 'error',
 };
 
 const SalesOrders = () => {
@@ -104,6 +107,8 @@ const SalesOrders = () => {
   const [sourceQuotationId, setSourceQuotationId] = useState(null);
   const [sourceQuotationNumber, setSourceQuotationNumber] = useState('');
   const [quotationDetailIds, setQuotationDetailIds] = useState([]);
+  const [reasonDialog, setReasonDialog] = useState({ open: false, action: null, target: null });
+  const [reasonText, setReasonText] = useState('');
   const activeCompany = useSelector((s) => s.company?.activeCompany || null);
 
   const { register, handleSubmit, control, reset, watch, setValue, formState: { errors } } = useForm({
@@ -121,7 +126,8 @@ const SalesOrders = () => {
   const { fields, append, remove } = useFieldArray({ control, name: 'details' });
 
   const loadData = useCallback(() => {
-    dispatch(fetchSalesOrders({ search, status: statusFilter, customerId: customerFilter, page, limit }));
+    const params = { search, status: statusFilter, customerId: customerFilter, page, limit };
+    dispatch(fetchSalesOrders(params));
   }, [dispatch, search, statusFilter, customerFilter, page, limit]);
 
   useEffect(() => {
@@ -321,11 +327,41 @@ const SalesOrders = () => {
     }
   };
 
-  const handleDelete = async (order) => {
-    const confirmed = await confirmDialog('Are you sure you want to delete this sales order?');
-    if (confirmed) {
-      dispatch(deleteSalesOrder(order.id)).then(() => loadData());
+  const handleDelete = (order) => {
+    if (order.status !== 'draft') {
+      apiError('Only draft sales orders can be deleted');
+      return;
     }
+    setReasonDialog({ open: true, action: 'delete', target: order.id });
+    setReasonText('');
+  };
+
+  const handleCancel = (order) => {
+    setReasonDialog({ open: true, action: 'cancel', target: order.id });
+    setReasonText('');
+  };
+
+  const handleReasonConfirm = async () => {
+    const { action, target } = reasonDialog;
+    setReasonDialog({ open: false, action: null, target: null });
+    if (!target) return;
+    if (action === 'delete') {
+      const result = await dispatch(deleteSalesOrder({ id: target, reason: reasonText || null }));
+      if (result.meta.requestStatus === 'fulfilled') {
+        apiSuccess('Sales Order deleted successfully');
+      } else {
+        apiError(result.payload || 'Failed to delete sales order');
+      }
+    } else if (action === 'cancel') {
+      const result = await dispatch(cancelSalesOrder({ id: target, reason: reasonText || null }));
+      if (result.meta.requestStatus === 'fulfilled') {
+        apiSuccess('Sales Order cancelled successfully');
+      } else {
+        apiError(result.payload || 'Failed to cancel sales order');
+      }
+    }
+    setReasonText('');
+    loadData();
   };
 
   const handleApprove = (order) => {
@@ -366,11 +402,13 @@ const SalesOrders = () => {
   };
 
   const handlePageChange = (e, newPage) => {
-    dispatch(fetchSalesOrders({ search, status: statusFilter, customerId: customerFilter, page: newPage + 1, limit }));
+    const params = { search, status: statusFilter, customerId: customerFilter, page: newPage + 1, limit };
+    dispatch(fetchSalesOrders(params));
   };
 
   const handleRowsPerPageChange = (e) => {
-    dispatch(fetchSalesOrders({ search, status: statusFilter, customerId: customerFilter, page: 1, limit: parseInt(e.target.value) }));
+    const params = { search, status: statusFilter, customerId: customerFilter, page: 1, limit: parseInt(e.target.value) };
+    dispatch(fetchSalesOrders(params));
   };
 
   const details = watch('details');
@@ -486,7 +524,9 @@ const SalesOrders = () => {
                   <Stack direction="row" spacing={0.5} justifyContent="center">
                     <Tooltip title="View"><IconButton size="small" onClick={() => handleView(order)}><ViewIcon fontSize="small" /></IconButton></Tooltip>
                     <Tooltip title="View as PDF"><IconButton size="small" color="primary" onClick={() => handleViewPdf(order)}><PdfIcon fontSize="small" /></IconButton></Tooltip>
-                    <Tooltip title="Edit"><IconButton size="small" onClick={() => handleEdit(order)} disabled={order.status !== 'draft'}><EditIcon fontSize="small" /></IconButton></Tooltip>
+                    {(
+                      <Tooltip title="Edit"><IconButton size="small" onClick={() => handleEdit(order)} disabled={order.status !== 'draft'}><EditIcon fontSize="small" /></IconButton></Tooltip>
+                    )}
                     {order.status === 'draft' && (
                       <Tooltip title="Approve"><IconButton size="small" color="success" onClick={() => handleApprove(order)}><ApproveIcon fontSize="small" /></IconButton></Tooltip>
                     )}
@@ -499,7 +539,12 @@ const SalesOrders = () => {
                     {['approved', 'confirmed', 'partially_delivered', 'delivered', 'partially_invoiced'].includes(order.status) && (
                       <Tooltip title="Create Invoice"><IconButton size="small" color="secondary" onClick={() => navigate(`/app/sales/invoices/new?salesOrderId=${order.id}`)}><InvoiceIcon fontSize="small" /></IconButton></Tooltip>
                     )}
-                    <Tooltip title="Delete"><IconButton size="small" color="error" onClick={() => handleDelete(order)} disabled={order.status !== 'draft'}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
+                    {['draft', 'approved', 'confirmed', 'partially_delivered', 'partially_invoiced'].includes(order.status) && (
+                      <Tooltip title="Cancel"><IconButton size="small" color="warning" onClick={() => handleCancel(order)}><CancelIcon fontSize="small" /></IconButton></Tooltip>
+                    )}
+                    {(
+                      <Tooltip title="Delete"><IconButton size="small" color="error" onClick={() => handleDelete(order)} disabled={order.status !== 'draft'}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
+                    )}
                   </Stack>
                 </TableCell>
               </TableRow>
@@ -529,23 +574,34 @@ const SalesOrders = () => {
           <DialogContent dividers>
             <Grid container spacing={2}>
               <Grid item xs={12} sm={6}>
-                <Controller
-                  name="customerId"
-                  control={control}
-                  rules={{ required: 'Customer is required' }}
-                  render={({ field }) => (
-                    <Autocomplete
-                      options={customersList}
-                      getOptionLabel={(opt) => `${opt.itemCode || opt.code} - ${opt.name}`}
-                      value={customersList.find((c) => c.id === field.value) || null}
-                      onChange={(e, val) => field.onChange(val?.id || '')}
-                      renderInput={(params) => (
-                        <TextField {...params} label="Customer" error={!!errors.customerId} helperText={errors.customerId?.message} fullWidth disabled={viewMode} />
-                      )}
-                      disabled={viewMode}
-                    />
-                  )}
-                />
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Controller
+                    name="customerId"
+                    control={control}
+                    rules={{ required: 'Customer is required' }}
+                    render={({ field }) => (
+                      <Autocomplete
+                        options={customersList}
+                        getOptionLabel={(opt) => `${opt.itemCode || opt.code} - ${opt.name}`}
+                        value={customersList.find((c) => c.id === field.value) || null}
+                        onChange={(e, val) => field.onChange(val?.id || '')}
+                        renderInput={(params) => (
+                          <TextField {...params} label="Customer" error={!!errors.customerId} helperText={errors.customerId?.message} fullWidth disabled={viewMode} />
+                        )}
+                        disabled={viewMode}
+                        sx={{ flex: 1 }}
+                      />
+                    )}
+                  />
+                  <QuickCreate
+                    entityKey="customer"
+                    disabled={viewMode}
+                    onCreated={(c) => {
+                      dispatch(fetchCustomers({ limit: 999 }));
+                      setValue('customerId', c.id, { shouldValidate: true });
+                    }}
+                  />
+                </Box>
               </Grid>
               <Grid item xs={12} sm={3}>
                 <TextField label="Order Date" type="date" fullWidth InputLabelProps={{ shrink: true }} {...register('orderDate', { required: true })} disabled={viewMode} />
@@ -736,6 +792,28 @@ const SalesOrders = () => {
             disabled={sendingEmail || !emailTo}
             startIcon={sendingEmail ? <CircularProgress size={16} /> : <EmailIcon />}>
             {sendingEmail ? 'Sending...' : 'Send Email'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Reason Dialog for Delete/Cancel */}
+      <Dialog open={reasonDialog.open} onClose={() => setReasonDialog({ open: false, action: null, target: null })} fullWidth maxWidth="sm">
+        <DialogTitle>{reasonDialog.action === 'delete' ? 'Delete Sales Order' : 'Cancel Sales Order'}</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            multiline
+            minRows={2}
+            label="Reason (optional)"
+            value={reasonText}
+            onChange={(e) => setReasonText(e.target.value)}
+            autoFocus
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setReasonDialog({ open: false, action: null, target: null })}>Back</Button>
+          <Button variant="contained" color={reasonDialog.action === 'delete' ? 'error' : 'warning'} onClick={handleReasonConfirm}>
+            Confirm
           </Button>
         </DialogActions>
       </Dialog>

@@ -4,7 +4,8 @@ const salesOrderRepo = require('../repositories/SalesOrderRepository');
 const quotationRepo = require('../repositories/QuotationRepository');
 const SalesOrderDTO = require('../dto/SalesOrderDTO');
 const AuditLogService = require('./AuditLogService');
-const { sequelize, Quotation, QuotationDetail } = require('../models');
+const { sequelize, Quotation, QuotationDetail, SalesOrder } = require('../models');
+const { requireDeletionEnabled } = require('../utils/deletionSettings');
 
 class SalesOrderService {
   async list(tenantId, query) {
@@ -156,16 +157,58 @@ class SalesOrderService {
     }
   }
 
-  async delete(tenantId, id, userId) {
+  async delete(tenantId, id, userId, reason = null) {
     const existing = await salesOrderRepo.findById(id, tenantId);
     if (!existing) throw new Error('Sales Order not found');
+    await requireDeletionEnabled(tenantId, 'sales_orders');
     if (existing.status !== 'draft') throw new Error('Only draft orders can be deleted');
 
-    const deleted = await salesOrderRepo.delete(id, tenantId);
-    if (deleted === 0) throw new Error('Sales Order not found');
+    const t = await sequelize.transaction();
+    try {
+      await SalesOrder.update(
+        { deletedBy: userId, deleteReason: reason || null },
+        { where: { id, tenantId }, transaction: t }
+      );
+      const deleted = await salesOrderRepo.delete(id, tenantId, { transaction: t });
+      if (deleted === 0) throw new Error('Sales Order not found');
 
-    await AuditLogService.log(tenantId, userId, 'SalesOrder', id, 'Deleted');
-    return true;
+      await AuditLogService.log(tenantId, userId, 'SalesOrder', id, 'SOFT_DELETE', { reason: reason || null });
+      await t.commit();
+      return true;
+    } catch (err) {
+      await t.rollback();
+      throw err;
+    }
+  }
+
+  async restore(tenantId, id, userId) {
+    const existing = await salesOrderRepo.findById(id, tenantId, true);
+    if (!existing) throw new Error('Sales Order not found');
+    if (!existing.deletedAt) throw new Error('Sales Order is not deleted');
+    if (existing.status !== 'draft') throw new Error('Only draft orders can be restored');
+
+    const t = await sequelize.transaction();
+    try {
+      await salesOrderRepo.restore(id, tenantId, { transaction: t });
+      await AuditLogService.log(tenantId, userId, 'SalesOrder', id, 'RESTORE');
+      await t.commit();
+      return this.getById(tenantId, id);
+    } catch (err) {
+      await t.rollback();
+      throw err;
+    }
+  }
+
+  async cancel(tenantId, id, userId, reason = null) {
+    const existing = await salesOrderRepo.findById(id, tenantId);
+    if (!existing) throw new Error('Sales Order not found');
+    if (['delivered', 'fully_invoiced', 'closed', 'cancelled'].includes(existing.status)) {
+      throw new Error(`Sales Order with status ${existing.status} cannot be cancelled`);
+    }
+
+    await salesOrderRepo.update(id, { status: 'cancelled', cancelReason: reason || null, updatedBy: userId }, { transaction: null });
+    await AuditLogService.log(tenantId, userId, 'SalesOrder', id, 'CANCELLED', { reason: reason || null });
+    return await this.getById(tenantId, id);
   }
 
   async updateStatus(tenantId, id, status, userId) {

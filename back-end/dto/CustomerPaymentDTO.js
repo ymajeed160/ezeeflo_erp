@@ -93,6 +93,10 @@ class CustomerPaymentDTO {
       updatedBy: record.updatedBy,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
+      deletedAt: record.deletedAt || null,
+      deletedBy: record.deletedBy || null,
+      deleteReason: record.deleteReason || null,
+      cancelReason: record.cancelReason || null,
     };
   }
 
@@ -125,6 +129,10 @@ class CustomerPaymentDTO {
       updatedBy: record.updatedBy,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
+      deletedAt: record.deletedAt || null,
+      deletedBy: record.deletedBy || null,
+      deleteReason: record.deleteReason || null,
+      cancelReason: record.cancelReason || null,
       allocations: (record.allocations || []).map((alloc) => ({
         id: alloc.id,
         salesInvoiceId: alloc.salesInvoiceId,

@@ -1,5 +1,6 @@
 const journalEntryRepository = require('../repositories/JournalEntryRepository');
 const { BadRequestError, NotFoundError, ConflictError } = require('../utils/appError');
+const { SystemConfig } = require('../models');
 const logger = require('../utils/logger');
 
 class JournalEntryService {
@@ -206,15 +207,25 @@ class JournalEntryService {
   }
 
   async deleteEntry(id, tenantId) {
+    // Gate deletion behind the Accounting setting "Allow Delete Journal Entries"
+    const cfg = await SystemConfig.findOne({
+      where: { tenantId, category: 'accounting', configKey: 'allow_delete_journal_entries' },
+      attributes: ['configValue'],
+    });
+    if (!cfg || String(cfg.configValue) !== 'true') {
+      throw new BadRequestError(
+        'Deleting journal entries is disabled. Enable "Allow Delete Journal Entries" in Settings → Accounting first.'
+      );
+    }
+
     const entry = await journalEntryRepository.findById(id, tenantId);
     if (!entry) {
       throw new NotFoundError('Journal entry not found');
     }
 
-    if (entry.status === 'posted') {
-      throw new BadRequestError('Cannot delete a posted journal entry');
-    }
-
+    // When the setting is enabled, allow deleting both draft and posted entries.
+    // The related transaction's journal_entry_id is cleared automatically via
+    // the FK ON DELETE SET NULL constraint.
     const deleted = await journalEntryRepository.deleteEntry(id, tenantId);
     if (!deleted) {
       throw new NotFoundError('Journal entry not found');

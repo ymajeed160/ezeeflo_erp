@@ -16,6 +16,8 @@ router.post('/', authorize('purchaseorder.create'), validate(validator.createPur
 router.post('/generate-from-pr', authorize('purchaseorder.create'), controller.generateFromPR);
 router.put('/:id', authorize('purchaseorder.create'), validate(validator.updatePurchaseOrder), controller.update);
 router.delete('/:id', authorize('purchaseorder.create'), controller.delete);
+router.post('/:id/restore', authorize('purchaseorder.create'), controller.restore);
+router.patch('/:id/cancel', authorize('purchaseorder.approve'), controller.cancel);
 router.put('/:id/approve', authorize('purchaseorder.approve'), validate(validator.approve), controller.approve);
 router.post('/:id/send-email', authorize('purchaseorder.view'), controller.sendEmail);
 

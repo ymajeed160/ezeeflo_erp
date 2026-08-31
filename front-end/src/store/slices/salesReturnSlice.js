@@ -77,10 +77,34 @@ export const updateReturn = createAsyncThunk(
 // Delete return
 export const deleteReturn = createAsyncThunk(
   'salesReturn/deleteReturn',
+  async ({ id, reason }, { rejectWithValue }) => {
+    try {
+      await SalesReturnApi.delete(id, reason);
+      return id;
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || error.message);
+    }
+  }
+);
+
+export const restoreReturn = createAsyncThunk(
+  'salesReturn/restoreReturn',
   async (id, { rejectWithValue }) => {
     try {
-      await SalesReturnApi.delete(id);
-      return id;
+      const response = await SalesReturnApi.restore(id);
+      return response;
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || error.message);
+    }
+  }
+);
+
+export const cancelReturn = createAsyncThunk(
+  'salesReturn/cancelReturn',
+  async ({ id, reason }, { rejectWithValue }) => {
+    try {
+      const response = await SalesReturnApi.cancel(id, reason);
+      return response;
     } catch (error) {
       return rejectWithValue(error.response?.data?.message || error.message);
     }

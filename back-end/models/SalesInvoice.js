@@ -76,6 +76,18 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: true,
       },
+      deletedBy: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+      deleteReason: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+      },
+      cancelReason: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+      },
       reference: {
         type: DataTypes.STRING(100),
         allowNull: true,

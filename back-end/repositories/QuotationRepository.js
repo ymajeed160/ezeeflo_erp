@@ -3,8 +3,10 @@ const { Op } = require('sequelize');
 
 class QuotationRepository {
   async findAll(tenantId, filters = {}) {
-    const { search, status, customerId, fromDate, toDate, page = 1, limit = 20, sortBy = 'quotationDate', sortOrder = 'DESC' } = filters;
+    const { search, status, customerId, fromDate, toDate, page = 1, limit = 20, sortBy = 'quotationDate', sortOrder = 'DESC', includeDeleted } = filters;
     const where = { tenantId };
+    const withDeleted = includeDeleted === 'true' || includeDeleted === true;
+    if (!withDeleted) where.deletedAt = null;
     if (status) where.status = status;
     if (customerId) where.customerId = customerId;
     if (fromDate && toDate) {
@@ -32,13 +34,15 @@ class QuotationRepository {
       limit: parseInt(limit),
       offset: parseInt(offset),
       distinct: true,
+      paranoid: !withDeleted,
     });
     return { rows, count, page: parseInt(page), limit: parseInt(limit) };
   }
 
-  async findById(tenantId, id) {
+  async findById(tenantId, id, includeDeleted = false) {
     return await Quotation.findOne({
-      where: { id, tenantId },
+      where: includeDeleted ? { id, tenantId } : { id, tenantId, deletedAt: null },
+      paranoid: !includeDeleted,
       include: [
         { model: Customer },
         { model: User, as: 'creator', attributes: ['id', 'username', 'firstName', 'lastName'] },
@@ -152,8 +156,15 @@ class QuotationRepository {
     }
   }
 
-  async delete(tenantId, id) {
-    return await Quotation.destroy({ where: { id, tenantId } });
+  async delete(tenantId, id, options = {}) {
+    return await Quotation.destroy({ where: { id, tenantId }, transaction: options.transaction });
+  }
+
+  async restore(tenantId, id, options = {}) {
+    return await Quotation.update(
+      { deletedAt: null, deletedBy: null, deleteReason: null },
+      { where: { id, tenantId }, paranoid: false, transaction: options.transaction }
+    );
   }
 
   async updateStatus(tenantId, id, status, userId, options = {}) {

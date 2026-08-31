@@ -58,6 +58,8 @@ const categories = [
       { id: 'stock-summary', title: 'Stock Summary' },
       { id: 'stock-movement', title: 'Stock Movement' },
       { id: 'stock-valuation', title: 'Stock Valuation' },
+      { id: 'inventory-valuation', title: 'Inventory Valuation' },
+      { id: 'inventory-aging', title: 'Inventory Aging' },
       { id: 'low-stock', title: 'Low Stock Report' },
       { id: 'item-ledger', title: 'Item Ledger' },
     ],

@@ -253,7 +253,7 @@ class PaymentReceiptService {
   async deleteReceipt(id, tenantId) {
     const receipt = await paymentReceiptRepository.findById(id, tenantId);
     if (!receipt) throw new NotFoundError('Payment receipt not found');
-    if (receipt.status !== 'Draft') throw new BadRequestError('Only draft receipts can be deleted');
+    if (receipt.journalEntryId) throw new BadRequestError('This Payment Receipt is linked to a journal entry. Delete the journal entry first, then delete this receipt.');
     await paymentReceiptRepository.delete(id, tenantId, false);
     logger.info(`Payment receipt ${receipt.receiptNumber} deleted`);
     return true;

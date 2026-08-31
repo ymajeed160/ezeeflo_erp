@@ -12,6 +12,7 @@ router.get('/:id', authorize('cpv.view'), validator.idParam, CPVController.getBy
 router.post('/', authorize('cpv.create'), validator.create, CPVController.create);
 router.put('/:id', authorize('cpv.edit'), validator.update, CPVController.update);
 router.delete('/:id', authorize('cpv.delete'), validator.idParam, CPVController.delete);
+router.post('/:id/restore', authorize('cpv.edit'), validator.idParam, CPVController.restore);
 router.post('/:id/post', authorize('cpv.post'), validator.idParam, CPVController.post);
 router.post('/:id/reverse', authorize('cpv.reverse'), validator.idParam, CPVController.reverse);
 router.post('/:id/cancel', authorize('cpv.cancel'), validator.idParam, CPVController.cancel);

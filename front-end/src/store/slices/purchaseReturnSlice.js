@@ -76,13 +76,41 @@ export const updatePurchaseReturn = createAsyncThunk(
 // Delete purchase return
 export const deletePurchaseReturn = createAsyncThunk(
   'purchaseReturns/delete',
-  async (id, { rejectWithValue }) => {
+  async ({ id, reason }, { rejectWithValue }) => {
     try {
-      await PurchaseReturnApi.delete(id);
+      await PurchaseReturnApi.delete(id, reason);
       return id;
     } catch (error) {
       return rejectWithValue(
         error.response?.data?.message || error.message || 'Failed to delete purchase return'
+      );
+    }
+  }
+);
+
+export const restorePurchaseReturn = createAsyncThunk(
+  'purchaseReturns/restore',
+  async (id, { rejectWithValue }) => {
+    try {
+      const response = await PurchaseReturnApi.restore(id);
+      return response.data || response;
+    } catch (error) {
+      return rejectWithValue(
+        error.response?.data?.message || error.message || 'Failed to restore purchase return'
+      );
+    }
+  }
+);
+
+export const cancelPurchaseReturn = createAsyncThunk(
+  'purchaseReturns/cancel',
+  async ({ id, reason }, { rejectWithValue }) => {
+    try {
+      const response = await PurchaseReturnApi.cancel(id, reason);
+      return response.data || response;
+    } catch (error) {
+      return rejectWithValue(
+        error.response?.data?.message || error.message || 'Failed to cancel purchase return'
       );
     }
   }

@@ -16,6 +16,8 @@ router.put('/:id', authorize('salesorder.edit'), (req, res, next) => ctrl.update
 router.delete('/:id', authorize('salesorder.delete'), (req, res, next) => ctrl.delete(req, res, next));
 router.patch('/:id/approve', authorize('salesorder.approve'), (req, res, next) => ctrl.approve(req, res, next));
 router.patch('/:id/close', authorize('salesorder.edit'), (req, res, next) => ctrl.close(req, res, next));
+router.post('/:id/cancel', authorize('salesorder.edit'), (req, res, next) => ctrl.cancel(req, res, next));
+router.post('/:id/restore', authorize('salesorder.edit'), (req, res, next) => ctrl.restore(req, res, next));
 router.post('/:id/send-email', authorize('salesorder.view'), (req, res, next) => ctrl.sendEmail(req, res, next));
 
 module.exports = router;

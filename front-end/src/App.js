@@ -49,6 +49,7 @@ import BankReconciliation from './pages/BankReconciliation';
 import ReportsCenter from './pages/Reports/ReportsCenter';
 import ReportViewer from './pages/Reports/ReportViewer';
 import BalanceSheet from './pages/Reports/BalanceSheet';
+import InventoryAgingReport from './pages/Reports/InventoryAgingReport';
 import SalesDashboard from './pages/BI/SalesDashboard';
 import PurchaseDashboard from './pages/BI/PurchaseDashboard';
 import InventoryDashboard from './pages/BI/InventoryDashboard';
@@ -582,6 +583,8 @@ const App = () => {
             {/* Reports */}
             <Route path="/app/reports" element={<ReportsCenter />} />
             <Route path="/app/reports/balance-sheet" element={<BalanceSheet />} />
+            <Route path="/app/reports/inventory-aging" element={<InventoryAgingReport reportName="inventory-aging" />} />
+            <Route path="/app/reports/inventory-valuation" element={<InventoryAgingReport reportName="inventory-valuation" />} />
             <Route path="/app/reports/:reportName" element={<ReportViewer />} />
 
             {/* BI Dashboards */}

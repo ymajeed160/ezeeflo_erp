@@ -19,6 +19,7 @@ const repository = require('../repositories/PurchaseReturnRepository');
 const journalEntryService = require('./JournalEntryService');
 const inventoryService = require('./InventoryService');
 const { PurchaseReturnDTO } = require('../dto/PurchaseReturnDTO');
+const { requireDeletionEnabled } = require('../utils/deletionSettings');
 
 class PurchaseReturnService {
   constructor() {
@@ -402,11 +403,49 @@ class PurchaseReturnService {
     return PurchaseReturnDTO.toDTO(updated);
   }
 
-  async delete(id, tenantId) {
+  async delete(id, tenantId, userId, reason = null) {
     const record = await this.repository.findById(id, tenantId);
     if (!record) throw new Error('Purchase Return not found');
-    if (record.status !== 'draft') throw new Error('Only Draft returns can be deleted');
-    return await this.repository.delete(id, tenantId);
+    await requireDeletionEnabled(tenantId, 'purchase_returns');
+    if (record.journalEntryId) throw new Error('This Purchase Return is linked to a journal entry. Delete the journal entry first, then delete this return.');
+
+    const t = await sequelize.transaction();
+    try {
+      await PurchaseReturn.update(
+        { deletedBy: userId, deleteReason: reason || null },
+        { where: { id, tenantId }, transaction: t }
+      );
+      await this.repository.delete(id, tenantId, { transaction: t });
+      await t.commit();
+      return true;
+    } catch (err) {
+      await t.rollback();
+      throw err;
+    }
+  }
+
+  async restore(id, tenantId, userId) {
+    const record = await this.repository.findById(id, tenantId, null, true);
+    if (!record) throw new Error('Purchase Return not found');
+    if (!record.deletedAt) throw new Error('Purchase Return is not deleted');
+
+    await this.repository.restore(id, tenantId, {});
+    const updated = await this.repository.findById(id, tenantId);
+    return PurchaseReturnDTO.toDTO(updated);
+  }
+
+  async cancel(id, tenantId, userId, reason = null) {
+    const record = await this.repository.findById(id, tenantId);
+    if (!record) throw new Error('Purchase Return not found');
+    if (record.status !== 'draft') throw new Error('Only Draft returns can be cancelled');
+
+    await this.repository.updateStatus(id, tenantId, 'rejected');
+    await PurchaseReturn.update(
+      { cancelReason: reason || null },
+      { where: { id, tenantId } }
+    );
+    const updated = await this.repository.findById(id, tenantId);
+    return PurchaseReturnDTO.toDTO(updated);
   }
 
   async validateReturnQuantity(record, detail, tenantId, txn) {

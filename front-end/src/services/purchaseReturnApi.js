@@ -88,8 +88,18 @@ class PurchaseReturnApi {
   /**
    * Delete purchase return
    */
-  static async delete(id) {
-    const response = await api.delete(`/purchase-returns/${id}`);
+  static async delete(id, reason) {
+    const response = await api.delete(`/purchase-returns/${id}`, { data: { reason } });
+    return response.data;
+  }
+
+  static async restore(id) {
+    const response = await api.post(`/purchase-returns/${id}/restore`);
+    return response.data;
+  }
+
+  static async cancel(id, reason) {
+    const response = await api.patch(`/purchase-returns/${id}/cancel`, { reason });
     return response.data;
   }
 

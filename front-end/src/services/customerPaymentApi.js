@@ -83,10 +83,16 @@ class CustomerPaymentApi {
   /**
    * Delete customer payment
    */
-  static async delete(id) {
+  static async delete(id, reason) {
     const response = await api.delete(`/customer-payments/${id}`, {
       params: { tenantId: TENANT_ID },
+      data: { reason },
     });
+    return response.data;
+  }
+
+  static async restore(id) {
+    const response = await api.post(`/customer-payments/${id}/restore`);
     return response.data;
   }
 
@@ -109,8 +115,8 @@ class CustomerPaymentApi {
   /**
    * Cancel customer payment
    */
-  static async cancel(id) {
-    const response = await api.post(`/customer-payments/${id}/cancel`, {});
+  static async cancel(id, reason) {
+    const response = await api.post(`/customer-payments/${id}/cancel`, { reason });
     return response.data;
   }
 }

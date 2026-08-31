@@ -7,7 +7,8 @@ class DeliveryNoteRepository {
   /**
    * List delivery notes with pagination, sorting, filtering, and search
    */
-  async list({ page = 1, limit = 20, sortBy = 'createdAt', sortOrder = 'DESC', search = '', status = '', tenantId }) {
+  async list({ page = 1, limit = 20, sortBy = 'createdAt', sortOrder = 'DESC', search = '', status = '', tenantId, includeDeleted }) {
+    const withDeleted = includeDeleted === 'true' || includeDeleted === true;
     const offset = (page - 1) * limit;
     const where = { tenantId };
 
@@ -38,6 +39,7 @@ class DeliveryNoteRepository {
         { model: User, as: 'creator', attributes: ['id', 'username', 'firstName', 'lastName'] },
       ],
       distinct: true,
+      paranoid: !withDeleted,
     });
 
     return {
@@ -51,9 +53,10 @@ class DeliveryNoteRepository {
   /**
    * Find delivery note by ID with all details
    */
-  async findById(id, tenantId) {
+  async findById(id, tenantId, includeDeleted = false) {
     return await DeliveryNote.findOne({
-      where: { id, tenantId },
+      where: includeDeleted ? { id, tenantId } : { id, tenantId, deletedAt: null },
+      paranoid: !includeDeleted,
       include: [
         { model: Customer, as: 'customer', required: false },
         { model: SalesOrder, as: 'salesOrder', required: false },
@@ -164,11 +167,18 @@ class DeliveryNoteRepository {
   /**
    * Delete delivery note (soft delete)
    */
-  async delete(id, tenantId) {
-    const deliveryNote = await DeliveryNote.findOne({ where: { id, tenantId } });
+  async delete(id, tenantId, { transaction } = {}) {
+    const deliveryNote = await DeliveryNote.findOne({ where: { id, tenantId }, transaction });
     if (!deliveryNote) return null;
-    await deliveryNote.destroy();
+    await deliveryNote.destroy({ transaction });
     return deliveryNote;
+  }
+
+  async restore(id, tenantId, { transaction } = {}) {
+    return await DeliveryNote.update(
+      { deletedAt: null, deletedBy: null, deleteReason: null },
+      { where: { id, tenantId }, paranoid: false, transaction }
+    );
   }
 
   /**

@@ -46,6 +46,10 @@ const deliveryNoteDTO = (dn) => {
     updatedBy: dn.updatedBy,
     createdAt: dn.createdAt,
     updatedAt: dn.updatedAt,
+    deletedAt: dn.deletedAt || null,
+    deletedBy: dn.deletedBy || null,
+    deleteReason: dn.deleteReason || null,
+    cancelReason: dn.cancelReason || null,
     // Nested associations
     customer: dn.customer
       ? {
@@ -94,6 +98,10 @@ const deliveryNoteListDTO = (dn) => ({
   salesOrderNumber: dn.salesOrder ? dn.salesOrder.orderNumber : null,
   createdBy: dn.createdBy,
   createdAt: dn.createdAt,
+  deletedAt: dn.deletedAt || null,
+  deletedBy: dn.deletedBy || null,
+  deleteReason: dn.deleteReason || null,
+  cancelReason: dn.cancelReason || null,
 });
 
 module.exports = { deliveryNoteDTO, deliveryNoteListDTO, deliveryNoteDetailDTO };

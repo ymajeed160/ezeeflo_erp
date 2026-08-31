@@ -282,7 +282,7 @@ class BankTransactionService {
   async deleteTransaction(id, tenantId) {
     const txn = await bankTransactionRepository.findById(id, tenantId);
     if (!txn) throw new NotFoundError('Bank transaction not found');
-    if (txn.status !== 'Draft') throw new BadRequestError('Only draft transactions can be deleted');
+    if (txn.journalEntryId) throw new BadRequestError('This Bank Transaction is linked to a journal entry. Delete the journal entry first, then delete this transaction.');
     if (txn.isReconciled) throw new BadRequestError('Cannot delete reconciled transaction');
 
     await bankTransactionRepository.delete(id, tenantId, false);

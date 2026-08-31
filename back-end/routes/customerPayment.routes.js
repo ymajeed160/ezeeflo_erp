@@ -55,6 +55,14 @@ router.delete(
   CustomerPaymentController.delete
 );
 
+// POST /api/:tenantId/customer-payments/:id/restore - Restore deleted customer payment
+router.post(
+  '/:id/restore',
+  authorize('customerpayment.edit'),
+  customerPaymentValidator.idParam,
+  CustomerPaymentController.restore
+);
+
 // POST /api/:tenantId/customer-payments/:id/post - Post customer payment (accounting)
 router.post(
   '/:id/post',
@@ -66,8 +74,7 @@ router.post(
 // POST /api/:tenantId/customer-payments/:id/cancel - Cancel customer payment
 router.post(
   '/:id/cancel',
-  authorize('customerpayment.cancel'),
-  customerPaymentValidator.idParam,
+  authorize('customerpayment.cancel'),  customerPaymentValidator.idParam,
   CustomerPaymentController.cancel
 );
 

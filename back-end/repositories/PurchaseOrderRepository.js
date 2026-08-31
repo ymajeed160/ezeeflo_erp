@@ -5,6 +5,7 @@ const AuditTrailService = require('../services/AuditTrailService');
 
 class PurchaseOrderRepository {
   async findAll(tenantId, filters = {}) {
+    const withDeleted = filters.includeDeleted === 'true' || filters.includeDeleted === true;
     const where = { tenantId };
     if (filters.search) {
       where[Op.or] = [
@@ -41,6 +42,7 @@ class PurchaseOrderRepository {
       limit,
       offset,
       distinct: true,
+      paranoid: !withDeleted,
     });
 
     return {
@@ -51,9 +53,10 @@ class PurchaseOrderRepository {
     };
   }
 
-  async findById(id, tenantId) {
+  async findById(id, tenantId, includeDeleted = false) {
     return await PurchaseOrder.findOne({
-      where: { id, tenantId },
+      where: includeDeleted ? { id, tenantId } : { id, tenantId, deletedAt: null },
+      paranoid: !includeDeleted,
       include: [
         { model: Supplier, as: 'supplier' },
         { model: Warehouse, as: 'warehouse', required: false },
@@ -178,11 +181,19 @@ class PurchaseOrderRepository {
     }
   }
 
-  async delete(id, tenantId) {
-    const order = await this.findOne({ where: { id, tenantId } });
+  async delete(id, tenantId, { transaction } = {}) {
+    const order = await PurchaseOrder.findOne({ where: { id, tenantId }, transaction });
     if (!order) return null;
     if (order.status !== 'draft') throw new Error('Only draft purchase orders can be deleted');
-    return await order.destroy();
+    await order.destroy({ transaction });
+    return order;
+  }
+
+  async restore(id, tenantId, { transaction } = {}) {
+    return await PurchaseOrder.update(
+      { deletedAt: null, deletedBy: null, deleteReason: null },
+      { where: { id, tenantId }, paranoid: false, transaction }
+    );
   }
 
   async approve(id, decision, approvedBy, tenantId) {

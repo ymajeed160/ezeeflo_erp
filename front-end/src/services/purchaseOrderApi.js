@@ -18,8 +18,14 @@ export default {
   update(id, data) {
     return apiClient.put(`${resource}/${id}`, data);
   },
-  delete(id) {
-    return apiClient.delete(`${resource}/${id}`);
+  delete(id, reason) {
+    return apiClient.delete(`${resource}/${id}`, { data: { reason } });
+  },
+  restore(id) {
+    return apiClient.post(`${resource}/${id}/restore`);
+  },
+  cancel(id, reason) {
+    return apiClient.patch(`${resource}/${id}/cancel`, { reason });
   },
   approve(id, data) {
     return apiClient.put(`${resource}/${id}/approve`, data);

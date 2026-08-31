@@ -78,10 +78,34 @@ export const updateCustomerPayment = createAsyncThunk(
 // Delete customer payment
 export const deleteCustomerPayment = createAsyncThunk(
   'customerPayment/deleteCustomerPayment',
+  async ({ id, reason }, { rejectWithValue }) => {
+    try {
+      await CustomerPaymentApi.delete(id, reason);
+      return { id };
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || error.message);
+    }
+  }
+);
+
+export const restoreCustomerPayment = createAsyncThunk(
+  'customerPayment/restoreCustomerPayment',
   async (id, { rejectWithValue }) => {
     try {
-      await CustomerPaymentApi.delete(id);
-      return { id };
+      const response = await CustomerPaymentApi.restore(id);
+      return response;
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || error.message);
+    }
+  }
+);
+
+export const cancelCustomerPayment = createAsyncThunk(
+  'customerPayment/cancelCustomerPayment',
+  async ({ id, reason }, { rejectWithValue }) => {
+    try {
+      const response = await CustomerPaymentApi.cancel(id, reason);
+      return response;
     } catch (error) {
       return rejectWithValue(error.response?.data?.message || error.message);
     }
@@ -94,19 +118,6 @@ export const postCustomerPayment = createAsyncThunk(
   async ({ id, data } = {}, { rejectWithValue }) => {
     try {
       const response = await CustomerPaymentApi.post(id, data);
-      return response;
-    } catch (error) {
-      return rejectWithValue(error.response?.data?.message || error.message);
-    }
-  }
-);
-
-// Cancel customer payment
-export const cancelCustomerPayment = createAsyncThunk(
-  'customerPayment/cancelCustomerPayment',
-  async (id, { rejectWithValue }) => {
-    try {
-      const response = await CustomerPaymentApi.cancel(id);
       return response;
     } catch (error) {
       return rejectWithValue(error.response?.data?.message || error.message);

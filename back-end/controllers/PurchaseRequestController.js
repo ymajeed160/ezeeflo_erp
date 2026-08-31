@@ -68,8 +68,32 @@ class PurchaseRequestController {
       const tenantId = req.user.tenantId;
       const userId = req.user.id;
       const { id } = req.params;
-      await purchaseRequestService.delete(tenantId, id, userId);
+      await purchaseRequestService.delete(tenantId, id, userId, req.body?.reason);
       res.json({ success: true, message: 'Purchase Request deleted successfully' });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async restore(req, res, next) {
+    try {
+      const tenantId = req.user.tenantId;
+      const userId = req.user.id;
+      const { id } = req.params;
+      const data = await purchaseRequestService.restore(tenantId, id, userId);
+      res.json({ success: true, data, message: 'Purchase Request restored successfully' });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async cancel(req, res, next) {
+    try {
+      const tenantId = req.user.tenantId;
+      const userId = req.user.id;
+      const { id } = req.params;
+      const data = await purchaseRequestService.cancel(tenantId, id, userId, req.body?.reason);
+      res.json({ success: true, data, message: 'Purchase Request cancelled successfully' });
     } catch (error) {
       next(error);
     }

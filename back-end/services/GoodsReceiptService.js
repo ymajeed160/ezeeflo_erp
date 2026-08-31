@@ -1,6 +1,7 @@
 'use strict';
 const { GoodsReceipt, GoodsReceiptDetail, PurchaseOrder, PurchaseOrderDetail, Item, InventoryBalance, InventoryTransaction, PurchaseInvoice, sequelize } = require('../models');
 const goodsReceiptRepository = require('../repositories/GoodsReceiptRepository');
+const { requireDeletionEnabled } = require('../utils/deletionSettings');
 const journalEntryService = require('./JournalEntryService');
 const { GoodsReceiptDTO } = require('../dto/GoodsReceiptDTO');
 const { Op } = require('sequelize');
@@ -253,7 +254,7 @@ class GoodsReceiptService {
     }
   }
 
-  async delete(tenantId, id) {
+  async delete(tenantId, id, userId, reason = null) {
     const existing = await goodsReceiptRepository.findById(tenantId, id);
     if (!existing) {
       throw Object.assign(new Error('Goods Receipt not found'), { statusCode: 404 });
@@ -263,6 +264,10 @@ class GoodsReceiptService {
     }
     const t = await sequelize.transaction();
     try {
+      await GoodsReceipt.update(
+        { deletedBy: userId, deleteReason: reason || null },
+        { where: { id, tenantId }, transaction: t }
+      );
       await goodsReceiptRepository.delete(tenantId, id, t);
       await t.commit();
       return { message: 'Goods Receipt deleted' };
@@ -270,6 +275,20 @@ class GoodsReceiptService {
       await t.rollback();
       throw err;
     }
+  }
+
+  async restore(tenantId, id, userId) {
+    const existing = await goodsReceiptRepository.findById(tenantId, id, true);
+    if (!existing) {
+      throw Object.assign(new Error('Goods Receipt not found'), { statusCode: 404 });
+    }
+    if (!existing.deletedAt) {
+      throw Object.assign(new Error('Goods Receipt is not deleted'), { statusCode: 400 });
+    }
+
+    await goodsReceiptRepository.restore(tenantId, id);
+    const updated = await goodsReceiptRepository.findById(tenantId, id);
+    return new GoodsReceiptDTO(updated);
   }
 
   async approve(tenantId, id, userId) {
@@ -365,7 +384,7 @@ class GoodsReceiptService {
     }
   }
 
-  async cancel(tenantId, id, userId) {
+  async cancel(tenantId, id, userId, reason = null) {
     const existing = await goodsReceiptRepository.findById(tenantId, id);
     if (!existing) {
       throw Object.assign(new Error('Goods Receipt not found'), { statusCode: 404 });
@@ -419,7 +438,7 @@ class GoodsReceiptService {
       }
 
       await GoodsReceipt.update(
-        { status: 'cancelled' },
+        { status: 'cancelled', cancelReason: reason || null },
         { where: { id, tenantId }, transaction: t }
       );
 

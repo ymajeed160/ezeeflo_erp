@@ -34,9 +34,9 @@ export const updateSalesOrder = createAsyncThunk('salesOrders/update', async ({ 
   }
 });
 
-export const deleteSalesOrder = createAsyncThunk('salesOrders/delete', async (id, { rejectWithValue }) => {
+export const deleteSalesOrder = createAsyncThunk('salesOrders/delete', async ({ id, reason }, { rejectWithValue }) => {
   try {
-    await salesOrderApi.delete(id);
+    await salesOrderApi.delete(id, reason);
     apiSuccess('Sales Order deleted successfully');
     return id;
   } catch (error) {
@@ -63,6 +63,28 @@ export const closeSalesOrder = createAsyncThunk('salesOrders/close', async (id, 
     return response.data;
   } catch (error) {
     apiError(error.response?.data?.message || 'Failed to close sales order');
+    return rejectWithValue(error.response?.data);
+  }
+});
+
+export const cancelSalesOrder = createAsyncThunk('salesOrders/cancel', async ({ id, reason }, { rejectWithValue }) => {
+  try {
+    const response = await salesOrderApi.cancel(id, reason);
+    apiSuccess('Sales Order cancelled');
+    return response.data;
+  } catch (error) {
+    apiError(error.response?.data?.message || 'Failed to cancel sales order');
+    return rejectWithValue(error.response?.data);
+  }
+});
+
+export const restoreSalesOrder = createAsyncThunk('salesOrders/restore', async (id, { rejectWithValue }) => {
+  try {
+    const response = await salesOrderApi.restore(id);
+    apiSuccess('Sales Order restored');
+    return response.data;
+  } catch (error) {
+    apiError(error.response?.data?.message || 'Failed to restore sales order');
     return rejectWithValue(error.response?.data);
   }
 });
@@ -131,6 +153,20 @@ const salesOrderSlice = createSlice({
       })
       // Close
       .addCase(closeSalesOrder.fulfilled, (state, action) => {
+        const updated = action.payload.data;
+        state.selectedOrder = updated;
+        const idx = state.list.findIndex((o) => o.id === updated.id);
+        if (idx !== -1) state.list[idx] = updated;
+      })
+      // Cancel
+      .addCase(cancelSalesOrder.fulfilled, (state, action) => {
+        const updated = action.payload.data;
+        state.selectedOrder = updated;
+        const idx = state.list.findIndex((o) => o.id === updated.id);
+        if (idx !== -1) state.list[idx] = updated;
+      })
+      // Restore
+      .addCase(restoreSalesOrder.fulfilled, (state, action) => {
         const updated = action.payload.data;
         state.selectedOrder = updated;
         const idx = state.list.findIndex((o) => o.id === updated.id);

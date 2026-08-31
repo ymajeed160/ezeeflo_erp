@@ -393,6 +393,31 @@ const SystemConfigPage = () => {
                   onChange={(v) => updateConfig('sales', 'due_days', v)} type="number" />
               </Grid>
             </Grid>
+
+            <Divider sx={{ my: 2 }} />
+            <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>Deletion Control</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Enable deletion for each Sales transaction type. When disabled, those transactions cannot be deleted.
+            </Typography>
+            <Grid container spacing={2}>
+              {[
+                { key: 'quotations', label: 'Quotations' },
+                { key: 'sales_orders', label: 'Sales Orders' },
+                { key: 'delivery_notes', label: 'Delivery Notes' },
+                { key: 'sales_invoices', label: 'Sales Invoices' },
+                { key: 'sales_returns', label: 'Sales Returns' },
+                { key: 'credit_notes', label: 'Credit Notes' },
+                { key: 'customer_payments', label: 'Customer Payments' },
+              ].map(({ key, label }) => (
+                <Grid item xs={12} md={4} key={key}>
+                  <ConfigSwitch
+                    label={label}
+                    checked={getCfg('deletion', key) === 'true'}
+                    onChange={(v) => updateConfig('deletion', key, String(v))}
+                  />
+                </Grid>
+              ))}
+            </Grid>
           </SectionCard>
         )}
 
@@ -433,6 +458,31 @@ const SystemConfigPage = () => {
                 <ConfigSelect label="Default Cash Account" value={getCfg('purchase', 'default_cash_account')}
                   onChange={(v) => updateConfig('purchase', 'default_cash_account', v)} options={accountOptions} />
               </Grid>
+            </Grid>
+
+            <Divider sx={{ my: 2 }} />
+            <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>Deletion Control</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Enable deletion for each Purchase transaction type. When disabled, those transactions cannot be deleted.
+            </Typography>
+            <Grid container spacing={2}>
+              {[
+                { key: 'purchase_requests', label: 'Purchase Requests' },
+                { key: 'purchase_orders', label: 'Purchase Orders' },
+                { key: 'goods_receipts', label: 'Goods Receipts' },
+                { key: 'purchase_invoices', label: 'Purchase Invoices' },
+                { key: 'purchase_returns', label: 'Purchase Returns' },
+                { key: 'debit_notes', label: 'Debit Notes' },
+                { key: 'supplier_payments', label: 'Supplier Payments' },
+              ].map(({ key, label }) => (
+                <Grid item xs={12} md={4} key={key}>
+                  <ConfigSwitch
+                    label={label}
+                    checked={getCfg('deletion', key) === 'true'}
+                    onChange={(v) => updateConfig('deletion', key, String(v))}
+                  />
+                </Grid>
+              ))}
             </Grid>
           </SectionCard>
         )}
@@ -503,6 +553,15 @@ const SystemConfigPage = () => {
                 </Grid>
               ))}
             </Grid>
+
+            <Divider sx={{ my: 2 }} />
+            <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>Journal Entry Deletion</Typography>
+            <ConfigSwitch
+              label="Allow Delete Journal Entries"
+              description="When enabled, users can delete journal entries (including posted ones). Transactions linked to a journal entry must have that journal entry deleted before the transaction itself can be deleted."
+              checked={getCfg('accounting', 'allow_delete_journal_entries') === 'true'}
+              onChange={(v) => updateConfig('accounting', 'allow_delete_journal_entries', String(v))}
+            />
           </SectionCard>
         )}
 

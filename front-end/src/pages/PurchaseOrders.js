@@ -54,6 +54,7 @@ import {
   updatePurchaseOrder,
   deletePurchaseOrder,
   approvePurchaseOrder,
+  cancelPurchaseOrder,
   generateFromPR,
   clearSelectedOrder,
 } from '../store/slices/purchaseOrderSlice';
@@ -65,6 +66,7 @@ import { confirmDialog, apiSuccess, apiError } from '../utils/toast';
 import { generatePurchaseOrderPdf } from '../utils/pdfPurchaseOrder';
 import PdfViewer from '../components/PdfViewer';
 import purchaseOrderApi from '../services/purchaseOrderApi';
+import QuickCreate from '../components/QuickCreate/QuickCreate';
 
 const statusColors = {
   draft: 'default',
@@ -104,6 +106,8 @@ const PurchaseOrders = () => {
   const [sendingEmail, setSendingEmail] = useState(false);
   const activeCompany = useSelector((s) => s.company?.activeCompany || null);
   const [selectedPRs, setSelectedPRs] = useState([]);
+  const [reasonDialog, setReasonDialog] = useState({ open: false, action: null, target: null });
+  const [reasonText, setReasonText] = useState('');
 
   const { register, handleSubmit, control, reset, watch, setValue, formState: { errors } } = useForm({
     defaultValues: {
@@ -120,7 +124,8 @@ const PurchaseOrders = () => {
   const { fields, append, remove } = useFieldArray({ control, name: 'details' });
 
   const loadData = useCallback(() => {
-    dispatch(fetchPurchaseOrders({ search, status: statusFilter, supplierId: supplierFilter, page, limit }));
+    const params = { search, status: statusFilter, supplierId: supplierFilter, page, limit };
+    dispatch(fetchPurchaseOrders(params));
   }, [dispatch, search, statusFilter, supplierFilter, page, limit]);
 
   useEffect(() => {
@@ -287,11 +292,22 @@ const PurchaseOrders = () => {
     finally { setSendingEmail(false); }
   };
 
-  const handleDelete = async (order) => {
-    const confirmed = await confirmDialog('Are you sure you want to delete this purchase order?');
-    if (confirmed) {
-      dispatch(deletePurchaseOrder(order.id)).then(() => loadData());
+  const handleDelete = (order) => {
+    setReasonDialog({ open: true, action: 'delete', target: order.id });
+    setReasonText('');
+  };
+
+  const handleReasonConfirm = async () => {
+    const { action, target } = reasonDialog;
+    setReasonDialog({ open: false, action: null, target: null });
+    if (!target) return;
+    if (action === 'delete') {
+      await dispatch(deletePurchaseOrder({ id: target, reason: reasonText || null }));
+    } else if (action === 'cancel') {
+      await dispatch(cancelPurchaseOrder({ id: target, reason: reasonText || null }));
     }
+    setReasonText('');
+    loadData();
   };
 
   const handleApprove = (order) => {
@@ -299,7 +315,8 @@ const PurchaseOrders = () => {
   };
 
   const handleReject = (order) => {
-    dispatch(approvePurchaseOrder({ id: order.id, decision: 'cancelled' })).then(() => loadData());
+    setReasonDialog({ open: true, action: 'cancel', target: order.id });
+    setReasonText('');
   };
 
   const handleOpenGenerate = () => {
@@ -531,21 +548,31 @@ const PurchaseOrders = () => {
                 />
               </Grid>
               <Grid item xs={12} sm={4}>
-                <TextField
-                  select
-                  fullWidth
-                  size="small"
-                  label="Supplier *"
-                  value={watch('supplierId')}
-                  onChange={(e) => setValue('supplierId', e.target.value)}
-                  disabled={viewMode}
-                  error={!!errors.supplierId}
-                  helperText={errors.supplierId?.message}
-                >
-                  {suppliersList.map((s) => (
-                    <MenuItem key={s.id} value={s.id}>{s.supplierName || s.name}</MenuItem>
-                  ))}
-                </TextField>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <TextField
+                    select
+                    fullWidth
+                    size="small"
+                    label="Supplier *"
+                    value={watch('supplierId')}
+                    onChange={(e) => setValue('supplierId', e.target.value)}
+                    disabled={viewMode}
+                    error={!!errors.supplierId}
+                    helperText={errors.supplierId?.message}
+                  >
+                    {suppliersList.map((s) => (
+                      <MenuItem key={s.id} value={s.id}>{s.supplierName || s.name}</MenuItem>
+                    ))}
+                  </TextField>
+                  <QuickCreate
+                    entityKey="supplier"
+                    disabled={viewMode}
+                    onCreated={(s) => {
+                      dispatch(fetchSuppliers({ limit: 999 }));
+                      setValue('supplierId', s.id, { shouldValidate: true });
+                    }}
+                  />
+                </Box>
               </Grid>
               <Grid item xs={12} sm={4}>
                 <TextField fullWidth size="small" type="date" label="Order Date *" disabled={viewMode}
@@ -763,6 +790,28 @@ const PurchaseOrders = () => {
             disabled={sendingEmail || !emailTo}
             startIcon={sendingEmail ? <CircularProgress size={16} /> : <EmailIcon />}>
             {sendingEmail ? 'Sending...' : 'Send Email'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Reason Dialog for Delete/Cancel */}
+      <Dialog open={reasonDialog.open} onClose={() => setReasonDialog({ open: false, action: null, target: null })} fullWidth maxWidth="sm">
+        <DialogTitle>{reasonDialog.action === 'delete' ? 'Delete Purchase Order' : 'Cancel Purchase Order'}</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            multiline
+            minRows={2}
+            label="Reason (optional)"
+            value={reasonText}
+            onChange={(e) => setReasonText(e.target.value)}
+            autoFocus
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setReasonDialog({ open: false, action: null, target: null })}>Back</Button>
+          <Button variant="contained" color={reasonDialog.action === 'delete' ? 'error' : 'warning'} onClick={handleReasonConfirm}>
+            Confirm
           </Button>
         </DialogActions>
       </Dialog>

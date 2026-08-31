@@ -46,8 +46,26 @@ class SupplierPaymentController {
 
   async delete(req, res) {
     try {
-      await SupplierPaymentService.delete(req.tenantId, req.params.id);
+      await SupplierPaymentService.delete(req.tenantId, req.params.id, req.userId, req.body?.reason);
       return res.json({ success: true, message: 'Supplier Payment deleted' });
+    } catch (error) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+  }
+
+  async restore(req, res) {
+    try {
+      const record = await SupplierPaymentService.restore(req.tenantId, req.params.id, req.userId);
+      return res.json({ success: true, message: 'Supplier Payment restored', data: record });
+    } catch (error) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+  }
+
+  async cancel(req, res) {
+    try {
+      const record = await SupplierPaymentService.cancel(req.tenantId, req.params.id, req.userId, req.body?.reason);
+      return res.json({ success: true, message: 'Supplier Payment cancelled', data: record });
     } catch (error) {
       return res.status(400).json({ success: false, message: error.message });
     }

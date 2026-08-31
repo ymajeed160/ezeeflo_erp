@@ -45,8 +45,18 @@ class QuotationController {
   async delete(req, res, next) {
     try {
       const { tenantId, id: userId } = req.user;
-      await quotationService.delete(tenantId, req.params.id, userId);
+      await quotationService.delete(tenantId, req.params.id, userId, req.body?.reason);
       res.json({ message: 'Quotation deleted successfully' });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async restore(req, res, next) {
+    try {
+      const { tenantId, id: userId } = req.user;
+      const quotation = await quotationService.restore(tenantId, req.params.id, userId);
+      res.json(quotation);
     } catch (error) {
       next(error);
     }
@@ -86,7 +96,7 @@ class QuotationController {
   async cancel(req, res, next) {
     try {
       const { tenantId, id: userId } = req.user;
-      const quotation = await quotationService.cancel(tenantId, req.params.id, userId);
+      const quotation = await quotationService.cancel(tenantId, req.params.id, userId, req.body?.reason);
       res.json(quotation);
     } catch (error) {
       next(error);

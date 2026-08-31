@@ -50,13 +50,35 @@ export const updatePurchaseOrder = createAsyncThunk('purchaseOrders/update', asy
   }
 });
 
-export const deletePurchaseOrder = createAsyncThunk('purchaseOrders/delete', async (id, { rejectWithValue }) => {
+export const deletePurchaseOrder = createAsyncThunk('purchaseOrders/delete', async ({ id, reason }, { rejectWithValue }) => {
   try {
-    await purchaseOrderApi.delete(id);
+    await purchaseOrderApi.delete(id, reason);
     apiSuccess('Purchase Order deleted successfully');
     return id;
   } catch (error) {
     apiError(error.response?.data?.message || 'Failed to delete purchase order');
+    return rejectWithValue(error.response?.data);
+  }
+});
+
+export const restorePurchaseOrder = createAsyncThunk('purchaseOrders/restore', async (id, { rejectWithValue }) => {
+  try {
+    const response = await purchaseOrderApi.restore(id);
+    apiSuccess('Purchase Order restored successfully');
+    return response.data;
+  } catch (error) {
+    apiError(error.response?.data?.message || 'Failed to restore purchase order');
+    return rejectWithValue(error.response?.data);
+  }
+});
+
+export const cancelPurchaseOrder = createAsyncThunk('purchaseOrders/cancel', async ({ id, reason }, { rejectWithValue }) => {
+  try {
+    const response = await purchaseOrderApi.cancel(id, reason);
+    apiSuccess('Purchase Order cancelled successfully');
+    return response.data;
+  } catch (error) {
+    apiError(error.response?.data?.message || 'Failed to cancel purchase order');
     return rejectWithValue(error.response?.data);
   }
 });

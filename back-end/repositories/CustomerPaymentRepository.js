@@ -6,6 +6,7 @@ class CustomerPaymentRepository {
    * Find all customer payments with filtering, searching, sorting, pagination
    */
   static async findAll(tenantId, filters = {}) {
+    const withDeleted = filters.includeDeleted === 'true' || filters.includeDeleted === true;
     const where = { tenantId };
     if (filters.status) where.status = filters.status;
     if (filters.customerId) where.customerId = filters.customerId;
@@ -51,6 +52,7 @@ class CustomerPaymentRepository {
       limit,
       offset,
       distinct: true,
+      paranoid: !withDeleted,
     });
 
     return {
@@ -65,9 +67,10 @@ class CustomerPaymentRepository {
   /**
    * Find customer payment by ID with all associations
    */
-  static async findById(tenantId, id) {
+  static async findById(tenantId, id, includeDeleted = false) {
     return CustomerPayment.findOne({
-      where: { tenantId, id },
+      where: includeDeleted ? { tenantId, id } : { tenantId, id, deletedAt: null },
+      paranoid: !includeDeleted,
       include: [
         { model: Customer, as: 'customer', attributes: ['id', 'name', 'code', 'email', 'phone', 'mobile', 'taxNumber', 'arAccountId'] },
         { model: Account, as: 'bankAccount', attributes: ['id', 'name', 'code'], required: false },
@@ -177,14 +180,17 @@ class CustomerPaymentRepository {
    * Delete customer payment and its allocations in a transaction
    */
   static async delete(tenantId, id, transaction) {
-    await CustomerPaymentAllocation.destroy({
-      where: { tenantId, customerPaymentId: id },
-      transaction,
-    });
     return CustomerPayment.destroy({
       where: { tenantId, id },
       transaction,
     });
+  }
+
+  static async restore(tenantId, id, transaction) {
+    return CustomerPayment.update(
+      { deletedAt: null, deletedBy: null, deleteReason: null },
+      { where: { tenantId, id }, paranoid: false, transaction }
+    );
   }
 
   /**

@@ -41,6 +41,10 @@ class GoodsReceiptDTO {
     this.details = (data.details || []).map((d) => new GoodsReceiptDetailDTO(d));
     this.createdAt = data.createdAt || null;
     this.updatedAt = data.updatedAt || null;
+    this.deletedAt = data.deletedAt || null;
+    this.deletedBy = data.deletedBy || null;
+    this.deleteReason = data.deleteReason || null;
+    this.cancelReason = data.cancelReason || null;
   }
 }
 

@@ -8,8 +8,7 @@ import {
   Alert, CircularProgress, Tooltip, TablePagination, Card,
   CardContent, Divider, InputAdornment, MenuItem, Select,
   FormControl, InputLabel, Autocomplete, Stack,
-} from '@mui/material';
-import {
+} from '@mui/material';import {
   Add, Edit, Delete, Search, Refresh, Visibility,
   CheckCircle, Cancel, Send, Autorenew, Replay,
   PictureAsPdf as PdfIcon, Email as EmailIcon, FileDownload as DownloadIcon, Print as PrintIcon,
@@ -39,6 +38,7 @@ import accountApi from '../services/accountApi';
 import purchaseInvoiceApi from '../services/purchaseInvoiceApi';
 import { generatePurchaseInvoicePdf } from '../utils/pdfPurchaseInvoice';
 import PdfViewer from '../components/PdfViewer';
+import QuickCreate from '../components/QuickCreate/QuickCreate';
 
 const statusColors = {
   draft: { label: 'Draft', color: 'warning' },
@@ -99,6 +99,8 @@ const PurchaseInvoices = () => {
   const [confirmTarget, setConfirmTarget] = useState(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [confirmFetching, setConfirmFetching] = useState(false);
+  const [reasonDialog, setReasonDialog] = useState({ open: false, action: null, target: null });
+  const [reasonText, setReasonText] = useState('');
   const activeCompany = useSelector((s) => s.company?.activeCompany || null);
 
   const loadData = useCallback(() => {
@@ -223,6 +225,10 @@ const PurchaseInvoices = () => {
     setShowModal(true);
   };
 
+  const handleViewJournalEntry = (entryNumber) => {
+    navigate(`/app/accounting/journal-entries${entryNumber ? `?search=${encodeURIComponent(entryNumber)}` : ''}`);
+  };
+
   const handleViewPdf = async (inv) => {
     try {
       const res = await purchaseInvoiceApi.getById(inv.id);
@@ -279,10 +285,31 @@ const PurchaseInvoices = () => {
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm('Are you sure you want to delete this purchase invoice?')) {
-      await dispatch(deletePurchaseInvoice(id));
-      loadData();
+    setReasonDialog({ open: true, action: 'delete', target: id });
+    setReasonText('');
+  };
+
+  const handleReasonConfirm = async () => {
+    const { action, target } = reasonDialog;
+    setReasonDialog({ open: false, action: null, target: null });
+    if (!target) return;
+    if (action === 'delete') {
+      const result = await dispatch(deletePurchaseInvoice({ id: target, reason: reasonText || null }));
+      if (result.meta.requestStatus === 'fulfilled') {
+        apiSuccess('Purchase Invoice deleted successfully');
+      } else {
+        apiError(result.payload || 'Failed to delete purchase invoice');
+      }
+    } else if (action === 'cancel') {
+      const result = await dispatch(cancelPurchaseInvoice({ id: target, reason: reasonText || null }));
+      if (result.meta.requestStatus === 'fulfilled') {
+        apiSuccess('Purchase Invoice cancelled successfully');
+      } else {
+        apiError(result.payload || 'Failed to cancel purchase invoice');
+      }
     }
+    setReasonText('');
+    loadData();
   };
 
   const handleApprove = async () => {
@@ -361,10 +388,8 @@ const PurchaseInvoices = () => {
   };
 
   const handleCancel = async (id) => {
-    if (window.confirm('Cancel this invoice?')) {
-      await dispatch(cancelPurchaseInvoice(id));
-      loadData();
-    }
+    setReasonDialog({ open: true, action: 'cancel', target: id });
+    setReasonText('');
   };
 
   const handleGenerateSubmit = async () => {
@@ -663,6 +688,39 @@ const PurchaseInvoices = () => {
         </DialogActions>
       </Dialog>
 
+      {/* Delete / Cancel reason dialog */}
+      <Dialog open={reasonDialog.open} onClose={() => setReasonDialog({ open: false, action: null, target: null })} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {reasonDialog.action === 'delete' ? 'Delete Purchase Invoice' : 'Cancel Purchase Invoice'}
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            {reasonDialog.action === 'delete'
+              ? 'This invoice will be deleted. If it has a journal entry, delete the journal entry first.'
+              : 'Cancelling a posted invoice reverses its journal entry and inventory.'}
+          </Typography>
+          <TextField
+            fullWidth
+            size="small"
+            label="Reason (optional)"
+            multiline
+            rows={2}
+            value={reasonText}
+            onChange={(e) => setReasonText(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setReasonDialog({ open: false, action: null, target: null })}>Back</Button>
+          <Button
+            onClick={handleReasonConfirm}
+            variant="contained"
+            color={reasonDialog.action === 'delete' ? 'error' : 'warning'}
+          >
+            {reasonDialog.action === 'delete' ? 'Delete' : 'Cancel Invoice'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Main Form Dialog */}
       <Dialog open={showModal} onClose={() => { setShowModal(false); dispatch(clearSelected()); }} maxWidth="lg" fullWidth>
         <DialogTitle>
@@ -673,26 +731,36 @@ const PurchaseInvoices = () => {
           <Box component="form" id="invoice-form" onSubmit={handleSubmit}>
             <Grid container spacing={2} sx={{ mb: 3 }}>
               <Grid item xs={12} sm={4}>
-                <FormControl fullWidth size="small" required>
-                  <InputLabel>Supplier</InputLabel>
-                  <Select
-                    value={form.supplierId || ''}
-                    label="Supplier"
-                    onChange={(e) => setForm({ ...form, supplierId: e.target.value })}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <FormControl fullWidth size="small" required>
+                    <InputLabel>Supplier</InputLabel>
+                    <Select
+                      value={form.supplierId || ''}
+                      label="Supplier"
+                      onChange={(e) => setForm({ ...form, supplierId: e.target.value })}
+                      disabled={viewMode}
+                      renderValue={(val) => {
+                        if (!val) return <em>Select Supplier</em>;
+                        const s = suppliers.find((x) => String(x.id) === String(val));
+                        const name = s ? (s.supplierName || s.name) : (selectedItem?.supplier?.name || '');
+                        return name || val;
+                      }}
+                    >
+                      <MenuItem value="">Select Supplier</MenuItem>
+                      {suppliers.map((s) => (
+                        <MenuItem key={s.id} value={s.id}>{s.supplierName || s.name || ''}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <QuickCreate
+                    entityKey="supplier"
                     disabled={viewMode}
-                    renderValue={(val) => {
-                      if (!val) return <em>Select Supplier</em>;
-                      const s = suppliers.find((x) => String(x.id) === String(val));
-                      const name = s ? (s.supplierName || s.name) : (selectedItem?.supplier?.name || '');
-                      return name || val;
+                    onCreated={(s) => {
+                      dispatch(fetchSuppliers({ limit: 9999 }));
+                      setForm((f) => ({ ...f, supplierId: s.id }));
                     }}
-                  >
-                    <MenuItem value="">Select Supplier</MenuItem>
-                    {suppliers.map((s) => (
-                      <MenuItem key={s.id} value={s.id}>{s.supplierName || s.name || ''}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                  />
+                </Box>
               </Grid>
               <Grid item xs={12} sm={4}>
                 <TextField
@@ -796,23 +864,32 @@ const PurchaseInvoices = () => {
                             {itemsList.find((i) => String(i.id) === String(line.itemId))?.name || itemsList.find((i) => String(i.id) === String(line.itemId))?.itemName || line.itemId}
                           </Typography>
                         ) : (
-                          <FormControl fullWidth size="small">
-                            <Select
-                              value={line.itemId}
-                              onChange={(e) => {
-                                const item = itemsList.find((i) => String(i.id) === String(e.target.value));
-                                updateDetail(idx, 'itemId', e.target.value);
-                                if (item) updateDetail(idx, 'description', item.description || '');
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <FormControl fullWidth size="small">
+                              <Select
+                                value={line.itemId}
+                                onChange={(e) => {
+                                  const item = itemsList.find((i) => String(i.id) === String(e.target.value));
+                                  updateDetail(idx, 'itemId', e.target.value);
+                                  if (item) updateDetail(idx, 'description', item.description || '');
+                                }}
+                                displayEmpty
+                                sx={{ minWidth: 200 }}
+                              >
+                                <MenuItem value="">Select</MenuItem>
+                                {itemsList.map((it) => (
+                                  <MenuItem key={it.id} value={it.id}>{it.name || it.itemName || ''}</MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                            <QuickCreate
+                              entityKey="item"
+                              onCreated={(it) => {
+                                dispatch(fetchItems({ limit: 1000 }));
+                                updateDetail(idx, 'itemId', it.id);
                               }}
-                              displayEmpty
-                              sx={{ minWidth: 200 }}
-                            >
-                              <MenuItem value="">Select</MenuItem>
-                              {itemsList.map((it) => (
-                                <MenuItem key={it.id} value={it.id}>{it.name || it.itemName || ''}</MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
+                            />
+                          </Box>
                         )}
                       </TableCell>
                       <TableCell>
@@ -887,6 +964,41 @@ const PurchaseInvoices = () => {
                 Grand Total: {calcGrandTotal().toFixed(2)}
               </Typography>
             </Box>
+
+            {viewMode && selectedItem && (
+              <Box sx={{ mt: 2 }}>
+                <Divider sx={{ mb: 1.5 }} />
+                <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>Accounting</Typography>
+                {selectedItem.journalEntryNumber ? (
+                  <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
+                    <Box>
+                      <Typography variant="caption" color="text.secondary" display="block">Journal Entry</Typography>
+                      <Typography variant="body2" fontWeight={600}>{selectedItem.journalEntryNumber}</Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary" display="block">Posting Status</Typography>
+                      <Chip
+                        size="small"
+                        label={(selectedItem.journalEntry?.status || 'Draft').toUpperCase()}
+                        color={selectedItem.journalEntry?.status === 'posted' ? 'success' : 'warning'}
+                        variant="filled"
+                      />
+                    </Box>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => handleViewJournalEntry(selectedItem.journalEntryNumber)}
+                    >
+                      View Journal Entry
+                    </Button>
+                  </Stack>
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    No journal entry yet — confirm and post the invoice to generate one.
+                  </Typography>
+                )}
+              </Box>
+            )}
           </Box>
         </DialogContent>
         <DialogActions>

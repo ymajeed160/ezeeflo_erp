@@ -40,6 +40,7 @@ import {
   HowToReg as ConfirmIcon,
   Send as PostIcon,
   Undo as ReverseIcon,
+  Cancel as CancelIcon,
 } from '@mui/icons-material';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import {
@@ -48,6 +49,7 @@ import {
   createSupplierPayment,
   updateSupplierPayment,
   deleteSupplierPayment,
+  cancelSupplierPayment,
   confirmSupplierPayment,
   postToJournalSupplierPayment,
   reverseSupplierPayment,
@@ -99,6 +101,8 @@ const SupplierPayments = () => {
   const [confirmPreview, setConfirmPreview] = useState(null);
   const [confirmTarget, setConfirmTarget] = useState(null);
   const [confirmingId, setConfirmingId] = useState(null);
+  const [reasonDialog, setReasonDialog] = useState({ open: false, action: null, target: null });
+  const [reasonText, setReasonText] = useState('');
 
   const { register, handleSubmit, control, reset, watch, setValue, formState: { errors } } = useForm({
     defaultValues: {
@@ -130,7 +134,8 @@ const SupplierPayments = () => {
   }, [allocatedAmount, fields.length, setValue]);
 
   const loadData = useCallback(() => {
-    dispatch(fetchSupplierPayments({ search, status: statusFilter, supplierId: supplierFilter, page, limit }));
+    const params = { search, status: statusFilter, supplierId: supplierFilter, page, limit };
+    dispatch(fetchSupplierPayments(params));
   }, [dispatch, search, statusFilter, supplierFilter, page, limit]);
 
   useEffect(() => {
@@ -245,15 +250,31 @@ const SupplierPayments = () => {
     setOpenForm(true);
   };
 
-  const handleDelete = async (sp) => {
+  const handleDelete = (sp) => {
     if (sp.status === 'approved') {
       apiError('Approved payments cannot be deleted');
       return;
     }
-    const confirmed = await confirmDialog('Are you sure you want to delete this payment?');
-    if (confirmed) {
-      dispatch(deleteSupplierPayment(sp.id)).then(() => loadData());
+    setReasonDialog({ open: true, action: 'delete', target: sp.id });
+    setReasonText('');
+  };
+
+  const handleCancel = (sp) => {
+    setReasonDialog({ open: true, action: 'cancel', target: sp.id });
+    setReasonText('');
+  };
+
+  const handleReasonConfirm = async () => {
+    const { action, target } = reasonDialog;
+    setReasonDialog({ open: false, action: null, target: null });
+    if (!target) return;
+    if (action === 'delete') {
+      await dispatch(deleteSupplierPayment({ id: target, reason: reasonText || null }));
+    } else if (action === 'cancel') {
+      await dispatch(cancelSupplierPayment({ id: target, reason: reasonText || null }));
     }
+    setReasonText('');
+    loadData();
   };
 
   const handleConfirm = async (sp) => {
@@ -501,6 +522,11 @@ const SupplierPayments = () => {
                               <DeleteIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>
+                          <Tooltip title="Cancel">
+                            <IconButton size="small" color="warning" onClick={() => handleCancel(sp)}>
+                              <CancelIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
                           <Tooltip title="Confirm & Post">
                             <IconButton size="small" color="info" disabled={confirmingId === sp.id} onClick={() => handleConfirm(sp)}>
                               <ConfirmIcon fontSize="small" />
@@ -513,6 +539,11 @@ const SupplierPayments = () => {
                           <Tooltip title="Delete">
                             <IconButton size="small" onClick={() => handleDelete(sp)}>
                               <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Cancel">
+                            <IconButton size="small" color="warning" onClick={() => handleCancel(sp)}>
+                              <CancelIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>
                           <Tooltip title="Post to Journal">
@@ -941,6 +972,28 @@ const SupplierPayments = () => {
           <Button onClick={() => { setConfirmPreviewOpen(false); setConfirmTarget(null); setConfirmPreview(null); }}>Cancel</Button>
           <Button onClick={handleConfirmPost} variant="contained" color="primary" disabled={submitting}>
             {submitting ? 'Posting...' : 'Confirm & Post'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Reason Dialog for Delete/Cancel */}
+      <Dialog open={reasonDialog.open} onClose={() => setReasonDialog({ open: false, action: null, target: null })} fullWidth maxWidth="sm">
+        <DialogTitle>{reasonDialog.action === 'delete' ? 'Delete Supplier Payment' : 'Cancel Supplier Payment'}</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            multiline
+            minRows={2}
+            label="Reason (optional)"
+            value={reasonText}
+            onChange={(e) => setReasonText(e.target.value)}
+            autoFocus
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setReasonDialog({ open: false, action: null, target: null })}>Back</Button>
+          <Button variant="contained" color={reasonDialog.action === 'delete' ? 'error' : 'warning'} onClick={handleReasonConfirm}>
+            Confirm
           </Button>
         </DialogActions>
       </Dialog>

@@ -12,6 +12,10 @@ class PurchaseRequestDTO {
     this.updatedBy = data.updatedBy;
     this.createdAt = data.createdAt;
     this.updatedAt = data.updatedAt;
+    this.deletedAt = data.deletedAt || null;
+    this.deletedBy = data.deletedBy || null;
+    this.deleteReason = data.deleteReason || null;
+    this.cancelReason = data.cancelReason || null;
 
     this.requestor = data.requestor ? {
       id: data.requestor.id,

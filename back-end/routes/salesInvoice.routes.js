@@ -92,6 +92,13 @@ router.post(
   SalesInvoiceController.cancel
 );
 
+// POST /api/:tenantId/sales-invoices/:id/restore - Restore a soft-deleted draft invoice
+router.post(
+  '/:id/restore',
+  authorize('salesinvoice.edit'),
+  SalesInvoiceController.restore
+);
+
 // POST /api/:tenantId/sales-invoices/:id/send-email - Send invoice via email
 router.post(
   '/:id/send-email',

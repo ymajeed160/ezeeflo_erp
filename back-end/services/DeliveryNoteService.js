@@ -5,6 +5,7 @@ const { SalesOrder, SalesOrderDetail, DeliveryNote, DeliveryNoteDetail, sequeliz
 const { deliveryNoteDTO, deliveryNoteListDTO } = require('../dto/DeliveryNoteDTO');
 const { Op } = require('sequelize');
 const Decimal = require('decimal.js');
+const { requireDeletionEnabled } = require('../utils/deletionSettings');
 
 class DeliveryNoteService {
   /**
@@ -246,7 +247,7 @@ class DeliveryNoteService {
   /**
    * Delete delivery note (only draft)
    */
-  async delete(id, tenantId) {
+  async delete(id, tenantId, userId, reason = null) {
     const existing = await deliveryNoteRepository.findById(id, tenantId);
     if (!existing) {
       const error = new Error('Delivery note not found');
@@ -254,14 +255,71 @@ class DeliveryNoteService {
       throw error;
     }
 
+    await requireDeletionEnabled(tenantId, 'delivery_notes');
     if (existing.status !== 'draft') {
       const error = new Error('Only draft delivery notes can be deleted');
       error.statusCode = 400;
       throw error;
     }
 
-    await deliveryNoteRepository.delete(id, tenantId);
-    return { message: 'Delivery note deleted successfully' };
+    const t = await sequelize.transaction();
+    try {
+      await DeliveryNote.update(
+        { deletedBy: userId, deleteReason: reason || null },
+        { where: { id, tenantId }, transaction: t }
+      );
+      await deliveryNoteRepository.delete(id, tenantId, { transaction: t });
+      await t.commit();
+      return { message: 'Delivery note deleted successfully' };
+    } catch (err) {
+      await t.rollback();
+      throw err;
+    }
+  }
+
+  /**
+   * Restore a soft-deleted delivery note
+   */
+  async restore(id, tenantId, userId) {
+    const existing = await deliveryNoteRepository.findById(id, tenantId, true);
+    if (!existing) {
+      const error = new Error('Delivery note not found');
+      error.statusCode = 404;
+      throw error;
+    }
+    if (!existing.deletedAt) {
+      const error = new Error('Delivery note is not deleted');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    await deliveryNoteRepository.restore(id, tenantId, {});
+    return await deliveryNoteRepository.findById(id, tenantId);
+  }
+
+  /**
+   * Cancel a delivery note (only draft)
+   */
+  async cancel(id, tenantId, userId, reason = null) {
+    const existing = await deliveryNoteRepository.findById(id, tenantId);
+    if (!existing) {
+      const error = new Error('Delivery note not found');
+      error.statusCode = 404;
+      throw error;
+    }
+    if (existing.status !== 'draft') {
+      const error = new Error('Only draft delivery notes can be cancelled');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    await deliveryNoteRepository.update(id, {
+      status: 'cancelled',
+      cancelReason: reason || null,
+      updatedBy: userId,
+    }, tenantId);
+
+    return deliveryNoteRepository.findById(id, tenantId);
   }
 
   /**

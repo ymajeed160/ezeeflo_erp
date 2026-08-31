@@ -27,6 +27,7 @@ class CashPaymentVoucherRepository {
   }
 
   async findAll(tenantId, filters = {}) {
+    const withDeleted = filters.includeDeleted === 'true' || filters.includeDeleted === true;
     const where = { tenantId, isDeleted: false };
     if (filters.status) where.status = filters.status;
     if (filters.startDate && filters.endDate) {
@@ -57,14 +58,16 @@ class CashPaymentVoucherRepository {
       order: [['createdAt', 'DESC']],
       limit,
       offset,
+      paranoid: !withDeleted,
     });
 
     return { count, rows };
   }
 
-  async findById(id, tenantId, transaction = null) {
+  async findById(id, tenantId, transaction = null, includeDeleted = false) {
     return await CashPaymentVoucher.findOne({
-      where: { id, tenantId, isDeleted: false },
+      where: includeDeleted ? { id, tenantId } : { id, tenantId, isDeleted: false, deletedAt: null },
+      paranoid: !includeDeleted,
       include: [
         { model: Account, as: 'cashAccount', attributes: ['id', 'code', 'name', 'type'] },
         { model: User, as: 'creator', attributes: ['id', 'username', 'firstName', 'lastName'] },
@@ -100,6 +103,17 @@ class CashPaymentVoucherRepository {
 
   async softDelete(id, tenantId) {
     return await CashPaymentVoucher.update({ isDeleted: true }, { where: { id, tenantId } });
+  }
+
+  async destroy(id, tenantId, transaction = null) {
+    return await CashPaymentVoucher.destroy({ where: { id, tenantId }, transaction });
+  }
+
+  async restore(id, tenantId, transaction = null) {
+    return await CashPaymentVoucher.update(
+      { deletedAt: null, deletedBy: null, deleteReason: null, isDeleted: false },
+      { where: { id, tenantId }, paranoid: false, transaction }
+    );
   }
 }
 

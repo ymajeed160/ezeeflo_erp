@@ -5,10 +5,11 @@ const db = require('../models');
 
 class PurchaseInvoiceRepository {
   async findAll(tenantId, filters = {}) {
-    const { page = 1, limit = 20, search, status, supplierId, sortField = 'createdAt', sortOrder = 'DESC' } = filters;
+    const { page = 1, limit = 20, search, status, supplierId, sortField = 'createdAt', sortOrder = 'DESC', includeDeleted } = filters;
     const offset = (page - 1) * limit;
 
-    const where = { tenantId, deletedAt: null };
+    const where = { tenantId };
+    if (!includeDeleted) where.deletedAt = null;
     if (status) where.status = status;
     if (supplierId) where.supplierId = supplierId;
     if (search) {
@@ -31,14 +32,16 @@ class PurchaseInvoiceRepository {
       limit,
       offset,
       distinct: true,
+      paranoid: !includeDeleted,
     });
 
     return { data: rows, total: count, page, limit };
   }
 
-  async findById(id, tenantId) {
+  async findById(id, tenantId, includeDeleted = false) {
     return db.PurchaseInvoice.findOne({
-      where: { id, tenantId, deletedAt: null },
+      where: includeDeleted ? { id, tenantId } : { id, tenantId, deletedAt: null },
+      paranoid: !includeDeleted,
       include: [
         { model: db.Supplier, as: 'supplier', attributes: ['id', 'code', 'name', 'vatNumber', 'phone', 'mobile', 'email'] },
         { model: db.Warehouse, as: 'warehouse', attributes: ['id', 'name'] },
@@ -108,6 +111,14 @@ class PurchaseInvoiceRepository {
   async delete(id, tenantId, transaction) {
     const opts = transaction ? { transaction } : {};
     return db.PurchaseInvoice.destroy({ where: { id, tenantId }, ...opts });
+  }
+
+  async restore(id, tenantId, transaction) {
+    const opts = transaction ? { transaction } : {};
+    return db.PurchaseInvoice.update(
+      { deletedAt: null, deletedBy: null, deleteReason: null },
+      { where: { id, tenantId }, paranoid: false, ...opts }
+    );
   }
 }
 

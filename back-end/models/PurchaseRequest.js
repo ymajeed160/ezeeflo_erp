@@ -51,13 +51,40 @@ const PurchaseRequest = sequelize.define('PurchaseRequest', {
     allowNull: true,
     field: 'updated_by',
   },
+  deletedBy: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    field: 'deleted_by',
+  },
+  deleteReason: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    field: 'delete_reason',
+  },
+  cancelReason: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    field: 'cancel_reason',
+  },
+  createdAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'created_at',
+  },
+  updatedAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'updated_at',
+  },
+  deletedAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'deleted_at',
+  },
 }, {
   tableName: 'purchase_requests',
   timestamps: true,
-  createdAt: 'created_at',
-  updatedAt: 'updated_at',
   paranoid: true,
-  deletedAt: 'deleted_at',
   indexes: [
     { unique: true, fields: ['request_number', 'tenant_id'] },
     { fields: ['tenant_id', 'status'] },

@@ -136,6 +136,10 @@ class SalesReturnDTO {
       taxAccountName: record.taxAccount ? `${record.taxAccount.code} - ${record.taxAccount.name}` : '',
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
+      deletedAt: record.deletedAt || null,
+      deletedBy: record.deletedBy || null,
+      deleteReason: record.deleteReason || null,
+      cancelReason: record.cancelReason || null,
     };
   }
 
@@ -173,6 +177,10 @@ class SalesReturnDTO {
       updatedBy: record.updatedBy,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
+      deletedAt: record.deletedAt || null,
+      deletedBy: record.deletedBy || null,
+      deleteReason: record.deleteReason || null,
+      cancelReason: record.cancelReason || null,
       details: (record.details || []).map((line) => ({
         id: line.id,
         itemId: line.itemId,

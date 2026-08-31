@@ -20,6 +20,10 @@ class SupplierPaymentDTO {
     this.approvedAt = data.approved_at || data.approvedAt || null;
     this.createdAt = data.created_at || data.createdAt || null;
     this.updatedAt = data.updated_at || data.updatedAt || null;
+    this.deletedAt = data.deleted_at || data.deletedAt || null;
+    this.deletedBy = data.deleted_by || data.deletedBy || null;
+    this.deleteReason = data.delete_reason || data.deleteReason || null;
+    this.cancelReason = data.cancel_reason || data.cancelReason || null;
 
     // Associated objects
     this.supplier = data.supplier || null;

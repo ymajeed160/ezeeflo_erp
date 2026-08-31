@@ -21,6 +21,10 @@ class PurchaseOrderDTO {
       approvedAt: entity.approvedAt,
       createdAt: entity.createdAt,
       updatedAt: entity.updatedAt,
+      deletedAt: entity.deletedAt || null,
+      deletedBy: entity.deletedBy || null,
+      deleteReason: entity.deleteReason || null,
+      cancelReason: entity.cancelReason || null,
     };
 
     if (includeDetails && entity.details) {

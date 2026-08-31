@@ -50,6 +50,7 @@ import {
   updateReturn,
   deleteReturn,
   rejectReturn,
+  cancelReturn,
   postReturn,
   clearSelected,
 } from '../store/slices/salesReturnSlice';
@@ -86,6 +87,8 @@ const SalesReturns = () => {
   const [postTarget, setPostTarget] = useState(null);
   const [postPreview, setPostPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [reasonDialog, setReasonDialog] = useState({ open: false, action: null, target: null });
+  const [reasonText, setReasonText] = useState('');
 
   const { register, handleSubmit, control, reset, watch, setValue, formState: { errors } } = useForm({
     defaultValues: {
@@ -101,7 +104,8 @@ const SalesReturns = () => {
   const { fields, replace } = useFieldArray({ control, name: 'details' });
 
   const loadData = useCallback(() => {
-    dispatch(fetchReturns({ search, status: statusFilter, customerId: customerFilter, page, limit }));
+    const params = { search, status: statusFilter, customerId: customerFilter, page, limit };
+    dispatch(fetchReturns(params));
   }, [dispatch, search, statusFilter, customerFilter, page, limit]);
 
   useEffect(() => {
@@ -225,15 +229,26 @@ const SalesReturns = () => {
     setOpenForm(true);
   };
 
-  const handleDelete = async (returnItem) => {
+  const handleDelete = (returnItem) => {
     if (returnItem.status !== 'draft') {
       apiError('Only draft returns can be deleted');
       return;
     }
-    const confirmed = await confirmDialog('Are you sure you want to delete this sales return?');
-    if (confirmed) {
-      dispatch(deleteReturn(returnItem.id)).then(() => loadData());
+    setReasonDialog({ open: true, action: 'delete', target: returnItem.id });
+    setReasonText('');
+  };
+
+  const handleReasonConfirm = async () => {
+    const { action, target } = reasonDialog;
+    setReasonDialog({ open: false, action: null, target: null });
+    if (!target) return;
+    if (action === 'delete') {
+      await dispatch(deleteReturn({ id: target, reason: reasonText || null }));
+    } else if (action === 'cancel') {
+      await dispatch(cancelReturn({ id: target, reason: reasonText || null }));
     }
+    setReasonText('');
+    loadData();
   };
 
   const handlePost = async (returnItem) => {
@@ -275,15 +290,9 @@ const SalesReturns = () => {
     setPostPreview(null);
   };
 
-  const handleReject = async (returnItem) => {
-    const confirmed = await confirmDialog(
-      `Reject Return #${returnItem.returnNumber}? This will mark the return as rejected.`
-    );
-    if (confirmed) {
-      dispatch(rejectReturn(returnItem.id)).then((res) => {
-        if (res.payload) loadData();
-      });
-    }
+  const handleReject = (returnItem) => {
+    setReasonDialog({ open: true, action: 'cancel', target: returnItem.id });
+    setReasonText('');
   };
 
   const onSubmit = async (data) => {
@@ -877,6 +886,28 @@ const SalesReturns = () => {
             disabled={previewLoading || !postPreview}
           >
             Confirm & Post
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Reason Dialog for Delete/Reject */}
+      <Dialog open={reasonDialog.open} onClose={() => setReasonDialog({ open: false, action: null, target: null })} fullWidth maxWidth="sm">
+        <DialogTitle>{reasonDialog.action === 'delete' ? 'Delete Sales Return' : 'Reject Sales Return'}</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            multiline
+            minRows={2}
+            label="Reason (optional)"
+            value={reasonText}
+            onChange={(e) => setReasonText(e.target.value)}
+            autoFocus
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setReasonDialog({ open: false, action: null, target: null })}>Back</Button>
+          <Button variant="contained" color={reasonDialog.action === 'delete' ? 'error' : 'warning'} onClick={handleReasonConfirm}>
+            Confirm
           </Button>
         </DialogActions>
       </Dialog>

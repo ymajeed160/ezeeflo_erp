@@ -17,6 +17,7 @@ import {
 } from '../store/slices/stockAdjustmentSlice';
 import { fetchWarehouses } from '../store/slices/warehouseSlice';
 import { fetchItems } from '../store/slices/itemSlice';
+import QuickCreate from '../components/QuickCreate/QuickCreate';
 
 const INITIAL_FORM = {
   warehouseId: '',
@@ -321,19 +322,31 @@ const StockAdjustments = () => {
                 <Paper key={index} sx={{ p: 1.5, mb: 1, bgcolor: 'grey.50' }}>
                   <Grid container spacing={1} alignItems="center">
                     <Grid item xs={12} sm={4}>
-                      <Autocomplete
-                        size="small"
-                        options={productItems}
-                        getOptionLabel={(opt) => `${opt.itemCode} - ${opt.name}`}
-                        value={productItems.find((i) => i.id === detail.itemId) || null}
-                        onChange={(_, v) => handleItemSelect(index, v)}
-                        disabled={isEditing}
-                        renderInput={(params) => (
-                          <TextField {...params} label="Item" error={!!formErrors[`item_${index}`]}
-                            helperText={formErrors[`item_${index}`]}
-                          />
-                        )}
-                      />
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <Autocomplete
+                          size="small"
+                          options={productItems}
+                          getOptionLabel={(opt) => `${opt.itemCode} - ${opt.name}`}
+                          value={productItems.find((i) => i.id === detail.itemId) || null}
+                          onChange={(_, v) => handleItemSelect(index, v)}
+                          disabled={isEditing}
+                          renderInput={(params) => (
+                            <TextField {...params} label="Item" error={!!formErrors[`item_${index}`]}
+                              helperText={formErrors[`item_${index}`]}
+                            />
+                          )}
+                          sx={{ flex: 1 }}
+                        />
+                        <QuickCreate
+                          entityKey="item"
+                          disabled={isEditing}
+                          onCreated={(it) => {
+                            dispatch(fetchItems({}));
+                            handleItemSelect(index, it);
+                            setFormErrors((prev) => ({ ...prev, [`item_${index}`]: undefined }));
+                          }}
+                        />
+                      </Box>
                     </Grid>
                     <Grid item xs={6} sm={2}>
                       <TextField size="small" fullWidth label="Current Qty" type="number"

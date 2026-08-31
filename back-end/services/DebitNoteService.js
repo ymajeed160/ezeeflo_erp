@@ -1,6 +1,7 @@
 const DebitNoteRepository = require('../repositories/DebitNoteRepository');
 const DebitNoteDTO = require('../dto/DebitNoteDTO');
 const { sequelize } = require('../models');
+const { requireDeletionEnabled } = require('../utils/deletionSettings');
 
 class DebitNoteService {
   async generateNumber(tenantId) {
@@ -70,7 +71,8 @@ class DebitNoteService {
   async delete(tenantId, id) {
     const record = await DebitNoteRepository.findById(tenantId, id);
     if (!record) throw new Error('Debit Note not found');
-    if (record.status !== 'draft') throw new Error('Only Draft debit notes can be deleted');
+    await requireDeletionEnabled(tenantId, 'debit_notes');
+    if (record.journalEntryId) throw new Error('This Debit Note is linked to a journal entry. Delete the journal entry first, then delete this debit note.');
     return DebitNoteRepository.delete(tenantId, id);
   }
 

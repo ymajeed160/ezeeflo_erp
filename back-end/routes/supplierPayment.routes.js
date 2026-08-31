@@ -16,6 +16,8 @@ router.get('/:id', checkPermission('supplierpayment.view'), SupplierPaymentContr
 router.post('/', checkPermission('supplierpayment.create'), validateCreate, SupplierPaymentController.create);
 router.put('/:id', checkPermission('supplierpayment.edit'), validateUpdate, SupplierPaymentController.update);
 router.delete('/:id', checkPermission('supplierpayment.delete'), SupplierPaymentController.delete);
+router.post('/:id/restore', checkPermission('supplierpayment.edit'), SupplierPaymentController.restore);
+router.post('/:id/cancel', checkPermission('supplierpayment.approve'), SupplierPaymentController.cancel);
 router.post('/:id/confirm', checkPermission('supplierpayment.approve'), SupplierPaymentController.confirm);
 router.post('/:id/post-to-journal', checkPermission('supplierpayment.approve'), SupplierPaymentController.postToJournal);
 router.post('/:id/reverse', checkPermission('supplierpayment.approve'), SupplierPaymentController.reverse);

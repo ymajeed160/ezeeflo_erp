@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Button, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, IconButton, Chip, Dialog,
@@ -26,6 +27,7 @@ const STATUS_COLORS = {
 
 const JournalEntries = () => {
   const dispatch = useDispatch();
+  const [searchParams] = useSearchParams();
   const { items: entries, loading, error, total, page, limit } = useSelector(
     (state) => state.journalEntries || {}
   );
@@ -33,7 +35,7 @@ const JournalEntries = () => {
 
   const [open, setOpen] = useState(false);
   const [editItem, setEditItem] = useState(null);
-  const [filters, setFilters] = useState({ status: '', startDate: '', endDate: '', search: '' });
+  const [filters, setFilters] = useState({ status: '', startDate: '', endDate: '', search: searchParams.get('search') || '' });
   const [form, setForm] = useState({
     entryDate: new Date().toISOString().split('T')[0],
     reference: '',
@@ -535,7 +537,6 @@ const JournalEntries = () => {
                           onClick={() => handleDelete(entry.id)}
                           size="small"
                           color="error"
-                          disabled={entry.status === 'posted'}
                         >
                           <Delete fontSize="small" />
                         </IconButton>

@@ -18,6 +18,7 @@ import {
 import { fetchItemCategories } from '../store/slices/itemCategorySlice';
 import accountApi from '../services/accountApi';
 import SystemConfigApi from '../services/systemConfigApi';
+import QuickCreate from '../components/QuickCreate/QuickCreate';
 
 const ITEM_TYPES = [
   { value: 'product', label: 'Product' },
@@ -388,12 +389,23 @@ const Items = () => {
     <Box sx={{ display: 'grid', gap: 2, pt: 1 }}>
       <Grid container spacing={2}>
         <Grid item xs={12} sm={6}>
-          <Autocomplete
-            options={categoryOptions}
-            value={findCategoryOption(form.categoryId)}
-            onChange={(_, v) => setForm({ ...form, categoryId: v?.id || '' })}
-            renderInput={(params) => <TextField {...params} label="Category" fullWidth />}
-          />
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Autocomplete
+              options={categoryOptions}
+              value={findCategoryOption(form.categoryId)}
+              onChange={(_, v) => setForm({ ...form, categoryId: v?.id || '' })}
+              renderInput={(params) => <TextField {...params} label="Category" fullWidth />}
+              sx={{ flex: 1 }}
+            />
+            <QuickCreate
+              entityKey="itemCategory"
+              disabled={isView}
+              onCreated={(c) => {
+                dispatch(fetchItemCategories());
+                setForm((f) => ({ ...f, categoryId: c.id }));
+              }}
+            />
+          </Box>
         </Grid>
         <Grid item xs={12} sm={6}>
           <TextField

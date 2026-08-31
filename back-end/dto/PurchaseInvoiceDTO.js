@@ -19,6 +19,14 @@ class PurchaseInvoiceDTO {
       discountAmount: parseFloat(data.discountAmount || 0),
       totalAmount: parseFloat(data.totalAmount || 0),
       journalEntryId: data.journalEntryId,
+      journalEntryNumber: data.journalEntry ? data.journalEntry.entryNumber : '',
+      journalEntry: data.journalEntry
+        ? { id: data.journalEntry.id, entryNumber: data.journalEntry.entryNumber, status: data.journalEntry.status, source: data.journalEntry.source, sourceId: data.journalEntry.sourceId }
+        : null,
+      deletedAt: data.deletedAt || null,
+      deletedBy: data.deletedBy || null,
+      deleteReason: data.deleteReason || null,
+      cancelReason: data.cancelReason || null,
       supplier: data.supplier ? { id: data.supplier.id, name: data.supplier.name, code: data.supplier.code } : null,
       warehouse: data.warehouse ? { id: data.warehouse.id, name: data.warehouse.name } : null,
       details: (data.details || data.PurchaseInvoiceDetails || []).map((d) => ({

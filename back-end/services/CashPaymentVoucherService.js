@@ -5,7 +5,7 @@ const AuditService = require('./AuditService');
 const logger = require('../utils/logger');
 const { BadRequestError, NotFoundError } = require('../utils/appError');
 const { sequelize } = require('../models');
-const { Account, SystemConfig } = require('../models');
+const { Account, SystemConfig, CashPaymentVoucher } = require('../models');
 
 class CashPaymentVoucherService {
   async list(tenantId, filters) {
@@ -294,11 +294,11 @@ class CashPaymentVoucherService {
     }
   }
 
-  async cancel(id, tenantId, userId) {
+  async cancel(id, tenantId, userId, reason = null) {
     const voucher = await this.getById(id, tenantId);
     if (voucher.status === 'posted') throw new BadRequestError('Posted CPVs cannot be cancelled. Use reverse instead.');
 
-    await cpvRepo.update(id, tenantId, { status: 'cancelled', updatedBy: userId }, null);
+    await cpvRepo.update(id, tenantId, { status: 'cancelled', updatedBy: userId, cancelReason: reason || null }, null);
 
     await AuditService.recordSystem('CPV_CANCELLED', 'Purchases', 'CashPaymentVoucher', id, {
       tenantId, userId,
@@ -308,10 +308,31 @@ class CashPaymentVoucherService {
     return await this.getById(id, tenantId);
   }
 
-  async delete(id, tenantId) {
+  async delete(id, tenantId, userId, reason = null) {
     const voucher = await this.getById(id, tenantId);
-    if (voucher.status === 'posted') throw new BadRequestError('Cannot delete a posted CPV');
-    await cpvRepo.softDelete(id, tenantId);
+    if (voucher.journalEntryId) throw new BadRequestError('This Cash Payment Voucher is linked to a journal entry. Delete the journal entry first, then delete this voucher.');
+
+    const t = await sequelize.transaction();
+    try {
+      await CashPaymentVoucher.update(
+        { deletedBy: userId, deleteReason: reason || null },
+        { where: { id, tenantId }, transaction: t }
+      );
+      await cpvRepo.destroy(id, tenantId, t);
+      await t.commit();
+      return true;
+    } catch (err) {
+      await t.rollback();
+      throw err;
+    }
+  }
+
+  async restore(id, tenantId, userId) {
+    const voucher = await cpvRepo.findById(id, tenantId, null, true);
+    if (!voucher) throw new NotFoundError('Cash Payment Voucher not found');
+
+    await cpvRepo.restore(id, tenantId);
+    return await this.getById(id, tenantId);
   }
 }
 

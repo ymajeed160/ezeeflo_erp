@@ -35,8 +35,22 @@ class PurchaseOrderController {
 
   async delete(req, res, next) {
     try {
-      const result = await PurchaseOrderService.delete(req.params.id, req.user.tenantId);
+      const result = await PurchaseOrderService.delete(req.params.id, req.user.tenantId, req.user.id, req.body?.reason);
       return ApiResponse.success(res, { message: 'Purchase Order deleted successfully', data: result });
+    } catch (error) { next(error); }
+  }
+
+  async restore(req, res, next) {
+    try {
+      const result = await PurchaseOrderService.restore(req.params.id, req.user.tenantId, req.user.id);
+      return ApiResponse.success(res, { message: 'Purchase Order restored successfully', data: result });
+    } catch (error) { next(error); }
+  }
+
+  async cancel(req, res, next) {
+    try {
+      const result = await PurchaseOrderService.cancel(req.params.id, req.user.tenantId, req.user.id, req.body?.reason);
+      return ApiResponse.success(res, { message: 'Purchase Order cancelled successfully', data: result });
     } catch (error) { next(error); }
   }
 

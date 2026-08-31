@@ -98,8 +98,18 @@ class SalesReturnApi {
   /**
    * Delete sales return
    */
-  static async delete(id) {
-    const response = await api.delete(`/sales-returns/${id}`);
+  static async delete(id, reason) {
+    const response = await api.delete(`/sales-returns/${id}`, { data: { reason } });
+    return response.data;
+  }
+
+  static async restore(id) {
+    const response = await api.post(`/sales-returns/${id}/restore`);
+    return response.data;
+  }
+
+  static async cancel(id, reason) {
+    const response = await api.post(`/sales-returns/${id}/cancel`, { reason });
     return response.data;
   }
 

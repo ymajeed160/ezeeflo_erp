@@ -3,7 +3,8 @@ const { Op } = require('sequelize');
 
 class PurchaseRequestRepository {
   async findAll(tenantId, filters = {}) {
-    const { search, status, fromDate, toDate, page = 1, limit = 20, sortBy = 'requestDate', sortOrder = 'DESC' } = filters;
+    const { search, status, fromDate, toDate, page = 1, limit = 20, sortBy = 'requestDate', sortOrder = 'DESC', includeDeleted } = filters;
+    const withDeleted = includeDeleted === 'true' || includeDeleted === true;
     const where = { tenantId };
     if (status) where.status = status;
     if (fromDate && toDate) {
@@ -32,13 +33,15 @@ class PurchaseRequestRepository {
       limit: parseInt(limit),
       offset: parseInt(offset),
       distinct: true,
+      paranoid: !withDeleted,
     });
     return { rows, count, page: parseInt(page), limit: parseInt(limit) };
   }
 
-  async findById(tenantId, id) {
+  async findById(tenantId, id, includeDeleted = false) {
     return await PurchaseRequest.findOne({
-      where: { id, tenantId },
+      where: includeDeleted ? { id, tenantId } : { id, tenantId, deletedAt: null },
+      paranoid: !includeDeleted,
       include: [
         { model: User, as: 'creator', attributes: ['id', 'username', 'firstName', 'lastName'] },
         { model: User, as: 'requestor', attributes: ['id', 'username', 'firstName', 'lastName'] },
@@ -141,8 +144,15 @@ class PurchaseRequestRepository {
     }
   }
 
-  async delete(tenantId, id) {
-    return await PurchaseRequest.destroy({ where: { id, tenantId } });
+  async delete(tenantId, id, options = {}) {
+    return await PurchaseRequest.destroy({ where: { id, tenantId }, transaction: options.transaction });
+  }
+
+  async restore(tenantId, id, options = {}) {
+    return await PurchaseRequest.update(
+      { deletedAt: null, deletedBy: null, deleteReason: null },
+      { where: { id, tenantId }, paranoid: false, transaction: options.transaction }
+    );
   }
 
   async updateStatus(tenantId, id, status, userId) {

@@ -2,7 +2,8 @@ const db = require('../models');
 
 class SupplierPaymentRepository {
   async findAll(tenantId, options) {
-    const { page = 1, limit = 10, search, status, supplierId, startDate, endDate, sortBy = 'createdAt', sortOrder = 'DESC' } = options;
+    const { page = 1, limit = 10, search, status, supplierId, startDate, endDate, sortBy = 'createdAt', sortOrder = 'DESC', includeDeleted } = options;
+    const withDeleted = includeDeleted === 'true' || includeDeleted === true;
     const where = { tenantId };
 
     if (search) {
@@ -35,15 +36,17 @@ class SupplierPaymentRepository {
       order: [[sortBy, sortOrder]],
       limit: parseInt(limit),
       offset,
-      distinct: true
+      distinct: true,
+      paranoid: !withDeleted
     });
 
     return { rows, count, page: parseInt(page), limit: parseInt(limit) };
   }
 
-  async findById(tenantId, id) {
+  async findById(tenantId, id, includeDeleted = false) {
     return await db.SupplierPayment.findOne({
-      where: { id, tenantId },
+      where: includeDeleted ? { id, tenantId } : { id, tenantId, deletedAt: null },
+      paranoid: !includeDeleted,
       include: [
         { model: db.Supplier, as: 'supplier' },
         { model: db.Account, as: 'bankAccount', required: false },
@@ -156,17 +159,20 @@ class SupplierPaymentRepository {
     }
   }
 
-  async delete(tenantId, id) {
-    const record = await db.SupplierPayment.findOne({ where: { id, tenantId } });
+  async delete(tenantId, id, options = {}) {
+    const record = await db.SupplierPayment.findOne({ where: { id, tenantId }, transaction: options.transaction });
     if (record) {
-      const allocations = await db.SupplierPaymentAllocation.findAll({ where: { supplierPaymentId: id, tenantId } });
-      const invoiceIds = allocations.map(a => a.purchaseInvoiceId);
-      await db.SupplierPaymentAllocation.destroy({ where: { supplierPaymentId: id, tenantId } });
-      await record.destroy();
-      await this._updateInvoiceStatuses(tenantId, invoiceIds);
+      await record.destroy({ transaction: options.transaction });
       return true;
     }
     return false;
+  }
+
+  async restore(tenantId, id, options = {}) {
+    return await db.SupplierPayment.update(
+      { deletedAt: null, deletedBy: null, deleteReason: null },
+      { where: { id, tenantId }, paranoid: false, transaction: options.transaction }
+    );
   }
 
   async _updateInvoiceStatuses(tenantId, purchaseInvoiceIds, transaction = null) {

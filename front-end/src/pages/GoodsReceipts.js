@@ -31,6 +31,7 @@ import { apiSuccess, apiError } from '../utils/toast';
 import { generateGoodsReceiptPdf } from '../utils/pdfGoodsReceipt';
 import PdfViewer from '../components/PdfViewer';
 import goodsReceiptApi from '../services/goodsReceiptApi';
+import QuickCreate from '../components/QuickCreate/QuickCreate';
 
 const statusColors = {
   draft: 'default',
@@ -68,6 +69,8 @@ const GoodsReceipts = () => {
   const [emailBody, setEmailBody] = useState('');
   const [sendingEmail, setSendingEmail] = useState(false);
   const [confirmState, setConfirmState] = useState(null);
+  const [reasonDialog, setReasonDialog] = useState({ open: false, action: null, target: null });
+  const [reasonText, setReasonText] = useState('');
   const activeCompany = useSelector((s) => s.company?.activeCompany || null);
   const poList = useSelector((s) => s.purchaseOrders?.list || []);
   const poListRef = useRef(poList);
@@ -84,7 +87,8 @@ const GoodsReceipts = () => {
   const getItemType = (itemId) => itemsList.find((it) => it.id === itemId)?.itemType || 'product';
 
   const loadData = useCallback(() => {
-    dispatch(fetchGoodsReceipts({ page: currentPage + 1, limit: rowsPerPage, search, status: statusFilter, supplierId: supplierFilter }));
+    const params = { page: currentPage + 1, limit: rowsPerPage, search, status: statusFilter, supplierId: supplierFilter };
+    dispatch(fetchGoodsReceipts(params));
   }, [dispatch, currentPage, rowsPerPage, search, statusFilter, supplierFilter]);
 
   useEffect(() => { loadData(); }, [loadData]);
@@ -310,15 +314,21 @@ const GoodsReceipts = () => {
   };
 
   const handleDelete = (id) => {
-    askConfirm('Are you sure you want to delete this goods receipt?', async () => {
-      const result = await dispatch(deleteGoodsReceipt(id));
-      if (result.meta.requestStatus === 'fulfilled') {
-        apiSuccess('Goods Receipt deleted');
-        loadData();
-      } else {
-        apiError(result.payload || 'Failed to delete goods receipt');
-      }
-    });
+    setReasonDialog({ open: true, action: 'delete', target: id });
+    setReasonText('');
+  };
+
+  const handleReasonConfirm = async () => {
+    const { action, target } = reasonDialog;
+    setReasonDialog({ open: false, action: null, target: null });
+    if (!target) return;
+    if (action === 'delete') {
+      await dispatch(deleteGoodsReceipt({ id: target, reason: reasonText || null }));
+    } else if (action === 'cancel') {
+      await dispatch(cancelGoodsReceipt({ id: target, reason: reasonText || null }));
+    }
+    setReasonText('');
+    loadData();
   };
 
   const handleApprove = (id) => {
@@ -334,15 +344,8 @@ const GoodsReceipts = () => {
   };
 
   const handleCancel = (id) => {
-    askConfirm('Cancel this goods receipt?', async () => {
-      const result = await dispatch(cancelGoodsReceipt(id));
-      if (result.meta.requestStatus === 'fulfilled') {
-        apiSuccess('Goods Receipt cancelled');
-        loadData();
-      } else {
-        apiError(result.payload || 'Failed to cancel goods receipt');
-      }
-    });
+    setReasonDialog({ open: true, action: 'cancel', target: id });
+    setReasonText('');
   };
 
   const noItems = itemsList?.length === 0;
@@ -409,7 +412,9 @@ const GoodsReceipts = () => {
                 <TableCell>{gr.warehouseName || '-'}</TableCell>
                 <TableCell>{gr.details?.length || 0}</TableCell>
                 <TableCell>{gr.totalQuantity || 0}</TableCell>
-                <TableCell><Chip size="small" label={gr.status} color={statusColors[gr.status] || 'default'} /></TableCell>
+                <TableCell>
+                  <Chip size="small" label={gr.status} color={statusColors[gr.status] || 'default'} />
+                </TableCell>
                 <TableCell>
                   {gr.convertedToInvoice ? (
                     <Chip size="small" color="info" label={`Invoice: ${gr.convertedInvoiceNumber}`} />
@@ -545,19 +550,29 @@ const GoodsReceipts = () => {
                 </Grid>
               )}
               <Grid item xs={12} md={fromPO && !isEdit ? 6 : 6}>
-                <Controller
-                  name="supplierId"
-                  control={control}
-                  rules={{ required: 'Supplier is required' }}
-                  render={({ field }) => (
-                    <TextField select fullWidth size="small" label="Supplier *" {...field}
-                      error={!!errors.supplierId} helperText={errors.supplierId?.message}
-                      disabled={fromPO && !isEdit}
-                    >
-                      {suppliersList?.map((s) => <MenuItem key={s.id} value={s.id}>{s.supplierName || s.name || ''}</MenuItem>)}
-                    </TextField>
-                  )}
-                />
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Controller
+                    name="supplierId"
+                    control={control}
+                    rules={{ required: 'Supplier is required' }}
+                    render={({ field }) => (
+                      <TextField select fullWidth size="small" label="Supplier *" {...field}
+                        error={!!errors.supplierId} helperText={errors.supplierId?.message}
+                        disabled={fromPO && !isEdit}
+                      >
+                        {suppliersList?.map((s) => <MenuItem key={s.id} value={s.id}>{s.supplierName || s.name || ''}</MenuItem>)}
+                      </TextField>
+                    )}
+                  />
+                  <QuickCreate
+                    entityKey="supplier"
+                    disabled={fromPO && !isEdit}
+                    onCreated={(s) => {
+                      dispatch(fetchSuppliers({ limit: 999 }));
+                      setValue('supplierId', s.id, { shouldValidate: true });
+                    }}
+                  />
+                </Box>
               </Grid>
               <Grid item xs={6} md={3}>
                 <TextField fullWidth size="small" type="date" label="Receipt Date" {...register('receiptDate', { required: 'Date required' })} error={!!errors.receiptDate} helperText={errors.receiptDate?.message} InputLabelProps={{ shrink: true }} />
@@ -763,6 +778,28 @@ const GoodsReceipts = () => {
               if (onConfirm) onConfirm();
             }}
           >
+            Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Reason Dialog for Delete/Cancel */}
+      <Dialog open={reasonDialog.open} onClose={() => setReasonDialog({ open: false, action: null, target: null })} fullWidth maxWidth="sm">
+        <DialogTitle>{reasonDialog.action === 'delete' ? 'Delete Goods Receipt' : 'Cancel Goods Receipt'}</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            multiline
+            minRows={2}
+            label="Reason (optional)"
+            value={reasonText}
+            onChange={(e) => setReasonText(e.target.value)}
+            autoFocus
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setReasonDialog({ open: false, action: null, target: null })}>Back</Button>
+          <Button variant="contained" color={reasonDialog.action === 'delete' ? 'error' : 'warning'} onClick={handleReasonConfirm}>
             Confirm
           </Button>
         </DialogActions>

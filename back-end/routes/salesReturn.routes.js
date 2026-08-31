@@ -64,9 +64,24 @@ router.put(
 // DELETE /api/:tenantId/sales-returns/:id - Delete return
 router.delete(
   '/:id',
-  authorize('salesreturn.delete'),
-  salesReturnValidator.idParam,
+  authorize('salesreturn.delete'),  salesReturnValidator.idParam,
   SalesReturnController.delete
+);
+
+// POST /api/:tenantId/sales-returns/:id/restore - Restore deleted return
+router.post(
+  '/:id/restore',
+  authorize('salesreturn.edit'),
+  salesReturnValidator.idParam,
+  SalesReturnController.restore
+);
+
+// POST /api/:tenantId/sales-returns/:id/cancel - Cancel return
+router.post(
+  '/:id/cancel',
+  authorize('salesreturn.edit'),
+  salesReturnValidator.idParam,
+  SalesReturnController.cancel
 );
 
 // POST /api/:tenantId/sales-returns/:id/post - Post return (accounting + inventory with account selection)

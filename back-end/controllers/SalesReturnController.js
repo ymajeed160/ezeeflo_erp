@@ -105,7 +105,38 @@ class SalesReturnController {
     try {
       const tenantId = req.user.tenantId;
       const id = req.params.id;
-      const result = await SalesReturnService.delete(tenantId, id);
+      const userId = req.user?.id;
+      const result = await SalesReturnService.delete(tenantId, id, userId, req.body?.reason);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/sales-returns/:id/restore
+   */
+  static async restore(req, res, next) {
+    try {
+      const tenantId = req.user.tenantId;
+      const id = req.params.id;
+      const userId = req.user?.id;
+      const result = await SalesReturnService.restore(tenantId, id, userId);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/sales-returns/:id/cancel
+   */
+  static async cancel(req, res, next) {
+    try {
+      const tenantId = req.user.tenantId;
+      const id = req.params.id;
+      const userId = req.user?.id;
+      const result = await SalesReturnService.cancel(tenantId, id, userId, req.body?.reason);
       res.json(result);
     } catch (error) {
       next(error);

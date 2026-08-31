@@ -4,6 +4,7 @@ const CreditNoteRepository = require('../repositories/CreditNoteRepository');
 const CreditNoteDTO = require('../dto/CreditNoteDTO');
 const AuditService = require('./AuditService');
 const { Op } = require('sequelize');
+const { requireDeletionEnabled } = require('../utils/deletionSettings');
 
 class CreditNoteService {
   /**
@@ -113,8 +114,9 @@ class CreditNoteService {
       error.status = 404;
       throw error;
     }
-    if (existing.status !== 'draft') {
-      const error = new Error('Only draft credit notes can be deleted');
+    await requireDeletionEnabled(tenantId, 'credit_notes');
+    if (existing.journalEntryId) {
+      const error = new Error('This Credit Note is linked to a journal entry. Delete the journal entry first, then delete this credit note.');
       error.status = 400;
       throw error;
     }

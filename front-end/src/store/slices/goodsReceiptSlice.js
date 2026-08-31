@@ -62,10 +62,34 @@ export const updateGoodsReceipt = createAsyncThunk(
 
 export const deleteGoodsReceipt = createAsyncThunk(
   'goodsReceipts/delete',
+  async ({ id, reason }, { rejectWithValue }) => {
+    try {
+      const { data } = await goodsReceiptApi.delete(id, reason);
+      return { id, ...data };
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || err.message);
+    }
+  }
+);
+
+export const restoreGoodsReceipt = createAsyncThunk(
+  'goodsReceipts/restore',
   async (id, { rejectWithValue }) => {
     try {
-      const { data } = await goodsReceiptApi.delete(id);
-      return { id, ...data };
+      const { data } = await goodsReceiptApi.restore(id);
+      return data;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || err.message);
+    }
+  }
+);
+
+export const cancelGoodsReceipt = createAsyncThunk(
+  'goodsReceipts/cancel',
+  async ({ id, reason }, { rejectWithValue }) => {
+    try {
+      const { data } = await goodsReceiptApi.cancel(id, reason);
+      return data;
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || err.message);
     }
@@ -77,18 +101,6 @@ export const approveGoodsReceipt = createAsyncThunk(
   async (id, { rejectWithValue }) => {
     try {
       const { data } = await goodsReceiptApi.approve(id);
-      return data;
-    } catch (err) {
-      return rejectWithValue(err.response?.data?.message || err.message);
-    }
-  }
-);
-
-export const cancelGoodsReceipt = createAsyncThunk(
-  'goodsReceipts/cancel',
-  async (id, { rejectWithValue }) => {
-    try {
-      const { data } = await goodsReceiptApi.cancel(id);
       return data;
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || err.message);

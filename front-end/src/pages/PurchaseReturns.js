@@ -18,6 +18,7 @@ import {
   createPurchaseReturn,
   updatePurchaseReturn,
   deletePurchaseReturn,
+  cancelPurchaseReturn,
   approvePurchaseReturn,
   rejectPurchaseReturn,
   reversePurchaseReturn,
@@ -56,6 +57,8 @@ const PurchaseReturns = () => {
   const [loadingLines, setLoadingLines] = useState(false);
   const [suppliers, setSuppliers] = useState([]);
   const [confirmState, setConfirmState] = useState(null); // { title, message, action }
+  const [reasonDialog, setReasonDialog] = useState({ open: false, action: null, target: null });
+  const [reasonText, setReasonText] = useState('');
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -72,7 +75,8 @@ const PurchaseReturns = () => {
   }, []);
 
   useEffect(() => {
-    dispatch(fetchPurchaseReturns({ page: currentPage, pageSize, status: statusFilter, search: searchTerm, supplierId: supplierFilter }));
+    const params = { page: currentPage, pageSize, status: statusFilter, search: searchTerm, supplierId: supplierFilter };
+    dispatch(fetchPurchaseReturns(params));
   }, [dispatch, currentPage, pageSize, statusFilter, supplierFilter]);
 
   useEffect(() => {
@@ -181,9 +185,21 @@ const PurchaseReturns = () => {
   };
   const openConfirm = (title, message, action) => setConfirmState({ title, message, action });
   const closeConfirm = () => setConfirmState(null);
-  const handleDelete = (id) => openConfirm('Delete Purchase Return', 'Delete this purchase return? This cannot be undone.', () => dispatch(deletePurchaseReturn(id)));
+  const handleDelete = (id) => { setReasonDialog({ open: true, action: 'delete', target: id }); setReasonText(''); };
+  const handleReject = (id) => { setReasonDialog({ open: true, action: 'cancel', target: id }); setReasonText(''); };
+  const handleReasonConfirm = async () => {
+    const { action, target } = reasonDialog;
+    setReasonDialog({ open: false, action: null, target: null });
+    if (!target) return;
+    if (action === 'delete') {
+      await dispatch(deletePurchaseReturn({ id: target, reason: reasonText || null }));
+    } else if (action === 'cancel') {
+      await dispatch(cancelPurchaseReturn({ id: target, reason: reasonText || null }));
+    }
+    setReasonText('');
+    dispatch(fetchPurchaseReturns({ page: currentPage, pageSize, status: statusFilter, search: searchTerm, supplierId: supplierFilter }));
+  };
   const handleApprove = (id) => openConfirm('Approve Purchase Return', 'Approve this purchase return? Inventory will be reduced and accounting entries posted.', () => dispatch(approvePurchaseReturn(id)));
-  const handleReject = (id) => openConfirm('Reject Purchase Return', 'Reject this purchase return?', () => dispatch(rejectPurchaseReturn(id)));
   const handleReverse = (id) => openConfirm('Reverse Purchase Return', 'Reverse this purchase return? Inventory and accounting will be reversed.', () => dispatch(reversePurchaseReturn(id)));
 
   const exportExcel = () => {
@@ -348,7 +364,9 @@ const PurchaseReturns = () => {
                   <TableCell>{item.purchaseInvoiceNumber || '-'}</TableCell>
                   <TableCell>{item.warehouseName || '-'}</TableCell>
                   <TableCell align="right" sx={{ fontWeight: 600 }}>{fmt(item.totalAmount)}</TableCell>
-                  <TableCell><Chip label={item.status} color={statusColors[item.status] || 'default'} size="small" /></TableCell>
+                  <TableCell>
+                    <Chip label={item.status} color={statusColors[item.status] || 'default'} size="small" />
+                  </TableCell>
                   <TableCell align="center">
                     <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
                       {item.status === 'draft' && <>
@@ -510,6 +528,28 @@ const PurchaseReturns = () => {
         <DialogActions>
           <Button onClick={closeConfirm}>Cancel</Button>
           <Button variant="contained" color="primary" onClick={() => { const action = confirmState?.action; closeConfirm(); if (action) action(); }}>
+            Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Reason Dialog for Delete/Cancel */}
+      <Dialog open={reasonDialog.open} onClose={() => setReasonDialog({ open: false, action: null, target: null })} fullWidth maxWidth="sm">
+        <DialogTitle>{reasonDialog.action === 'delete' ? 'Delete Purchase Return' : 'Reject Purchase Return'}</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            multiline
+            minRows={2}
+            label="Reason (optional)"
+            value={reasonText}
+            onChange={(e) => setReasonText(e.target.value)}
+            autoFocus
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setReasonDialog({ open: false, action: null, target: null })}>Back</Button>
+          <Button variant="contained" color={reasonDialog.action === 'delete' ? 'error' : 'warning'} onClick={handleReasonConfirm}>
             Confirm
           </Button>
         </DialogActions>

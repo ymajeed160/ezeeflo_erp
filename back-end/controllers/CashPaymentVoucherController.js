@@ -66,15 +66,22 @@ class CashPaymentVoucherController {
 
   static async cancel(req, res, next) {
     try {
-      const voucher = await CPVService.cancel(req.params.id, req.user.tenantId, req.user.id);
+      const voucher = await CPVService.cancel(req.params.id, req.user.tenantId, req.user.id, req.body?.reason);
       res.json({ success: true, data: CPVDTO.toDetail(voucher), message: 'CPV cancelled' });
     } catch (err) { next(err); }
   }
 
   static async delete(req, res, next) {
     try {
-      await CPVService.delete(req.params.id, req.user.tenantId);
+      await CPVService.delete(req.params.id, req.user.tenantId, req.user.id, req.body?.reason);
       res.json({ success: true, message: 'CPV deleted' });
+    } catch (err) { next(err); }
+  }
+
+  static async restore(req, res, next) {
+    try {
+      const voucher = await CPVService.restore(req.params.id, req.user.tenantId, req.user.id);
+      res.json({ success: true, data: CPVDTO.toDetail(voucher), message: 'CPV restored' });
     } catch (err) { next(err); }
   }
 }

@@ -17,6 +17,7 @@ import {
 } from '../store/slices/stockTransferSlice';
 import { fetchWarehouses } from '../store/slices/warehouseSlice';
 import { fetchItems } from '../store/slices/itemSlice';
+import QuickCreate from '../components/QuickCreate/QuickCreate';
 
 const INITIAL_FORM = {
   fromWarehouseId: '',
@@ -316,26 +317,48 @@ const StockTransfers = () => {
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
             <Grid item xs={12} sm={6}>
-              <TextField select fullWidth label="From Warehouse" value={form.fromWarehouseId}
-                onChange={(e) => setForm({ ...form, fromWarehouseId: e.target.value })}
-                error={!!formErrors.fromWarehouseId} helperText={formErrors.fromWarehouseId} required
-                disabled={isEditing}
-              >
-                {Array.isArray(warehouses) && warehouses.filter(w => w.isActive).map((w) => (
-                  <MenuItem key={w.id} value={w.id}>{w.name}</MenuItem>
-                ))}
-              </TextField>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <TextField select fullWidth label="From Warehouse" value={form.fromWarehouseId}
+                  onChange={(e) => setForm({ ...form, fromWarehouseId: e.target.value })}
+                  error={!!formErrors.fromWarehouseId} helperText={formErrors.fromWarehouseId} required
+                  disabled={isEditing}
+                >
+                  {Array.isArray(warehouses) && warehouses.filter(w => w.isActive).map((w) => (
+                    <MenuItem key={w.id} value={w.id}>{w.name}</MenuItem>
+                  ))}
+                </TextField>
+                <QuickCreate
+                  entityKey="warehouse"
+                  disabled={isEditing}
+                  onCreated={(w) => {
+                    dispatch(fetchWarehouses({}));
+                    setForm((prev) => ({ ...prev, fromWarehouseId: w.id }));
+                    setFormErrors((prev) => ({ ...prev, fromWarehouseId: undefined }));
+                  }}
+                />
+              </Box>
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField select fullWidth label="To Warehouse" value={form.toWarehouseId}
-                onChange={(e) => setForm({ ...form, toWarehouseId: e.target.value })}
-                error={!!formErrors.toWarehouseId} helperText={formErrors.toWarehouseId} required
-                disabled={isEditing}
-              >
-                {Array.isArray(warehouses) && warehouses.filter(w => w.isActive).map((w) => (
-                  <MenuItem key={w.id} value={w.id}>{w.name}</MenuItem>
-                ))}
-              </TextField>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <TextField select fullWidth label="To Warehouse" value={form.toWarehouseId}
+                  onChange={(e) => setForm({ ...form, toWarehouseId: e.target.value })}
+                  error={!!formErrors.toWarehouseId} helperText={formErrors.toWarehouseId} required
+                  disabled={isEditing}
+                >
+                  {Array.isArray(warehouses) && warehouses.filter(w => w.isActive).map((w) => (
+                    <MenuItem key={w.id} value={w.id}>{w.name}</MenuItem>
+                  ))}
+                </TextField>
+                <QuickCreate
+                  entityKey="warehouse"
+                  disabled={isEditing}
+                  onCreated={(w) => {
+                    dispatch(fetchWarehouses({}));
+                    setForm((prev) => ({ ...prev, toWarehouseId: w.id }));
+                    setFormErrors((prev) => ({ ...prev, toWarehouseId: undefined }));
+                  }}
+                />
+              </Box>
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField fullWidth label="Date" type="date" value={form.transferDate}

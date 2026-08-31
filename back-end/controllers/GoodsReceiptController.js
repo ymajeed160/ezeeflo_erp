@@ -66,10 +66,21 @@ class GoodsReceiptController {
 
   async delete(req, res, next) {
     try {
-      const { tenantId } = req.user;
+      const { tenantId, id: userId } = req.user;
       const { id } = req.params;
-      const result = await goodsReceiptService.delete(tenantId, id);
+      const result = await goodsReceiptService.delete(tenantId, id, userId, req.body?.reason);
       res.json({ success: true, ...result });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async restore(req, res, next) {
+    try {
+      const { tenantId, id: userId } = req.user;
+      const { id } = req.params;
+      const result = await goodsReceiptService.restore(tenantId, id, userId);
+      res.json({ success: true, data: result, message: 'Goods Receipt restored' });
     } catch (err) {
       next(err);
     }
@@ -90,7 +101,7 @@ class GoodsReceiptController {
     try {
       const { tenantId, id: userId } = req.user;
       const { id } = req.params;
-      const result = await goodsReceiptService.cancel(tenantId, id, userId);
+      const result = await goodsReceiptService.cancel(tenantId, id, userId, req.body?.reason);
       res.json({ success: true, data: result, message: 'Goods Receipt cancelled' });
     } catch (err) {
       next(err);

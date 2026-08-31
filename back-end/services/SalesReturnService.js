@@ -1,10 +1,11 @@
 'use strict';
-const { sequelize } = require('../models');
+const { sequelize, SalesReturn } = require('../models');
 const SalesReturnRepository = require('../repositories/SalesReturnRepository');
 const SalesReturnDTO = require('../dto/SalesReturnDTO');
 const AuditService = require('./AuditService');
 const InventoryTransactionService = require('./InventoryTransactionService');
 const { Op } = require('sequelize');
+const { requireDeletionEnabled } = require('../utils/deletionSettings');
 
 class SalesReturnService {
   /**
@@ -125,20 +126,25 @@ class SalesReturnService {
   /**
    * Delete sales return (only draft)
    */
-  static async delete(tenantId, id) {
+  static async delete(tenantId, id, userId, reason = null) {
     const existing = await SalesReturnRepository.findById(tenantId, id);
     if (!existing) {
       const error = new Error('Sales Return not found');
       error.status = 404;
       throw error;
     }
-    if (existing.status !== 'draft') {
-      const error = new Error('Only draft returns can be deleted');
+    await requireDeletionEnabled(tenantId, 'sales_returns');
+    if (existing.journalEntryId) {
+      const error = new Error('This Sales Return is linked to a journal entry. Delete the journal entry first, then delete this return.');
       error.status = 400;
       throw error;
     }
     const t = await sequelize.transaction();
     try {
+      await SalesReturn.update(
+        { deletedBy: userId, deleteReason: reason || null },
+        { where: { id, tenantId }, transaction: t }
+      );
       await SalesReturnRepository.delete(tenantId, id, t);
       await t.commit();
       return { message: 'Sales Return deleted successfully' };
@@ -146,6 +152,52 @@ class SalesReturnService {
       await t.rollback();
       throw error;
     }
+  }
+
+  /**
+   * Restore a soft-deleted sales return
+   */
+  static async restore(tenantId, id, userId) {
+    const existing = await SalesReturnRepository.findById(tenantId, id, true);
+    if (!existing) {
+      const error = new Error('Sales Return not found');
+      error.status = 404;
+      throw error;
+    }
+    if (!existing.deletedAt) {
+      const error = new Error('Sales Return is not deleted');
+      error.status = 400;
+      throw error;
+    }
+
+    await SalesReturnRepository.restore(tenantId, id);
+    const updated = await SalesReturnRepository.findById(tenantId, id);
+    return SalesReturnDTO.toDetail(updated);
+  }
+
+  /**
+   * Cancel a sales return (only draft)
+   */
+  static async cancel(tenantId, id, userId, reason = null) {
+    const existing = await SalesReturnRepository.findById(tenantId, id);
+    if (!existing) {
+      const error = new Error('Sales Return not found');
+      error.status = 404;
+      throw error;
+    }
+    if (existing.status !== 'draft') {
+      const error = new Error('Only draft returns can be cancelled');
+      error.status = 400;
+      throw error;
+    }
+
+    await SalesReturnRepository.updateStatus(tenantId, id, 'rejected', userId);
+    await SalesReturn.update(
+      { cancelReason: reason || null },
+      { where: { id, tenantId } }
+    );
+    const updated = await SalesReturnRepository.findById(tenantId, id);
+    return SalesReturnDTO.toDetail(updated);
   }
 
   /**

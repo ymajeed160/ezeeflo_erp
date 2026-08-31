@@ -3,6 +3,7 @@ const SupplierPaymentRepository = require('../repositories/SupplierPaymentReposi
 const SupplierPaymentDTO = require('../dto/SupplierPaymentDTO');
 const JournalEntryService = require('./JournalEntryService');
 const AuditService = require('./AuditService');
+const { requireDeletionEnabled } = require('../utils/deletionSettings');
 
 const SOURCE_TYPE = 'SUPPLIER_PAYMENT';
 const REVERSAL_SOURCE_TYPE = 'SUPPLIER_PAYMENT_REVERSAL';
@@ -62,15 +63,58 @@ class SupplierPaymentService {
     return await this.findById(tenantId, record.id);
   }
 
-  async delete(tenantId, id) {
+  async delete(tenantId, id, userId, reason = null) {
     const existing = await SupplierPaymentRepository.findById(tenantId, id);
     if (!existing) throw new Error('Supplier Payment not found');
-    if (['posted', 'cancelled'].includes(existing.status)) {
-      throw new Error('Posted payments cannot be deleted. Use Reversal instead.');
+    await requireDeletionEnabled(tenantId, 'supplier_payments');
+    if (existing.journalEntryId) {
+      throw new Error('This Supplier Payment is linked to a journal entry. Delete the journal entry first, then delete this payment.');
     }
 
-    await SupplierPaymentRepository.delete(tenantId, id);
-    return true;
+    const t = await db.sequelize.transaction();
+    try {
+      await db.SupplierPayment.update(
+        { deletedBy: userId, deleteReason: reason || null },
+        { where: { id, tenantId }, transaction: t }
+      );
+      await SupplierPaymentRepository.delete(tenantId, id, { transaction: t });
+      await t.commit();
+      return true;
+    } catch (err) {
+      await t.rollback();
+      throw err;
+    }
+  }
+
+  async restore(tenantId, id, userId) {
+    const existing = await SupplierPaymentRepository.findById(tenantId, id, true);
+    if (!existing) throw new Error('Supplier Payment not found');
+    if (!existing.deletedAt) throw new Error('Supplier Payment is not deleted');
+
+    await SupplierPaymentRepository.restore(tenantId, id, {});
+    return await this.findById(tenantId, id);
+  }
+
+  async cancel(tenantId, id, userId, reason = null) {
+    const existing = await SupplierPaymentRepository.findById(tenantId, id);
+    if (!existing) throw new Error('Supplier Payment not found');
+    if (existing.status === 'cancelled') throw new Error('Supplier Payment is already cancelled');
+
+    if (existing.status === 'posted') {
+      const result = await this.reverse(tenantId, userId, id);
+      await db.SupplierPayment.update(
+        { cancelReason: reason || null },
+        { where: { id, tenantId } }
+      );
+      return result;
+    }
+
+    await SupplierPaymentRepository.update(tenantId, id, {
+      status: 'cancelled',
+      cancelReason: reason || null,
+      updatedBy: userId,
+    });
+    return await this.findById(tenantId, id);
   }
 
   /**

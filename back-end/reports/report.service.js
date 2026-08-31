@@ -63,6 +63,7 @@ class ReportService {
       summary: result.summary,
       data: result.data,
       pagination: result.pagination,
+      layers: result.layers || [],
     };
 
     // Balance Sheet v2: pass structured assets/liabilitiesEquity

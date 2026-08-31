@@ -77,10 +77,25 @@ export const updateInvoice = createAsyncThunk(
 // Delete invoice
 export const deleteInvoice = createAsyncThunk(
   'salesInvoice/deleteInvoice',
+  async (payload, { rejectWithValue }) => {
+    try {
+      const { id, reason } = typeof payload === 'string' ? { id: payload } : payload;
+      await SalesInvoiceApi.delete(id, reason);
+      return id;
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || error.message);
+    }
+  }
+);
+
+// Restore invoice
+
+export const restoreInvoice = createAsyncThunk(
+  'salesInvoice/restoreInvoice',
   async (id, { rejectWithValue }) => {
     try {
-      await SalesInvoiceApi.delete(id);
-      return id;
+      const response = await SalesInvoiceApi.restore(id);
+      return response;
     } catch (error) {
       return rejectWithValue(error.response?.data?.message || error.message);
     }
@@ -103,9 +118,10 @@ export const postInvoice = createAsyncThunk(
 // Cancel invoice
 export const cancelInvoice = createAsyncThunk(
   'salesInvoice/cancelInvoice',
-  async (id, { rejectWithValue }) => {
+  async (payload, { rejectWithValue }) => {
     try {
-      const response = await SalesInvoiceApi.cancel(id);
+      const { id, reason } = typeof payload === 'string' ? { id: payload } : payload;
+      const response = await SalesInvoiceApi.cancel(id, reason);
       return response;
     } catch (error) {
       return rejectWithValue(error.response?.data?.message || error.message);
@@ -233,6 +249,22 @@ const salesInvoiceSlice = createSlice({
         state.count -= 1;
       })
       .addCase(deleteInvoice.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      });
+
+    // Restore
+    builder
+      .addCase(restoreInvoice.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(restoreInvoice.fulfilled, (state, action) => {
+        state.loading = false;
+        state.items = state.items.filter((i) => i.id !== action.payload.id);
+        state.count -= 1;
+      })
+      .addCase(restoreInvoice.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       });

@@ -109,8 +109,33 @@ const DeliveryNoteController = {
     try {
       const tenantId = req.user.tenantId;
       const { id } = req.params;
-      const result = await deliveryNoteService.delete(id, tenantId);
+      const userId = req.user.id;
+      const result = await deliveryNoteService.delete(id, tenantId, userId, req.body?.reason);
       return res.json({ success: true, ...result });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async restore(req, res, next) {
+    try {
+      const tenantId = req.user.tenantId;
+      const { id } = req.params;
+      const userId = req.user.id;
+      const data = await deliveryNoteService.restore(id, tenantId, userId);
+      return res.json({ success: true, data, message: 'Delivery note restored successfully' });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async cancel(req, res, next) {
+    try {
+      const tenantId = req.user.tenantId;
+      const { id } = req.params;
+      const userId = req.user.id;
+      const data = await deliveryNoteService.cancel(id, tenantId, userId, req.body?.reason);
+      return res.json({ success: true, data, message: 'Delivery note cancelled successfully' });
     } catch (error) {
       next(error);
     }

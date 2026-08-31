@@ -149,7 +149,22 @@ class SalesInvoiceController {
       }
       const tenantId = req.user.tenantId;
       const id = req.params.id;
-      const result = await SalesInvoiceService.delete(tenantId, id);
+      const result = await SalesInvoiceService.delete(tenantId, id, req.user?.id, req.body?.reason);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/sales-invoices/:id/restore
+   */
+  static async restore(req, res, next) {
+    try {
+      const tenantId = req.user.tenantId;
+      const id = req.params.id;
+      const userId = req.user?.id;
+      const result = await SalesInvoiceService.restore(tenantId, id, userId);
       res.json(result);
     } catch (error) {
       next(error);
@@ -187,7 +202,7 @@ class SalesInvoiceController {
       const tenantId = req.user.tenantId;
       const id = req.params.id;
       const userId = req.user?.id;
-      const result = await SalesInvoiceService.cancel(tenantId, id, userId);
+      const result = await SalesInvoiceService.cancel(tenantId, id, userId, req.body?.reason);
       res.json(result);
     } catch (error) {
       next(error);

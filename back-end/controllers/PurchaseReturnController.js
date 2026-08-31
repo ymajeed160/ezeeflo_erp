@@ -123,8 +123,31 @@ class PurchaseReturnController {
   async delete(req, res, next) {
     try {
       const tenantId = req.user.tenantId;
-      await service.delete(req.params.id, tenantId);
+      const userId = req.user.id;
+      await service.delete(req.params.id, tenantId, userId, req.body?.reason);
       res.json({ success: true, message: 'Purchase Return deleted successfully' });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async restore(req, res, next) {
+    try {
+      const tenantId = req.user.tenantId;
+      const userId = req.user.id;
+      const data = await service.restore(req.params.id, tenantId, userId);
+      res.json({ success: true, data, message: 'Purchase Return restored successfully' });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async cancel(req, res, next) {
+    try {
+      const tenantId = req.user.tenantId;
+      const userId = req.user.id;
+      const data = await service.cancel(req.params.id, tenantId, userId, req.body?.reason);
+      res.json({ success: true, data, message: 'Purchase Return cancelled successfully' });
     } catch (error) {
       next(error);
     }

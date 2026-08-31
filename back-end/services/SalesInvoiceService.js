@@ -5,12 +5,14 @@ const SalesInvoiceDTO = require('../dto/SalesInvoiceDTO');
 const InventoryTransactionService = require('./InventoryTransactionService');
 const AuditService = require('./AuditService');
 const { Op } = require('sequelize');
+const { requireDeletionEnabled } = require('../utils/deletionSettings');
 
 class SalesInvoiceService {
   /**
    * List invoices with pagination, filtering, sorting, searching
    */
   static async list(tenantId, query = {}) {
+    query.includeDeleted = query.includeDeleted === 'true' || query.includeDeleted === true;
     const { data, count, page, limit, totalPages } = await SalesInvoiceRepository.findAll(tenantId, query);
     return {
       data: data.map(SalesInvoiceDTO.toList),
@@ -121,23 +123,81 @@ class SalesInvoiceService {
   /**
    * Delete invoice (only draft)
    */
-  static async delete(tenantId, id) {
+  static async delete(tenantId, id, userId, reason = null) {
     const existing = await SalesInvoiceRepository.findById(tenantId, id);
     if (!existing) {
       const error = new Error('Sales Invoice not found');
       error.status = 404;
       throw error;
     }
-    if (existing.status !== 'draft') {
-      const error = new Error('Only draft invoices can be deleted');
+    await requireDeletionEnabled(tenantId, 'sales_invoices');
+    if (existing.journalEntryId) {
+      const error = new Error('This Sales Invoice is linked to a journal entry. Delete the journal entry first, then delete this invoice.');
       error.status = 400;
       throw error;
     }
     const t = await sequelize.transaction();
     try {
-      await SalesInvoiceRepository.delete(tenantId, id, t);
+      const { SalesInvoice } = require('../models');
+      await SalesInvoice.update(
+        { deletedBy: userId, deleteReason: reason || null },
+        { where: { tenantId, id }, transaction: t }
+      );
+      await SalesInvoiceRepository.softDeleteHeader(tenantId, id, t);
+
+      await AuditService.log({
+        tenantId,
+        userId,
+        action: 'SOFT_DELETE',
+        entity: 'SalesInvoice',
+        entityId: id,
+        newValues: { deletedBy: userId, deleteReason: reason || null },
+      }, t);
+
       await t.commit();
       return { message: 'Sales Invoice deleted successfully' };
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
+  }
+
+  /**
+   * Restore a soft-deleted draft invoice
+   */
+  static async restore(tenantId, id, userId) {
+    const existing = await SalesInvoiceRepository.findById(tenantId, id, true);
+    if (!existing) {
+      const error = new Error('Sales Invoice not found');
+      error.status = 404;
+      throw error;
+    }
+    if (!existing.deletedAt) {
+      const error = new Error('Sales Invoice is not deleted');
+      error.status = 400;
+      throw error;
+    }
+    if (existing.status !== 'draft') {
+      const error = new Error('Only draft invoices can be restored');
+      error.status = 400;
+      throw error;
+    }
+
+    const t = await sequelize.transaction();
+    try {
+      await SalesInvoiceRepository.restore(tenantId, id, t);
+
+      await AuditService.log({
+        tenantId,
+        userId,
+        action: 'RESTORE',
+        entity: 'SalesInvoice',
+        entityId: id,
+        newValues: { restored: true },
+      }, t);
+
+      await t.commit();
+      return SalesInvoiceDTO.toDetail(await SalesInvoiceRepository.findById(tenantId, id));
     } catch (error) {
       await t.rollback();
       throw error;
@@ -506,7 +566,7 @@ class SalesInvoiceService {
   /**
    * Cancel invoice: Reverse journal entry + reverse inventory
    */
-  static async cancel(tenantId, id, userId) {
+  static async cancel(tenantId, id, userId, reason = null) {
     const existing = await SalesInvoiceRepository.findById(tenantId, id);
     if (!existing) {
       const error = new Error('Sales Invoice not found');
@@ -526,8 +586,41 @@ class SalesInvoiceService {
         await SalesInvoiceService.reverseInventoryImpact(tenantId, existing, userId, t);
       }
 
+      // Reverse the posted journal entry (neutralize accounting effect)
+      if (existing.journalEntryId) {
+        const { JournalEntry, JournalEntryLine } = require('../models');
+        const originalJE = await JournalEntry.findByPk(existing.journalEntryId, {
+          include: [{ model: JournalEntryLine, as: 'lines' }],
+          transaction: t,
+        });
+        if (originalJE && originalJE.lines && originalJE.lines.length > 0) {
+          const reversalLines = originalJE.lines.map((line) => ({
+            accountId: line.accountId,
+            description: `Reversal: ${line.description}`,
+            debit: line.credit,
+            credit: line.debit,
+          }));
+          const JournalEntryService = require('./JournalEntryService');
+          const reversalJE = await JournalEntryService.createEntry({
+            tenantId,
+            entryDate: new Date().toISOString().split('T')[0],
+            reference: `VOID-${existing.invoiceNumber}`,
+            description: `Cancellation of Sales Invoice ${existing.invoiceNumber}`,
+            lines: reversalLines,
+            source: 'SALES_INVOICE_CANCEL',
+            sourceId: existing.id,
+            isAutoGenerated: true,
+          }, tenantId, userId, t);
+          await JournalEntryService.postEntry(reversalJE.id, tenantId, userId, t);
+        }
+      }
+
       // Update status
-      await SalesInvoiceRepository.updateStatus(tenantId, id, 'cancelled', userId, t);
+      const { SalesInvoice } = require('../models');
+      await SalesInvoice.update(
+        { status: 'cancelled', cancelReason: reason || null, updatedBy: userId },
+        { where: { tenantId, id }, transaction: t }
+      );
 
       await AuditService.log({
         tenantId,
@@ -535,7 +628,7 @@ class SalesInvoiceService {
         action: 'CANCEL',
         entity: 'SalesInvoice',
         entityId: id,
-        newValues: { status: 'cancelled' },
+        newValues: { status: 'cancelled', cancelReason: reason || null },
       }, t);
 
       await t.commit();
@@ -549,49 +642,33 @@ class SalesInvoiceService {
   }
 
   /**
-   * Reverse inventory impact
+   * Reverse inventory impact (add stock back) for a cancelled invoice
    */
   static async reverseInventoryImpact(tenantId, invoice, userId, transaction) {
-    const { InventoryTransaction, InventoryBalance } = require('../models');
+    const { Item } = require('../models');
 
     for (const detail of invoice.details || []) {
       if (!detail.itemId) continue;
 
-      const item = detail.item;
+      const item = detail.item || (await Item.findOne({ where: { id: detail.itemId, tenantId }, transaction }));
       if (!item || !item.inventoryAccountId) continue;
 
-      const quantity = parseFloat(detail.quantity);
-      const costPrice = parseFloat(detail.costPrice) || parseFloat(item.costPrice) || 0;
+      const quantity = parseFloat(detail.quantity || 0);
+      if (quantity <= 0) continue;
+      const costPrice = parseFloat(detail.costPrice || 0) || parseFloat(item.costPrice || 0);
 
-      // Increase inventory balance back
-      const balance = await InventoryBalance.findOne({
-        where: { tenantId, itemId: detail.itemId, warehouseId: invoice.warehouseId },
-        transaction,
-      });
-
-      if (balance) {
-        const newQty = parseFloat(balance.quantityOnHand) + quantity;
-        await balance.update(
-          { quantityOnHand: newQty, updatedAt: new Date() },
-          { transaction }
-        );
-      }
-
-      // Create reversal transaction
-      await InventoryTransaction.create({
+      await InventoryTransactionService.recordTransaction({
         tenantId,
         itemId: detail.itemId,
         warehouseId: invoice.warehouseId,
-        transactionType: 'sale_cancellation',
+        transactionType: 'return',
         referenceId: invoice.id,
-        referenceType: 'SalesInvoice',
+        referenceType: 'SalesInvoiceCancel',
         referenceNumber: invoice.invoiceNumber,
-        quantity: quantity, // positive = back in
+        quantity, // positive = back in
         unitCost: costPrice,
         totalCost: quantity * costPrice,
-        balanceAfter: balance ? parseFloat(balance.quantityOnHand) + quantity : quantity,
-        createdAt: new Date(),
-      }, { transaction });
+      }, transaction);
     }
   }
 

@@ -5,11 +5,12 @@ const sequelize = require('sequelize');
 
 class GoodsReceiptRepository {
   async findAll(tenantId, filters = {}) {
-    const { search, status, supplierId, purchaseOrderId, warehouseId, startDate, endDate, page = 1, limit = 20, sortBy = 'createdAt', sortOrder = 'DESC' } = filters;
+    const { search, status, supplierId, purchaseOrderId, warehouseId, startDate, endDate, page = 1, limit = 20, sortBy = 'createdAt', sortOrder = 'DESC', includeDeleted } = filters;
+    const withDeleted = includeDeleted === 'true' || includeDeleted === true;
     const offset = (page - 1) * limit;
     delete filters.search; delete filters.status; delete filters.supplierId; delete filters.purchaseOrderId;
     delete filters.warehouseId; delete filters.startDate; delete filters.endDate;
-    delete filters.page; delete filters.limit; delete filters.sortBy; delete filters.sortOrder;
+    delete filters.page; delete filters.limit; delete filters.sortBy; delete filters.sortOrder; delete filters.includeDeleted;
 
     const where = { tenantId, ...filters };
     if (status) where.status = status;
@@ -40,14 +41,16 @@ class GoodsReceiptRepository {
       offset,
       limit: parseInt(limit),
       distinct: true,
+      paranoid: !withDeleted,
     });
 
     return { rows, count, page: parseInt(page), limit: parseInt(limit) };
   }
 
-  async findById(tenantId, id) {
+  async findById(tenantId, id, includeDeleted = false) {
     return await GoodsReceipt.findOne({
-      where: { tenantId, id },
+      where: includeDeleted ? { tenantId, id } : { tenantId, id, deletedAt: null },
+      paranoid: !includeDeleted,
       include: [
         { model: Supplier, as: 'supplier', attributes: ['id', 'name', 'code', 'phone', 'email', 'taxNumber'] },
         { model: Warehouse, as: 'warehouse', attributes: ['id', 'name'] },
@@ -88,9 +91,15 @@ class GoodsReceiptRepository {
   async delete(tenantId, id, t) {
     const gr = await GoodsReceipt.findOne({ where: { tenantId, id }, transaction: t });
     if (!gr) throw new Error('Goods Receipt not found');
-    await GoodsReceiptDetail.destroy({ where: { goodsReceiptId: id }, transaction: t });
     await gr.destroy({ transaction: t });
     return true;
+  }
+
+  async restore(tenantId, id, t) {
+    return await GoodsReceipt.update(
+      { deletedAt: null, deletedBy: null, deleteReason: null },
+      { where: { tenantId, id }, paranoid: false, transaction: t }
+    );
   }
 
   async replaceDetails(goodsReceiptId, details, t) {

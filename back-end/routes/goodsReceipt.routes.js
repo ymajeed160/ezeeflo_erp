@@ -14,6 +14,7 @@ router.get('/:id', authorize('goodsreceipt.view'), goodsReceiptController.getByI
 router.post('/', authorize('goodsreceipt.create'), goodsReceiptValidator.createGoodsReceipt, goodsReceiptController.create);
 router.put('/:id', authorize('goodsreceipt.edit'), goodsReceiptValidator.updateGoodsReceipt, goodsReceiptController.update);
 router.delete('/:id', authorize('goodsreceipt.delete'), goodsReceiptController.delete);
+router.post('/:id/restore', authorize('goodsreceipt.edit'), goodsReceiptController.restore);
 router.patch('/:id/approve', authorize('goodsreceipt.approve'), goodsReceiptController.approve);
 router.patch('/:id/cancel', authorize('goodsreceipt.approve'), goodsReceiptController.cancel);
 router.post('/:id/send-email', authorize('goodsreceipt.view'), goodsReceiptController.sendEmail);

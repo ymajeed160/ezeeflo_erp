@@ -42,6 +42,7 @@ const ALLOWED_PROCEDURES = new Set([
   'sp_Report_PaymentPeriodBasedOnInvoiceDate',
   'sp_Report_StockMovementHistory',
   'sp_Report_StockValuation',
+  'sp_Report_InventoryAging',
   'sp_Report_LowStock',
   'sp_Report_StockAdjustmentHistory',
   'sp_Report_StockTransferHistory',

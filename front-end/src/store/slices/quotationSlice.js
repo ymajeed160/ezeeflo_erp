@@ -34,9 +34,9 @@ export const updateQuotation = createAsyncThunk('quotations/update', async ({ id
   }
 });
 
-export const deleteQuotation = createAsyncThunk('quotations/delete', async (id, { rejectWithValue }) => {
+export const deleteQuotation = createAsyncThunk('quotations/delete', async ({ id, reason }, { rejectWithValue }) => {
   try {
-    await quotationApi.delete(id);
+    await quotationApi.delete(id, reason);
     apiSuccess('Quotation deleted successfully');
     return id;
   } catch (error) {
@@ -78,13 +78,24 @@ export const confirmQuotation = createAsyncThunk('quotations/confirm', async (id
   }
 });
 
-export const cancelQuotation = createAsyncThunk('quotations/cancel', async (id, { rejectWithValue }) => {
+export const cancelQuotation = createAsyncThunk('quotations/cancel', async ({ id, reason }, { rejectWithValue }) => {
   try {
-    const response = await quotationApi.cancel(id);
+    const response = await quotationApi.cancel(id, reason);
     apiSuccess('Quotation cancelled');
     return response.data;
   } catch (error) {
     apiError(error.response?.data?.message || 'Failed to cancel quotation');
+    return rejectWithValue(error.response?.data);
+  }
+});
+
+export const restoreQuotation = createAsyncThunk('quotations/restore', async (id, { rejectWithValue }) => {
+  try {
+    const response = await quotationApi.restore(id);
+    apiSuccess('Quotation restored');
+    return response.data;
+  } catch (error) {
+    apiError(error.response?.data?.message || 'Failed to restore quotation');
     return rejectWithValue(error.response?.data);
   }
 });
@@ -174,6 +185,18 @@ const quotationSlice = createSlice({
         if (idx !== -1) state.list[idx] = updated;
       })
       .addCase(rejectQuotation.fulfilled, (state, action) => {
+        const updated = action.payload;
+        state.selectedQuotation = updated;
+        const idx = state.list.findIndex((q) => q.id === updated.id);
+        if (idx !== -1) state.list[idx] = updated;
+      })
+      .addCase(cancelQuotation.fulfilled, (state, action) => {
+        const updated = action.payload;
+        state.selectedQuotation = updated;
+        const idx = state.list.findIndex((q) => q.id === updated.id);
+        if (idx !== -1) state.list[idx] = updated;
+      })
+      .addCase(restoreQuotation.fulfilled, (state, action) => {
         const updated = action.payload;
         state.selectedQuotation = updated;
         const idx = state.list.findIndex((q) => q.id === updated.id);
