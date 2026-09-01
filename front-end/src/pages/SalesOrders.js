@@ -657,30 +657,43 @@ const SalesOrders = () => {
                       {fields.map((field, index) => (
                         <TableRow key={field.id}>
                           <TableCell>
-                            <Controller
-                              name={`details.${index}.itemId`}
-                              control={control}
-                              rules={{ required: 'Item is required' }}
-                              render={({ field: f }) => (
-                                <Autocomplete
-                                  size="small"
-                                  options={itemsList}
-                                  getOptionLabel={(opt) => `${opt.itemCode || opt.code} - ${opt.name}`}
-                                  value={itemsList.find((i) => i.id === f.value) || null}
-                                  onChange={(e, val) => {
-                                    f.onChange(val?.id || '');
-                                    if (val) {
-                                      setValue(`details.${index}.unitPrice`, Number(val.sellingPrice) || 0);
-                                      setValue(`details.${index}.taxPercentage`, Number(val.taxPercentage) || 0);
-                                    }
-                                  }}
-                                  renderInput={(params) => (
-                                    <TextField {...params} error={!!errors.details?.[index]?.itemId} helperText={errors.details?.[index]?.itemId?.message} />
-                                  )}
-                                  disabled={viewMode}
-                                />
-                              )}
-                            />
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              <Controller
+                                name={`details.${index}.itemId`}
+                                control={control}
+                                rules={{ required: 'Item is required' }}
+                                render={({ field: f }) => (
+                                  <Autocomplete
+                                    size="small"
+                                    options={itemsList}
+                                    getOptionLabel={(opt) => `${opt.itemCode || opt.code} - ${opt.name}`}
+                                    value={itemsList.find((i) => i.id === f.value) || null}
+                                    onChange={(e, val) => {
+                                      f.onChange(val?.id || '');
+                                      if (val) {
+                                        setValue(`details.${index}.unitPrice`, Number(val.sellingPrice) || 0);
+                                        setValue(`details.${index}.taxPercentage`, Number(val.taxPercentage) || 0);
+                                      }
+                                    }}
+                                    renderInput={(params) => (
+                                      <TextField {...params} error={!!errors.details?.[index]?.itemId} helperText={errors.details?.[index]?.itemId?.message} />
+                                    )}
+                                    disabled={viewMode}
+                                    sx={{ flex: 1 }}
+                                  />
+                                )}
+                              />
+                              <QuickCreate
+                                entityKey="item"
+                                disabled={viewMode}
+                                onCreated={(it) => {
+                                  dispatch(fetchItems({ limit: 999 }));
+                                  setValue(`details.${index}.itemId`, it.id, { shouldValidate: true });
+                                  if (it.sellingPrice) setValue(`details.${index}.unitPrice`, Number(it.sellingPrice) || 0);
+                                  if (it.taxPercentage) setValue(`details.${index}.taxPercentage`, Number(it.taxPercentage) || 0);
+                                }}
+                              />
+                            </Box>
                           </TableCell>
                           <TableCell>
                             <TextField size="small" fullWidth {...register(`details.${index}.description`)} disabled={viewMode} />

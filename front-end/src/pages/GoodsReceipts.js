@@ -609,15 +609,25 @@ const GoodsReceipts = () => {
             {fields.map((field, idx) => (
               <Grid container spacing={1} key={field.id} sx={{ mb: 1 }}>
                 <Grid item xs={12} md={3}>
-                  <Controller
-                    control={control} name={`items.${idx}.itemId`}
-                    rules={{ required: 'Item is required' }}
-                    render={({ field: f }) => (
-                      <TextField select fullWidth size="small" {...f} error={!!errors.items?.[idx]?.itemId} helperText={errors.items?.[idx]?.itemId?.message}>
-                        {itemsList?.map((it) => <MenuItem key={it.id} value={it.id}>{it.name || it.itemName || ''}</MenuItem>)}
-                      </TextField>
-                    )}
-                  />
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Controller
+                      control={control} name={`items.${idx}.itemId`}
+                      rules={{ required: 'Item is required' }}
+                      render={({ field: f }) => (
+                        <TextField select fullWidth size="small" {...f} error={!!errors.items?.[idx]?.itemId} helperText={errors.items?.[idx]?.itemId?.message}>
+                          {itemsList?.map((it) => <MenuItem key={it.id} value={it.id}>{it.name || it.itemName || ''}</MenuItem>)}
+                        </TextField>
+                      )}
+                    />
+                    <QuickCreate
+                      entityKey="item"
+                      onCreated={(it) => {
+                        dispatch(fetchItems({ limit: 999 }));
+                        setValue(`items.${idx}.itemId`, it.id, { shouldValidate: true });
+                        if (it.costPrice) setValue(`items.${idx}.unitCost`, Number(it.costPrice) || 0);
+                      }}
+                    />
+                  </Box>
                 </Grid>
                 <Grid item xs={4} md={2}>
                   <TextField fullWidth size="small" type="number" label="Ordered Qty" {...register(`items.${idx}.orderedQuantity`, { valueAsNumber: true, min: 0 })} />

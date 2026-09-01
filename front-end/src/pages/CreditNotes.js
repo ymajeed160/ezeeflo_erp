@@ -58,6 +58,7 @@ import { fetchItems } from '../store/slices/itemSlice';
 import { fetchWarehouses } from '../store/slices/warehouseSlice';
 import { fetchReturns } from '../store/slices/salesReturnSlice';
 import { confirmDialog, apiSuccess, apiError } from '../utils/toast';
+import QuickCreate from '../components/QuickCreate/QuickCreate';
 
 const statusColors = {
   draft: 'default',
@@ -408,16 +409,27 @@ const CreditNotes = () => {
                 {fields.map((field, index) => (
                   <TableRow key={field.id}>
                     <TableCell>
-                      <Autocomplete
-                        disabled={viewMode}
-                        size="small"
-                        value={itemsList.find((it) => it.id === details[index]?.itemId) || null}
-                        onChange={(_, val) => handleItemSelect(index, val)}
-                        options={itemsList}
-                        getOptionLabel={(opt) => `${opt.itemCode || opt.code || ''} - ${opt.name || opt.itemName || ''}`}
-                        isOptionEqualToValue={(opt, val) => opt.id === val.id}
-                        renderInput={(params) => <TextField {...params} placeholder="Select Item" />}
-                      />
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <Autocomplete
+                          disabled={viewMode}
+                          size="small"
+                          value={itemsList.find((it) => it.id === details[index]?.itemId) || null}
+                          onChange={(_, val) => handleItemSelect(index, val)}
+                          options={itemsList}
+                          getOptionLabel={(opt) => `${opt.itemCode || opt.code || ''} - ${opt.name || opt.itemName || ''}`}
+                          isOptionEqualToValue={(opt, val) => opt.id === val.id}
+                          renderInput={(params) => <TextField {...params} placeholder="Select Item" />}
+                          sx={{ flex: 1 }}
+                        />
+                        <QuickCreate
+                          entityKey="item"
+                          disabled={viewMode}
+                          onCreated={(it) => {
+                            dispatch(fetchItems({ limit: 999 }));
+                            handleItemSelect(index, it);
+                          }}
+                        />
+                      </Box>
                     </TableCell>
                     <TableCell>
                       <TextField

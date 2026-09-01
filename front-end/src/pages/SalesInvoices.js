@@ -811,16 +811,27 @@ const SalesInvoices = () => {
                 {fields.map((field, index) => (
                   <TableRow key={field.id}>
                     <TableCell>
-                      <Autocomplete
-                        disabled={viewMode}
-                        size="small"
-                        value={itemsList.find((it) => it.id === details[index]?.itemId) || null}
-                        onChange={(_, val) => handleItemSelect(index, val)}
-                        options={itemsList}
-                        getOptionLabel={(opt) => `${opt.itemCode} - ${opt.name || opt.itemName || ''}`}
-                        isOptionEqualToValue={(opt, val) => opt.id === val.id}
-                        renderInput={(params) => <TextField {...params} placeholder="Select Item" />}
-                      />
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <Autocomplete
+                          disabled={viewMode}
+                          size="small"
+                          value={itemsList.find((it) => it.id === details[index]?.itemId) || null}
+                          onChange={(_, val) => handleItemSelect(index, val)}
+                          options={itemsList}
+                          getOptionLabel={(opt) => `${opt.itemCode} - ${opt.name || opt.itemName || ''}`}
+                          isOptionEqualToValue={(opt, val) => opt.id === val.id}
+                          renderInput={(params) => <TextField {...params} placeholder="Select Item" />}
+                          sx={{ flex: 1 }}
+                        />
+                        <QuickCreate
+                          entityKey="item"
+                          disabled={viewMode}
+                          onCreated={(it) => {
+                            dispatch(fetchItems({ limit: 999 }));
+                            handleItemSelect(index, it);
+                          }}
+                        />
+                      </Box>
                     </TableCell>
                     <TableCell>
                       <TextField

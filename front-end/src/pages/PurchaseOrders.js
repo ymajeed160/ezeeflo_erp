@@ -610,30 +610,42 @@ const PurchaseOrders = () => {
             {fields.map((field, index) => (
               <Grid container spacing={1} key={field.id} alignItems="center" sx={{ mb: 1 }}>
                 <Grid item xs={12} sm={3}>
-                  <Controller
-                    name={`details.${index}.itemId`}
-                    control={control}
-                    rules={{ required: 'Item is required' }}
-                    render={({ field: f }) => (
-                      <TextField select fullWidth size="small" label="Item *" value={f.value || ''}
-                        onChange={(e) => {
-                          f.onChange(e.target.value);
-                          const item = itemsList.find((it) => it.id === e.target.value);
-                          if (item) {
-                            setValue(`details.${index}.description`, item.description || '');
-                            setValue(`details.${index}.unitPrice`, item.purchasePrice || item.costPrice || 0);
-                          }
-                        }}
-                        disabled={viewMode}
-                        error={!!errors.details?.[index]?.itemId}
-                        helperText={errors.details?.[index]?.itemId?.message}
-                      >
-                        {itemsList.map((item) => (
-                          <MenuItem key={item.id} value={item.id}>{item.itemName || item.name}</MenuItem>
-                        ))}
-                      </TextField>
-                    )}
-                  />
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Controller
+                      name={`details.${index}.itemId`}
+                      control={control}
+                      rules={{ required: 'Item is required' }}
+                      render={({ field: f }) => (
+                        <TextField select fullWidth size="small" label="Item *" value={f.value || ''}
+                          onChange={(e) => {
+                            f.onChange(e.target.value);
+                            const item = itemsList.find((it) => it.id === e.target.value);
+                            if (item) {
+                              setValue(`details.${index}.description`, item.description || '');
+                              setValue(`details.${index}.unitPrice`, item.purchasePrice || item.costPrice || 0);
+                            }
+                          }}
+                          disabled={viewMode}
+                          error={!!errors.details?.[index]?.itemId}
+                          helperText={errors.details?.[index]?.itemId?.message}
+                        >
+                          {itemsList.map((item) => (
+                            <MenuItem key={item.id} value={item.id}>{item.itemName || item.name}</MenuItem>
+                          ))}
+                        </TextField>
+                      )}
+                    />
+                    <QuickCreate
+                      entityKey="item"
+                      disabled={viewMode}
+                      onCreated={(it) => {
+                        dispatch(fetchItems({ limit: 999 }));
+                        setValue(`details.${index}.itemId`, it.id, { shouldValidate: true });
+                        if (it.description) setValue(`details.${index}.description`, it.description);
+                        setValue(`details.${index}.unitPrice`, Number(it.purchasePrice || it.costPrice || 0));
+                      }}
+                    />
+                  </Box>
                 </Grid>
                 <Grid item xs={12} sm={2}>
                   <TextField fullWidth size="small" label="Description" disabled={viewMode} {...register(`details.${index}.description`)} />

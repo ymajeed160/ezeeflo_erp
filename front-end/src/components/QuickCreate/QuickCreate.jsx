@@ -16,6 +16,7 @@ import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import { QUICK_CREATE_ENTITIES } from '../../quickCreate/quickCreateEntities';
 import usePermissions from '../../hooks/usePermissions';
 import { apiError, apiSuccess } from '../../utils/toast';
+import QuickCreateItem from './QuickCreateItem';
 
 const emptyValues = (fields) =>
   fields.reduce((acc, f) => {
@@ -50,6 +51,11 @@ const QuickCreate = ({ entityKey, onCreated, disabled = false, size = 'small', t
   if (!config) return null;
   if (permLoading) return null;
   if (!hasPermission(config.permission)) return null; // RBAC gate
+
+  // Item uses the full "Add New Item" form
+  if (entityKey === 'item') {
+    return <QuickCreateItem onCreated={onCreated} disabled={disabled} size={size} tooltip={tooltip} />;
+  }
 
   const openDialog = () => {
     setValues(emptyValues(config.fields));

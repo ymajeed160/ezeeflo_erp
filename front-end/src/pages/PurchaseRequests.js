@@ -21,6 +21,7 @@ import {
 import { fetchItems } from '../store/slices/itemSlice';
 import { generateFromPR } from '../store/slices/purchaseOrderSlice';
 import { apiSuccess, apiError } from '../utils/toast';
+import QuickCreate from '../components/QuickCreate/QuickCreate';
 
 const INITIAL_FORM = {
   requestDate: new Date().toISOString().split('T')[0],
@@ -467,21 +468,31 @@ const PurchaseRequests = () => {
                           {isView ? (
                             line.item?.name || line.itemId
                           ) : (
-                            <Autocomplete
-                              size="small"
-                              options={items}
-                              getOptionLabel={(opt) => opt.name || ''}
-                              value={line.item || null}
-                              onChange={(e, val) => handleLineChange(index, 'item', val)}
-                              renderInput={(params) => (
-                                <TextField
-                                  {...params}
-                                  error={!!formErrors[`detail_${index}_item`]}
-                                  helperText={formErrors[`detail_${index}_item`]}
-                                />
-                              )}
-                              disabled={isView}
-                            />
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              <Autocomplete
+                                size="small"
+                                options={items}
+                                getOptionLabel={(opt) => opt.name || ''}
+                                value={line.item || null}
+                                onChange={(e, val) => handleLineChange(index, 'item', val)}
+                                renderInput={(params) => (
+                                  <TextField
+                                    {...params}
+                                    error={!!formErrors[`detail_${index}_item`]}
+                                    helperText={formErrors[`detail_${index}_item`]}
+                                  />
+                                )}
+                                disabled={isView}
+                                sx={{ flex: 1 }}
+                              />
+                              <QuickCreate
+                                entityKey="item"
+                                onCreated={(it) => {
+                                  dispatch(fetchItems({ limit: 10000 }));
+                                  handleLineChange(index, 'item', it);
+                                }}
+                              />
+                            </Box>
                           )}
                         </TableCell>
                         <TableCell>
