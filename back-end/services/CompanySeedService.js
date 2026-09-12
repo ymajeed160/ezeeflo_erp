@@ -143,6 +143,8 @@ class CompanySeedService {
       paymentvoucher: ['view', 'create', 'edit', 'post', 'reverse'],
       bankreconciliation: ['view', 'create', 'edit', 'reconcile', 'reverse', 'override'],
       quotation: ['view', 'create'],
+      cpv: ['view', 'create', 'edit', 'delete', 'post', 'reverse', 'cancel', 'print', 'export'],
+      crv: ['view', 'create', 'edit', 'delete', 'post', 'reverse', 'cancel', 'print', 'export'],
       audit: ['view', 'view_details', 'export', 'delete', 'view_company', 'view_all_companies'],
     };
 
