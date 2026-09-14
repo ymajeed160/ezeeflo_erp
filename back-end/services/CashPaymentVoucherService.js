@@ -84,9 +84,34 @@ class CashPaymentVoucherService {
 
   async update(id, tenantId, data, userId) {
     const existing = await this.getById(id, tenantId);
-    if (existing.status !== 'draft') {
-      throw new BadRequestError('Only draft vouchers can be edited');
+    if (existing.status === 'cancelled') {
+      throw new BadRequestError('Cancelled CPVs cannot be edited');
     }
+    if (existing.status === 'reversed') {
+      throw new BadRequestError('Reversed CPVs cannot be edited');
+    }
+
+    const oldValues = {
+      voucherDate: existing.voucherDate,
+      cashAccountId: existing.cashAccountId,
+      payeeType: existing.payeeType,
+      payeeName: existing.payeeName,
+      referenceNumber: existing.referenceNumber,
+      paymentMethod: existing.paymentMethod,
+      currency: existing.currency,
+      exchangeRate: parseFloat(existing.exchangeRate || 1),
+      description: existing.description,
+      subtotal: parseFloat(existing.subtotal || 0),
+      taxAmount: parseFloat(existing.taxAmount || 0),
+      totalAmount: parseFloat(existing.totalAmount || 0),
+      lines: (existing.lines || []).map(l => ({
+        accountId: l.accountId,
+        description: l.description,
+        amount: parseFloat(l.amount || 0),
+        taxRate: parseFloat(l.taxRate || 0),
+        taxAmount: parseFloat(l.taxAmount || 0),
+      })),
+    };
 
     const t = await sequelize.transaction();
     try {
@@ -125,7 +150,77 @@ class CashPaymentVoucherService {
       voucherData.taxAmount = lines.reduce((s, l) => s + l.taxAmount, 0);
       voucherData.totalAmount = voucherData.subtotal + voucherData.taxAmount;
 
+      // If the CPV was already posted and has accounting entries, reverse the old
+      // journal entry and recreate a new one from the revised values so the GL,
+      // account balances and reports only ever reflect the latest CPV values.
+      if (existing.status === 'posted' && existing.journalEntryId) {
+        const vatReceivableId = await this._getVatReceivableId(tenantId);
+
+        await this._createAndPostJournalEntry({
+          lines: this._buildJeLines(existing, vatReceivableId, true),
+          entryDate: new Date().toISOString().split('T')[0],
+          reference: `REV-${existing.voucherNumber}`,
+          description: `Reversal of CPV ${existing.voucherNumber} (edited)`,
+          source: 'cash-payment-voucher-reversal',
+          sourceId: existing.journalEntryId,
+        }, tenantId, userId, t);
+
+        const revisedForLines = {
+          voucherNumber: existing.voucherNumber,
+          cashAccountId: voucherData.cashAccountId,
+          totalAmount: voucherData.totalAmount,
+          lines: lines.map(l => ({
+            accountId: l.accountId,
+            description: l.description,
+            amount: l.amount,
+            taxAmount: l.taxAmount,
+          })),
+        };
+
+        const newJe = await this._createAndPostJournalEntry({
+          lines: this._buildJeLines(revisedForLines, vatReceivableId, false),
+          entryDate: voucherData.voucherDate,
+          reference: existing.voucherNumber,
+          description: voucherData.description || `Cash Payment Voucher ${existing.voucherNumber}`,
+          source: 'cash-payment-voucher',
+          sourceId: id,
+        }, tenantId, userId, t);
+
+        voucherData.journalEntryId = newJe.id;
+        voucherData.postedAt = new Date();
+        voucherData.postedBy = existing.postedBy || userId;
+      }
+
       const voucher = await cpvRepo.update(id, tenantId, voucherData, lines, t);
+
+      await AuditService.recordSystem('CPV_UPDATED', 'Purchases', 'CashPaymentVoucher', id, {
+        tenantId, userId,
+        entityReferenceNumber: existing.voucherNumber,
+        description: `CPV ${existing.voucherNumber} updated`,
+        oldValues,
+        newValues: {
+          voucherDate: voucherData.voucherDate,
+          cashAccountId: voucherData.cashAccountId,
+          payeeType: voucherData.payeeType,
+          payeeName: voucherData.payeeName,
+          referenceNumber: voucherData.referenceNumber,
+          paymentMethod: voucherData.paymentMethod,
+          currency: voucherData.currency,
+          exchangeRate: parseFloat(voucherData.exchangeRate || 1),
+          description: voucherData.description,
+          subtotal: voucherData.subtotal,
+          taxAmount: voucherData.taxAmount,
+          totalAmount: voucherData.totalAmount,
+          lines: lines.map(l => ({
+            accountId: l.accountId,
+            description: l.description,
+            amount: l.amount,
+            taxRate: l.taxRate,
+            taxAmount: l.taxAmount,
+          })),
+        },
+      });
+
       await t.commit();
       return voucher;
     } catch (err) {
@@ -192,13 +287,17 @@ class CashPaymentVoucherService {
         description: `CPV ${voucher.voucherNumber} - ${voucher.description || 'Cash Payment'}`,
       });
 
-      // Create journal entry
+      // Create journal entry and post it so it appears in the General Ledger
       const journalEntry = await JournalEntryService.createEntry({
         lines: jeLines,
         entryDate: voucher.voucherDate,
         reference: voucher.voucherNumber,
         description: voucher.description || `Cash Payment Voucher ${voucher.voucherNumber}`,
+        source: 'cash-payment-voucher',
+        sourceId: id,
+        isAutoGenerated: true,
       }, tenantId, userId, t);
+      await JournalEntryService.postEntry(journalEntry.id, tenantId, userId, t);
 
       // Update CPV status
       await cpvRepo.update(id, tenantId, {
@@ -273,7 +372,11 @@ class CashPaymentVoucherService {
         entryDate: new Date().toISOString().split('T')[0],
         reference: `REV-${voucher.voucherNumber}`,
         description: `Reversal of CPV ${voucher.voucherNumber}`,
+        source: 'cash-payment-voucher-reversal',
+        sourceId: id,
+        isAutoGenerated: true,
       }, tenantId, userId, t);
+      await JournalEntryService.postEntry(journalEntry.id, tenantId, userId, t);
 
       await cpvRepo.update(id, tenantId, {
         status: 'reversed',
@@ -310,15 +413,43 @@ class CashPaymentVoucherService {
 
   async delete(id, tenantId, userId, reason = null) {
     const voucher = await this.getById(id, tenantId);
-    if (voucher.journalEntryId) throw new BadRequestError('This Cash Payment Voucher is linked to a journal entry. Delete the journal entry first, then delete this voucher.');
 
     const t = await sequelize.transaction();
     try {
+      // Reverse the GL impact when deleting a posted CPV so no orphaned/active
+      // journal entries are left behind.
+      if (voucher.status === 'posted' && voucher.journalEntryId) {
+        const vatReceivableId = await this._getVatReceivableId(tenantId);
+        await this._createAndPostJournalEntry({
+          lines: this._buildJeLines(voucher, vatReceivableId, true),
+          entryDate: new Date().toISOString().split('T')[0],
+          reference: `REV-${voucher.voucherNumber}`,
+          description: `Reversal of CPV ${voucher.voucherNumber} (deleted)`,
+          source: 'cash-payment-voucher-reversal',
+          sourceId: voucher.journalEntryId,
+        }, tenantId, userId, t);
+      }
+
+      // Soft delete
       await CashPaymentVoucher.update(
-        { deletedBy: userId, deleteReason: reason || null },
+        { deletedBy: userId, deleteReason: reason || null, isDeleted: true },
         { where: { id, tenantId }, transaction: t }
       );
       await cpvRepo.destroy(id, tenantId, t);
+
+      await AuditService.recordSystem('CPV_DELETED', 'Purchases', 'CashPaymentVoucher', id, {
+        tenantId, userId,
+        entityReferenceNumber: voucher.voucherNumber,
+        description: `CPV ${voucher.voucherNumber} deleted${reason ? `: ${reason}` : ''}`,
+        oldValues: {
+          voucherNumber: voucher.voucherNumber,
+          status: voucher.status,
+          totalAmount: parseFloat(voucher.totalAmount || 0),
+          journalEntryId: voucher.journalEntryId || null,
+          deleteReason: reason || null,
+        },
+      });
+
       await t.commit();
       return true;
     } catch (err) {
@@ -333,6 +464,56 @@ class CashPaymentVoucherService {
 
     await cpvRepo.restore(id, tenantId);
     return await this.getById(id, tenantId);
+  }
+
+  async _getVatReceivableId(tenantId) {
+    const vatConfigs = await SystemConfig.findAll({
+      where: { tenantId, category: 'accounting', configKey: 'vat_receivable' },
+      attributes: ['configValue'],
+    });
+    return vatConfigs.length > 0 ? vatConfigs[0].configValue : null;
+  }
+
+  _buildJeLines(voucher, vatReceivableId, reversal = false) {
+    const jeLines = [];
+    const expenseLines = voucher.lines || [];
+
+    for (const line of expenseLines) {
+      const amount = parseFloat(line.amount || 0);
+      const taxAmt = parseFloat(line.taxAmount || 0);
+
+      if (amount > 0) {
+        jeLines.push({
+          accountId: line.accountId,
+          debit: reversal ? 0 : amount,
+          credit: reversal ? amount : 0,
+          description: `${reversal ? 'REVERSAL: ' : ''}CPV ${voucher.voucherNumber}${line.description ? ` - ${line.description}` : ''}`,
+        });
+      }
+      if (taxAmt > 0 && vatReceivableId) {
+        jeLines.push({
+          accountId: vatReceivableId,
+          debit: reversal ? 0 : taxAmt,
+          credit: reversal ? taxAmt : 0,
+          description: `${reversal ? 'REVERSAL: ' : ''}VAT on CPV ${voucher.voucherNumber}`,
+        });
+      }
+    }
+
+    jeLines.push({
+      accountId: voucher.cashAccountId,
+      debit: reversal ? parseFloat(voucher.totalAmount || 0) : 0,
+      credit: reversal ? 0 : parseFloat(voucher.totalAmount || 0),
+      description: `${reversal ? 'REVERSAL: ' : ''}CPV ${voucher.voucherNumber}`,
+    });
+
+    return jeLines;
+  }
+
+  async _createAndPostJournalEntry(data, tenantId, userId, transaction) {
+    const journalEntry = await JournalEntryService.createEntry(data, tenantId, userId, transaction);
+    await JournalEntryService.postEntry(journalEntry.id, tenantId, userId, transaction);
+    return journalEntry;
   }
 }
 

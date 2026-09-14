@@ -52,7 +52,7 @@ class CashReceiptVoucherController {
 
   static async delete(req, res, next) {
     try {
-      const result = await CRVService.delete(req.params.id, req.user.tenantId, req.user.id);
+      const result = await CRVService.delete(req.params.id, req.user.tenantId, req.user.id, req.body?.reason);
       res.json({ success: true, ...result });
     } catch (err) { next(err); }
   }

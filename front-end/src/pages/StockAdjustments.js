@@ -18,6 +18,7 @@ import {
 import { fetchWarehouses } from '../store/slices/warehouseSlice';
 import { fetchItems } from '../store/slices/itemSlice';
 import QuickCreate from '../components/QuickCreate/QuickCreate';
+import SearchableSelect from '../components/Common/SearchableSelect';
 
 const INITIAL_FORM = {
   warehouseId: '',
@@ -275,15 +276,17 @@ const StockAdjustments = () => {
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
             <Grid item xs={12} sm={6}>
-              <TextField select fullWidth label="Warehouse" value={form.warehouseId}
-                onChange={(e) => setForm({ ...form, warehouseId: e.target.value })}
-                error={!!formErrors.warehouseId} helperText={formErrors.warehouseId} required
+              <SearchableSelect
+                fullWidth
+                label="Warehouse"
+                value={form.warehouseId}
+                onChange={(v) => setForm({ ...form, warehouseId: v })}
+                error={!!formErrors.warehouseId}
+                helperText={formErrors.warehouseId}
+                required
                 disabled={isEditing}
-              >
-                {Array.isArray(warehouses) && warehouses.filter(w => w.isActive).map((w) => (
-                  <MenuItem key={w.id} value={w.id}>{w.name}</MenuItem>
-                ))}
-              </TextField>
+                options={(Array.isArray(warehouses) ? warehouses.filter(w => w.isActive) : []).map((w) => ({ value: w.id, label: w.name }))}
+              />
             </Grid>
             <Grid item xs={12} sm={3}>
               <TextField fullWidth label="Date" type="date" value={form.adjustmentDate}

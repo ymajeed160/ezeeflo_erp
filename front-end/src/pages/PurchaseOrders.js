@@ -67,6 +67,7 @@ import { generatePurchaseOrderPdf } from '../utils/pdfPurchaseOrder';
 import PdfViewer from '../components/PdfViewer';
 import purchaseOrderApi from '../services/purchaseOrderApi';
 import QuickCreate from '../components/QuickCreate/QuickCreate';
+import SearchableSelect from '../components/Common/SearchableSelect';
 
 const statusColors = {
   draft: 'default',
@@ -450,12 +451,17 @@ const PurchaseOrders = () => {
               </TextField>
             </Grid>
             <Grid item xs={6} sm={3}>
-              <TextField select fullWidth size="small" label="Supplier" value={supplierFilter} onChange={(e) => setSupplierFilter(e.target.value)}>
-                <MenuItem value="">All</MenuItem>
-                {suppliersList.map((s) => (
-                  <MenuItem key={s.id} value={s.id}>{s.supplierName || s.name}</MenuItem>
-                ))}
-              </TextField>
+              <SearchableSelect
+                fullWidth
+                size="small"
+                label="Supplier"
+                value={supplierFilter}
+                onChange={(v) => setSupplierFilter(v)}
+                options={[
+                  { value: '', label: 'All' },
+                  ...suppliersList.map((s) => ({ value: s.id, label: s.supplierName || s.name })),
+                ]}
+              />
             </Grid>
             <Grid item xs={12} sm={2}>
               <Button variant="outlined" startIcon={<RefreshIcon />} onClick={loadData} fullWidth>
@@ -549,21 +555,17 @@ const PurchaseOrders = () => {
               </Grid>
               <Grid item xs={12} sm={4}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <TextField
-                    select
+                  <SearchableSelect
                     fullWidth
                     size="small"
                     label="Supplier *"
                     value={watch('supplierId')}
-                    onChange={(e) => setValue('supplierId', e.target.value)}
+                    onChange={(v) => setValue('supplierId', v, { shouldValidate: true })}
                     disabled={viewMode}
                     error={!!errors.supplierId}
                     helperText={errors.supplierId?.message}
-                  >
-                    {suppliersList.map((s) => (
-                      <MenuItem key={s.id} value={s.id}>{s.supplierName || s.name}</MenuItem>
-                    ))}
-                  </TextField>
+                    options={suppliersList.map((s) => ({ value: s.id, label: s.supplierName || s.name }))}
+                  />
                   <QuickCreate
                     entityKey="supplier"
                     disabled={viewMode}
@@ -589,15 +591,18 @@ const PurchaseOrders = () => {
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <TextField select fullWidth size="small" label="Warehouse" disabled={viewMode}
+                <SearchableSelect
+                  fullWidth
+                  size="small"
+                  label="Warehouse"
+                  disabled={viewMode}
                   value={watch('warehouseId')}
-                  onChange={(e) => setValue('warehouseId', e.target.value)}
-                >
-                  <MenuItem value="">None</MenuItem>
-                  {warehouseList.map((w) => (
-                    <MenuItem key={w.id} value={w.id}>{w.warehouseName || w.name}</MenuItem>
-                  ))}
-                </TextField>
+                  onChange={(v) => setValue('warehouseId', v)}
+                  options={[
+                    { value: '', label: 'None' },
+                    ...warehouseList.map((w) => ({ value: w.id, label: w.warehouseName || w.name })),
+                  ]}
+                />
               </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField fullWidth size="small" label="Notes" disabled={viewMode} multiline rows={2} {...register('notes')} />
@@ -616,10 +621,14 @@ const PurchaseOrders = () => {
                       control={control}
                       rules={{ required: 'Item is required' }}
                       render={({ field: f }) => (
-                        <TextField select fullWidth size="small" label="Item *" value={f.value || ''}
-                          onChange={(e) => {
-                            f.onChange(e.target.value);
-                            const item = itemsList.find((it) => it.id === e.target.value);
+                        <SearchableSelect
+                          fullWidth
+                          size="small"
+                          label="Item *"
+                          value={f.value || ''}
+                          onChange={(v) => {
+                            f.onChange(v);
+                            const item = itemsList.find((it) => it.id === v);
                             if (item) {
                               setValue(`details.${index}.description`, item.description || '');
                               setValue(`details.${index}.unitPrice`, item.purchasePrice || item.costPrice || 0);
@@ -628,11 +637,8 @@ const PurchaseOrders = () => {
                           disabled={viewMode}
                           error={!!errors.details?.[index]?.itemId}
                           helperText={errors.details?.[index]?.itemId?.message}
-                        >
-                          {itemsList.map((item) => (
-                            <MenuItem key={item.id} value={item.id}>{item.itemName || item.name}</MenuItem>
-                          ))}
-                        </TextField>
+                          options={itemsList.map((item) => ({ value: item.id, label: item.itemName || item.name }))}
+                        />
                       )}
                     />
                     <QuickCreate

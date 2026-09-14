@@ -185,18 +185,20 @@ class JournalEntryRepository extends BaseRepository {
     }
   }
 
-  async generateEntryNumber(tenantId) {
+  async generateEntryNumber(tenantId, transaction = null) {
     const today = new Date();
     const year = today.getFullYear();
     const month = String(today.getMonth() + 1).padStart(2, '0');
     const prefix = `JE-${year}${month}-`;
 
-    // Use raw query to find the max sequence number regardless of defaultScope ordering
+    // Use raw query to find the max sequence number regardless of defaultScope ordering.
+    // Runs inside the provided transaction so multiple entries created in the same
+    // transaction receive distinct, incrementing numbers.
     const [results] = await sequelize.query(
       `SELECT entry_number FROM journal_entries 
        WHERE tenant_id = ? AND entry_number LIKE ? 
        ORDER BY CAST(SUBSTRING(entry_number, 11) AS UNSIGNED) DESC LIMIT 1`,
-      { replacements: [tenantId, `${prefix}%`] }
+      { replacements: [tenantId, `${prefix}%`], transaction }
     );
 
     let sequence = 1;

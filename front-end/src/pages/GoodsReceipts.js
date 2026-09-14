@@ -32,6 +32,7 @@ import { generateGoodsReceiptPdf } from '../utils/pdfGoodsReceipt';
 import PdfViewer from '../components/PdfViewer';
 import goodsReceiptApi from '../services/goodsReceiptApi';
 import QuickCreate from '../components/QuickCreate/QuickCreate';
+import SearchableSelect from '../components/Common/SearchableSelect';
 
 const statusColors = {
   draft: 'default',
@@ -371,10 +372,17 @@ const GoodsReceipts = () => {
               </TextField>
             </Grid>
             <Grid item xs={6} md={2}>
-              <TextField select fullWidth size="small" label="Supplier" value={supplierFilter} onChange={(e) => setSupplierFilter(e.target.value)}>
-                <MenuItem value="">All</MenuItem>
-                {suppliersList?.map((s) => <MenuItem key={s.id} value={s.id}>{s.supplierName || s.name || ''}</MenuItem>)}
-              </TextField>
+              <SearchableSelect
+                fullWidth
+                size="small"
+                label="Supplier"
+                value={supplierFilter}
+                onChange={(v) => setSupplierFilter(v)}
+                options={[
+                  { value: '', label: 'All' },
+                  ...(suppliersList?.map((s) => ({ value: s.id, label: s.supplierName || s.name || '' })) || []),
+                ]}
+              />
             </Grid>
             <Grid item xs={12} md={5}>
               <Stack direction="row" spacing={1}>
@@ -490,10 +498,13 @@ const GoodsReceipts = () => {
             <Grid container spacing={2} sx={{ mt: 0.5 }}>
               {fromPO && !isEdit && (
                 <Grid item xs={12} md={6}>
-                  <TextField select fullWidth size="small" label="Purchase Order"
+                  <SearchableSelect
+                    fullWidth
+                    size="small"
+                    label="Purchase Order"
                     value={watch('purchaseOrderId')}
-                    onChange={async (e) => {
-                      const poId = e.target.value;
+                    onChange={async (v) => {
+                      const poId = v;
                       setValue('purchaseOrderId', poId);
                       if (!poId) return;
                       setLoadingPO(true);
@@ -541,12 +552,11 @@ const GoodsReceipts = () => {
                         setLoadingPO(false);
                       }
                     }}
-                  >
-                    <MenuItem value="">-- Select PO --</MenuItem>
-                    {poList.map((po) => (
-                      <MenuItem key={po.id} value={po.id}>{po.orderNumber || po.poNumber} - {po.supplier?.name || po.supplierName || ''}</MenuItem>
-                    ))}
-                  </TextField>
+                    options={[
+                      { value: '', label: '-- Select PO --' },
+                      ...poList.map((po) => ({ value: po.id, label: `${po.orderNumber || po.poNumber} - ${po.supplier?.name || po.supplierName || ''}` })),
+                    ]}
+                  />
                 </Grid>
               )}
               <Grid item xs={12} md={fromPO && !isEdit ? 6 : 6}>
@@ -556,12 +566,17 @@ const GoodsReceipts = () => {
                     control={control}
                     rules={{ required: 'Supplier is required' }}
                     render={({ field }) => (
-                      <TextField select fullWidth size="small" label="Supplier *" {...field}
-                        error={!!errors.supplierId} helperText={errors.supplierId?.message}
+                      <SearchableSelect
+                        fullWidth
+                        size="small"
+                        label="Supplier *"
+                        value={field.value || ''}
+                        onChange={(v) => field.onChange(v)}
+                        error={!!errors.supplierId}
+                        helperText={errors.supplierId?.message}
                         disabled={fromPO && !isEdit}
-                      >
-                        {suppliersList?.map((s) => <MenuItem key={s.id} value={s.id}>{s.supplierName || s.name || ''}</MenuItem>)}
-                      </TextField>
+                        options={suppliersList?.map((s) => ({ value: s.id, label: s.supplierName || s.name || '' })) || []}
+                      />
                     )}
                   />
                   <QuickCreate
@@ -583,11 +598,16 @@ const GoodsReceipts = () => {
                   control={control}
                   rules={{ required: 'Warehouse is required' }}
                   render={({ field }) => (
-                    <TextField select fullWidth size="small" label="Warehouse *" {...field}
-                      error={!!errors.warehouseId} helperText={errors.warehouseId?.message}
-                    >
-                      {warehouseList?.map((w) => <MenuItem key={w.id} value={w.id}>{w.warehouseName || w.name || ''}</MenuItem>)}
-                    </TextField>
+                    <SearchableSelect
+                      fullWidth
+                      size="small"
+                      label="Warehouse *"
+                      value={field.value || ''}
+                      onChange={(v) => field.onChange(v)}
+                      error={!!errors.warehouseId}
+                      helperText={errors.warehouseId?.message}
+                      options={warehouseList?.map((w) => ({ value: w.id, label: w.warehouseName || w.name || '' })) || []}
+                    />
                   )}
                 />
               </Grid>
@@ -614,9 +634,16 @@ const GoodsReceipts = () => {
                       control={control} name={`items.${idx}.itemId`}
                       rules={{ required: 'Item is required' }}
                       render={({ field: f }) => (
-                        <TextField select fullWidth size="small" {...f} error={!!errors.items?.[idx]?.itemId} helperText={errors.items?.[idx]?.itemId?.message}>
-                          {itemsList?.map((it) => <MenuItem key={it.id} value={it.id}>{it.name || it.itemName || ''}</MenuItem>)}
-                        </TextField>
+                        <SearchableSelect
+                          fullWidth
+                          size="small"
+                          label="Item *"
+                          value={f.value || ''}
+                          onChange={(v) => f.onChange(v)}
+                          error={!!errors.items?.[idx]?.itemId}
+                          helperText={errors.items?.[idx]?.itemId?.message}
+                          options={itemsList?.map((it) => ({ value: it.id, label: it.name || it.itemName || '' })) || []}
+                        />
                       )}
                     />
                     <QuickCreate

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Chip, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, CircularProgress } from '@mui/material';
 import { PlayArrow as OpenIcon, Stop as CloseIcon } from '@mui/icons-material';
 import { getSessions, openSession, closeSession, getMyTerminals, getTerminals } from '../services/posApi';
+import SearchableSelect from '../components/Common/SearchableSelect';
 import { formatCurrency } from '../utils/currency';
 
 const PosSessions = () => {
@@ -99,11 +100,15 @@ const PosSessions = () => {
       <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Open POS Session</DialogTitle>
         <DialogContent>
-          <TextField select fullWidth label="Terminal" value={form.terminalId} onChange={(e) => setForm({ ...form, terminalId: e.target.value })} margin="normal" required>
-            {terminals.map((t) => (
-              <MenuItem key={t.id} value={t.id}>{t.terminalName} ({t.terminalCode})</MenuItem>
-            ))}
-          </TextField>
+          <SearchableSelect
+            fullWidth
+            label="Terminal"
+            value={form.terminalId}
+            onChange={(v) => setForm({ ...form, terminalId: v })}
+            required
+            sx={{ my: 1 }}
+            options={terminals.map((t) => ({ value: t.id, label: `${t.terminalName} (${t.terminalCode})` }))}
+          />
           <TextField fullWidth label="Opening Cash" type="number" value={form.openingCash} onChange={(e) => setForm({ ...form, openingCash: e.target.value })} margin="normal" />
           <TextField fullWidth label="Notes" multiline rows={2} value={form.openingNotes} onChange={(e) => setForm({ ...form, openingNotes: e.target.value })} margin="normal" />
         </DialogContent>

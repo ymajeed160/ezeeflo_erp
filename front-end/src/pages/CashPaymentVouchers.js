@@ -13,6 +13,9 @@ import cpvApi from '../services/cpvApi';
 import accountApi from '../services/accountApi';
 import { formatCurrency } from '../utils/currency';
 import { apiSuccess, apiError } from '../utils/toast';
+import usePermissions from '../hooks/usePermissions';
+import SearchableSelect from '../components/Common/SearchableSelect';
+import QuickCreate from '../components/QuickCreate/QuickCreate';
 
 const CASH_ACCOUNT_TYPES = ['Cash', 'Bank', 'cash', 'bank'];
 
@@ -20,6 +23,7 @@ const emptyLine = () => ({ accountId: '', description: '', amount: '', taxRate: 
 
 const CashPaymentVouchers = () => {
   const navigate = useNavigate();
+  const { hasPermission } = usePermissions();
   const [vouchers, setVouchers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
@@ -70,11 +74,8 @@ const CashPaymentVouchers = () => {
     try {
       const res = await accountApi.getAll({ limit: 500 });
       const all = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
-      const expenseAccounts = all.filter(a => {
-        const type = (a.type || a.accountType || '').toLowerCase();
-        return type === 'expense' || type === 'other' || type === 'cost of goods sold' || type === 'cost_of_goods_sold';
-      });
-      setAccounts(expenseAccounts);
+      // Show the full Chart of Accounts in the Account lines dropdown
+      setAccounts(all);
       const cashAccs = all.filter(a => {
         const type = (a.type || a.accountType || '').toLowerCase();
         const name = (a.name || '').toLowerCase();
@@ -109,6 +110,13 @@ const CashPaymentVouchers = () => {
     try {
       const res = await cpvApi.getById(v.id);
       const d = res.data;
+      const lines = (d.lines || []).map(l => ({
+        accountId: l.accountId || '',
+        description: l.description || '',
+        amount: l.amount?.toString() || '',
+        taxRate: l.taxRate?.toString() || '0',
+        taxAmount: l.taxAmount?.toString() || '0',
+      }));
       setSelected(d);
       setForm({
         voucherDate: d.voucherDate?.split('T')[0] || '',
@@ -118,15 +126,8 @@ const CashPaymentVouchers = () => {
         referenceNumber: d.referenceNumber || '',
         description: d.description || '',
         paymentMethod: d.paymentMethod || 'cash',
-        lines: (d.lines || []).map(l => ({
-          accountId: l.accountId || '',
-          description: l.description || '',
-          amount: l.amount?.toString() || '',
-          taxRate: l.taxRate?.toString() || '0',
-          taxAmount: l.taxAmount?.toString() || '0',
-        })),
+        lines: lines.length > 0 ? lines : [emptyLine()],
       });
-      if (form.lines.length === 0) form.lines = [emptyLine()];
       setError(null);
       setDialog(true);
     } catch (err) { console.error(err); }
@@ -278,16 +279,20 @@ const CashPaymentVouchers = () => {
                   <TableCell><Chip label={v.status} color={statusColor(v.status)} size="small" /></TableCell>
                   <TableCell align="center">
                     <Tooltip title="View"><IconButton size="small" onClick={() => openView(v)}><Visibility /></IconButton></Tooltip>
+                    {hasPermission('cpv.edit') && ['draft', 'posted'].includes(v.status) && (
+                      <Tooltip title="Edit"><IconButton size="small" onClick={() => openEdit(v)}><Edit /></IconButton></Tooltip>
+                    )}
                     {v.status === 'draft' && (
                       <>
-                        <Tooltip title="Edit"><IconButton size="small" onClick={() => openEdit(v)}><Edit /></IconButton></Tooltip>
                         <Tooltip title="Post"><IconButton size="small" color="success" onClick={() => handlePost(v.id)}><PostAdd /></IconButton></Tooltip>
                         <Tooltip title="Cancel"><IconButton size="small" color="error" onClick={() => handleCancel(v.id)}><Cancel /></IconButton></Tooltip>
-                        <Tooltip title="Delete"><IconButton size="small" color="error" onClick={() => handleDelete(v.id)}><Delete /></IconButton></Tooltip>
                       </>
                     )}
                     {v.status === 'posted' && (
                       <Tooltip title="Reverse"><IconButton size="small" color="warning" onClick={() => handleReverse(v.id)}><Undo /></IconButton></Tooltip>
+                    )}
+                    {hasPermission('cpv.delete') && (
+                      <Tooltip title="Delete"><IconButton size="small" color="error" onClick={() => handleDelete(v.id)}><Delete /></IconButton></Tooltip>
                     )}
                   </TableCell>
                 </TableRow>
@@ -298,7 +303,7 @@ const CashPaymentVouchers = () => {
       )}
 
       {/* Create/Edit Dialog */}
-      <Dialog open={dialog} onClose={() => setDialog(false)} maxWidth="md" fullWidth>
+      <Dialog open={dialog} onClose={() => setDialog(false)} maxWidth="lg" fullWidth>
         <DialogTitle>{selected ? 'Edit CPV' : 'New Cash Payment Voucher'}</DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -308,10 +313,13 @@ const CashPaymentVouchers = () => {
                 value={form.voucherDate} onChange={e => setForm(f => ({ ...f, voucherDate: e.target.value }))} />
             </Grid>
             <Grid item xs={6} sm={3}>
-              <TextField select label="Cash Account" fullWidth value={form.cashAccountId}
-                onChange={e => setForm(f => ({ ...f, cashAccountId: e.target.value }))}>
-                {cashAccounts.map(a => <MenuItem key={a.id} value={a.id}>{a.code} - {a.name}</MenuItem>)}
-              </TextField>
+              <SearchableSelect
+                label="Cash Account"
+                fullWidth
+                value={form.cashAccountId}
+                onChange={(v) => setForm(f => ({ ...f, cashAccountId: v }))}
+                options={cashAccounts.map(a => ({ value: a.id, label: `${a.code} - ${a.name}` }))}
+              />
             </Grid>
             <Grid item xs={6} sm={3}>
               <TextField select label="Payee Type" fullWidth value={form.payeeType}
@@ -337,14 +345,34 @@ const CashPaymentVouchers = () => {
           </Grid>
 
           {/* Lines */}
-          <Typography variant="subtitle1" fontWeight={600} sx={{ mt: 2, mb: 1 }}>Expense Lines</Typography>
+          <Typography variant="subtitle1" fontWeight={600} sx={{ mt: 2, mb: 1 }}>Account Lines</Typography>
           {form.lines.map((line, idx) => (
             <Grid container spacing={1} key={idx} sx={{ mb: 1 }} alignItems="center">
               <Grid item xs={12} sm={3}>
-                <TextField select label="Account" fullWidth size="small" value={line.accountId}
-                  onChange={e => updateLine(idx, 'accountId', e.target.value)}>
-                  {accounts.map(a => <MenuItem key={a.id} value={a.id}>{a.code} - {a.name}</MenuItem>)}
-                </TextField>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <SearchableSelect
+                    label="Account"
+                    size="small"
+                    fullWidth
+                    value={line.accountId}
+                    onChange={(v) => updateLine(idx, 'accountId', v)}
+                    options={accounts.map(a => ({ value: a.id, label: `${a.code} - ${a.name}` }))}
+                  />
+                  <QuickCreate
+                    entityKey="account"
+                    onCreated={(created) => {
+                      if (created?.id) {
+                        setAccounts((prev) =>
+                          prev.some((a) => a.id === created.id)
+                            ? prev
+                            : [...prev, { id: created.id, code: created.code || 'ACC', name: created.name || 'Account', type: created.type || 'expense' }]
+                        );
+                        updateLine(idx, 'accountId', created.id);
+                      }
+                      loadAccounts();
+                    }}
+                  />
+                </Box>
               </Grid>
               <Grid item xs={12} sm={3}>
                 <TextField label="Description" fullWidth size="small" value={line.description}
@@ -437,6 +465,11 @@ const CashPaymentVouchers = () => {
       <Dialog open={reasonDialog.open} onClose={() => setReasonDialog({ open: false, action: null, target: null })} fullWidth maxWidth="sm">
         <DialogTitle>{reasonDialog.action === 'delete' ? 'Delete CPV' : 'Cancel CPV'}</DialogTitle>
         <DialogContent>
+          {reasonDialog.action === 'delete' && (
+            <Typography sx={{ mb: 1.5 }}>
+              Are you sure you want to delete this Cash Payment Voucher? This action cannot be undone.
+            </Typography>
+          )}
           <TextField
             fullWidth
             multiline

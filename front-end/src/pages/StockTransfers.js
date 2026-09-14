@@ -18,6 +18,7 @@ import {
 import { fetchWarehouses } from '../store/slices/warehouseSlice';
 import { fetchItems } from '../store/slices/itemSlice';
 import QuickCreate from '../components/QuickCreate/QuickCreate';
+import SearchableSelect from '../components/Common/SearchableSelect';
 
 const INITIAL_FORM = {
   fromWarehouseId: '',
@@ -318,15 +319,17 @@ const StockTransfers = () => {
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
             <Grid item xs={12} sm={6}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <TextField select fullWidth label="From Warehouse" value={form.fromWarehouseId}
-                  onChange={(e) => setForm({ ...form, fromWarehouseId: e.target.value })}
-                  error={!!formErrors.fromWarehouseId} helperText={formErrors.fromWarehouseId} required
+                <SearchableSelect
+                  fullWidth
+                  label="From Warehouse"
+                  value={form.fromWarehouseId}
+                  onChange={(v) => setForm({ ...form, fromWarehouseId: v })}
+                  error={!!formErrors.fromWarehouseId}
+                  helperText={formErrors.fromWarehouseId}
+                  required
                   disabled={isEditing}
-                >
-                  {Array.isArray(warehouses) && warehouses.filter(w => w.isActive).map((w) => (
-                    <MenuItem key={w.id} value={w.id}>{w.name}</MenuItem>
-                  ))}
-                </TextField>
+                  options={(Array.isArray(warehouses) ? warehouses.filter(w => w.isActive) : []).map((w) => ({ value: w.id, label: w.name }))}
+                />
                 <QuickCreate
                   entityKey="warehouse"
                   disabled={isEditing}
@@ -340,15 +343,17 @@ const StockTransfers = () => {
             </Grid>
             <Grid item xs={12} sm={6}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <TextField select fullWidth label="To Warehouse" value={form.toWarehouseId}
-                  onChange={(e) => setForm({ ...form, toWarehouseId: e.target.value })}
-                  error={!!formErrors.toWarehouseId} helperText={formErrors.toWarehouseId} required
+                <SearchableSelect
+                  fullWidth
+                  label="To Warehouse"
+                  value={form.toWarehouseId}
+                  onChange={(v) => setForm({ ...form, toWarehouseId: v })}
+                  error={!!formErrors.toWarehouseId}
+                  helperText={formErrors.toWarehouseId}
+                  required
                   disabled={isEditing}
-                >
-                  {Array.isArray(warehouses) && warehouses.filter(w => w.isActive).map((w) => (
-                    <MenuItem key={w.id} value={w.id}>{w.name}</MenuItem>
-                  ))}
-                </TextField>
+                  options={(Array.isArray(warehouses) ? warehouses.filter(w => w.isActive) : []).map((w) => ({ value: w.id, label: w.name }))}
+                />
                 <QuickCreate
                   entityKey="warehouse"
                   disabled={isEditing}

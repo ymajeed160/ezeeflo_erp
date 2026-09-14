@@ -17,6 +17,7 @@ import { QUICK_CREATE_ENTITIES } from '../../quickCreate/quickCreateEntities';
 import usePermissions from '../../hooks/usePermissions';
 import { apiError, apiSuccess } from '../../utils/toast';
 import QuickCreateItem from './QuickCreateItem';
+import QuickCreateAccount from './QuickCreateAccount';
 
 const emptyValues = (fields) =>
   fields.reduce((acc, f) => {
@@ -55,6 +56,11 @@ const QuickCreate = ({ entityKey, onCreated, disabled = false, size = 'small', t
   // Item uses the full "Add New Item" form
   if (entityKey === 'item') {
     return <QuickCreateItem onCreated={onCreated} disabled={disabled} size={size} tooltip={tooltip} />;
+  }
+
+  // Account uses the full "Quick Create Account" form (with Parent Account)
+  if (entityKey === 'account') {
+    return <QuickCreateAccount onCreated={onCreated} disabled={disabled} size={size} tooltip={tooltip} />;
   }
 
   const openDialog = () => {

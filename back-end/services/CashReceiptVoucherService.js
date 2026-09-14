@@ -5,7 +5,7 @@ const AuditService = require('./AuditService');
 const logger = require('../utils/logger');
 const { BadRequestError, NotFoundError } = require('../utils/appError');
 const { sequelize } = require('../models');
-const { Account, SystemConfig } = require('../models');
+const { Account, SystemConfig, CashReceiptVoucher } = require('../models');
 
 class CashReceiptVoucherService {
   async list(tenantId, filters) {
@@ -85,9 +85,30 @@ class CashReceiptVoucherService {
 
   async update(id, tenantId, data, userId) {
     const existing = await this.getById(id, tenantId);
-    if (existing.status !== 'draft') {
-      throw new BadRequestError('Only draft vouchers can be edited');
-    }
+    if (existing.status === 'cancelled') throw new BadRequestError('Cancelled CRVs cannot be edited');
+    if (existing.status === 'reversed') throw new BadRequestError('Reversed CRVs cannot be edited');
+
+    const oldValues = {
+      voucherDate: existing.voucherDate,
+      cashAccountId: existing.cashAccountId,
+      payerType: existing.payerType,
+      payerName: existing.payerName,
+      referenceNumber: existing.referenceNumber,
+      paymentMethod: existing.paymentMethod,
+      currency: existing.currency,
+      exchangeRate: parseFloat(existing.exchangeRate || 1),
+      description: existing.description,
+      subtotal: parseFloat(existing.subtotal || 0),
+      taxAmount: parseFloat(existing.taxAmount || 0),
+      totalAmount: parseFloat(existing.totalAmount || 0),
+      lines: (existing.lines || []).map(l => ({
+        accountId: l.accountId,
+        description: l.description,
+        amount: parseFloat(l.amount || 0),
+        taxRate: parseFloat(l.taxRate || 0),
+        taxAmount: parseFloat(l.taxAmount || 0),
+      })),
+    };
 
     const t = await sequelize.transaction();
     try {
@@ -126,9 +147,73 @@ class CashReceiptVoucherService {
       voucherData.subtotal = lines.reduce((s, l) => s + l.amount, 0);
       voucherData.taxAmount = lines.reduce((s, l) => s + l.taxAmount, 0);
       voucherData.totalAmount = voucherData.subtotal + voucherData.taxAmount;
-      voucherData.unallocatedAmount = voucherData.totalAmount - parseFloat(voucherData.allocatedAmount || 0);
+      voucherData.unallocatedAmount = voucherData.totalAmount - parseFloat(existing.allocatedAmount || 0);
+
+      // If the CRV was posted and has accounting entries, reverse the old JE and
+      // recreate a new one from the revised values.
+      if (existing.status === 'posted' && existing.journalEntryId) {
+        const vatPayableId = await this._getVatPayableId(tenantId);
+
+        await this._createAndPostJournalEntry({
+          lines: this._buildJeLines(existing, vatPayableId, true),
+          entryDate: new Date().toISOString().split('T')[0],
+          reference: `REV-${existing.voucherNumber}`,
+          description: `Reversal of CRV ${existing.voucherNumber} (edited)`,
+          source: 'cash-receipt-voucher-reversal',
+          sourceId: existing.journalEntryId,
+        }, tenantId, userId, t);
+
+        const revisedForLines = {
+          voucherNumber: existing.voucherNumber,
+          cashAccountId: voucherData.cashAccountId,
+          totalAmount: voucherData.totalAmount,
+          description: voucherData.description,
+          lines: lines.map(l => ({
+            accountId: l.accountId,
+            description: l.description,
+            amount: l.amount,
+            taxAmount: l.taxAmount,
+          })),
+        };
+
+        const newJe = await this._createAndPostJournalEntry({
+          lines: this._buildJeLines(revisedForLines, vatPayableId, false),
+          entryDate: voucherData.voucherDate,
+          reference: existing.voucherNumber,
+          description: voucherData.description || `Cash Receipt Voucher ${existing.voucherNumber}`,
+          source: 'cash-receipt-voucher',
+          sourceId: id,
+        }, tenantId, userId, t);
+
+        voucherData.journalEntryId = newJe.id;
+        voucherData.postedAt = new Date();
+        voucherData.postedBy = existing.postedBy || userId;
+      }
 
       const voucher = await crvRepo.update(id, tenantId, voucherData, lines, t);
+
+      await AuditService.recordSystem('CRV_UPDATED', 'Sales', 'CashReceiptVoucher', id, {
+        tenantId, userId,
+        entityReferenceNumber: existing.voucherNumber,
+        description: `CRV ${existing.voucherNumber} updated`,
+        oldValues,
+        newValues: {
+          voucherDate: voucherData.voucherDate,
+          cashAccountId: voucherData.cashAccountId,
+          payerType: voucherData.payerType,
+          payerName: voucherData.payerName,
+          referenceNumber: voucherData.referenceNumber,
+          paymentMethod: voucherData.paymentMethod,
+          currency: voucherData.currency,
+          exchangeRate: parseFloat(voucherData.exchangeRate || 1),
+          description: voucherData.description,
+          subtotal: voucherData.subtotal,
+          taxAmount: voucherData.taxAmount,
+          totalAmount: voucherData.totalAmount,
+          lines: lines.map(l => ({ accountId: l.accountId, description: l.description, amount: l.amount, taxRate: l.taxRate, taxAmount: l.taxAmount })),
+        },
+      });
+
       await t.commit();
       return voucher;
     } catch (err) {
@@ -195,13 +280,17 @@ class CashReceiptVoucherService {
         }
       }
 
-      // Create journal entry
+      // Create journal entry and post it so it appears in the General Ledger
       const journalEntry = await JournalEntryService.createEntry({
         lines: jeLines,
         entryDate: voucher.voucherDate,
         reference: voucher.voucherNumber,
         description: voucher.description || `Cash Receipt Voucher ${voucher.voucherNumber}`,
+        source: 'cash-receipt-voucher',
+        sourceId: id,
+        isAutoGenerated: true,
       }, tenantId, userId, t);
+      await JournalEntryService.postEntry(journalEntry.id, tenantId, userId, t);
 
       // Update CRV status
       await crvRepo.update(id, tenantId, {
@@ -277,7 +366,11 @@ class CashReceiptVoucherService {
         entryDate: new Date().toISOString().split('T')[0],
         reference: `REV-${voucher.voucherNumber}`,
         description: `Reversal of CRV ${voucher.voucherNumber}`,
+        source: 'cash-receipt-voucher-reversal',
+        sourceId: id,
+        isAutoGenerated: true,
       }, tenantId, userId, t);
+      await JournalEntryService.postEntry(journalEntry.id, tenantId, userId, t);
 
       await crvRepo.update(id, tenantId, {
         status: 'reversed',
@@ -318,20 +411,101 @@ class CashReceiptVoucherService {
     return await this.getById(id, tenantId);
   }
 
-  async delete(id, tenantId, userId) {
+  async delete(id, tenantId, userId, reason = null) {
     const voucher = await this.getById(id, tenantId);
-    if (voucher.journalEntryId) {
-      throw new BadRequestError('This Cash Receipt Voucher is linked to a journal entry. Delete the journal entry first, then delete this voucher.');
+
+    const t = await sequelize.transaction();
+    try {
+      // Reverse the GL impact when deleting a posted CRV so no orphaned/active
+      // journal entries are left behind.
+      if (voucher.status === 'posted' && voucher.journalEntryId) {
+        const vatPayableId = await this._getVatPayableId(tenantId);
+        await this._createAndPostJournalEntry({
+          lines: this._buildJeLines(voucher, vatPayableId, true),
+          entryDate: new Date().toISOString().split('T')[0],
+          reference: `REV-${voucher.voucherNumber}`,
+          description: `Reversal of CRV ${voucher.voucherNumber} (deleted)`,
+          source: 'cash-receipt-voucher-reversal',
+          sourceId: voucher.journalEntryId,
+        }, tenantId, userId, t);
+      }
+
+      // Soft delete
+      await CashReceiptVoucher.update(
+        { isDeleted: true, updatedBy: userId },
+        { where: { id, tenantId }, transaction: t }
+      );
+
+      await AuditService.recordSystem('CRV_DELETED', 'Sales', 'CashReceiptVoucher', id, {
+        tenantId, userId,
+        entityReferenceNumber: voucher.voucherNumber,
+        description: `CRV ${voucher.voucherNumber} deleted${reason ? `: ${reason}` : ''}`,
+        oldValues: {
+          voucherNumber: voucher.voucherNumber,
+          status: voucher.status,
+          totalAmount: parseFloat(voucher.totalAmount || 0),
+          journalEntryId: voucher.journalEntryId || null,
+          deleteReason: reason || null,
+        },
+      });
+
+      await t.commit();
+      return { message: 'CRV deleted successfully' };
+    } catch (err) {
+      await t.rollback();
+      throw err;
     }
+  }
 
-    await crvRepo.softDelete(id, tenantId);
+  async _getVatPayableId(tenantId) {
+    const vatConfigs = await SystemConfig.findAll({
+      where: { tenantId, category: 'accounting', configKey: 'vat_payable' },
+      attributes: ['configValue'],
+    });
+    return vatConfigs.length > 0 ? vatConfigs[0].configValue : null;
+  }
 
-    await AuditService.recordSystem('CRV_DELETED', 'Sales', 'CashReceiptVoucher', id, {
-      tenantId, userId,
-      description: `CRV ${voucher.voucherNumber} deleted`,
+  _buildJeLines(voucher, vatPayableId, reversal = false) {
+    const jeLines = [];
+    const lines = voucher.lines || [];
+    const total = parseFloat(voucher.totalAmount || 0);
+
+    jeLines.push({
+      accountId: voucher.cashAccountId,
+      debit: reversal ? 0 : total,
+      credit: reversal ? total : 0,
+      description: `${reversal ? 'REVERSAL: ' : ''}CRV ${voucher.voucherNumber}${voucher.description ? ` - ${voucher.description}` : ''}`,
     });
 
-    return { message: 'CRV deleted successfully' };
+    for (const line of lines) {
+      const lineAmount = parseFloat(line.amount || 0);
+      const taxAmt = parseFloat(line.taxAmount || 0);
+
+      if (lineAmount > 0) {
+        jeLines.push({
+          accountId: line.accountId,
+          debit: reversal ? lineAmount : 0,
+          credit: reversal ? 0 : lineAmount,
+          description: `${reversal ? 'REVERSAL: ' : ''}CRV ${voucher.voucherNumber}${line.description ? ` - ${line.description}` : ''}`,
+        });
+      }
+      if (taxAmt > 0 && vatPayableId) {
+        jeLines.push({
+          accountId: vatPayableId,
+          debit: reversal ? taxAmt : 0,
+          credit: reversal ? 0 : taxAmt,
+          description: `${reversal ? 'REVERSAL: ' : ''}VAT on CRV ${voucher.voucherNumber}`,
+        });
+      }
+    }
+
+    return jeLines;
+  }
+
+  async _createAndPostJournalEntry(data, tenantId, userId, transaction) {
+    const journalEntry = await JournalEntryService.createEntry(data, tenantId, userId, transaction);
+    await JournalEntryService.postEntry(journalEntry.id, tenantId, userId, transaction);
+    return journalEntry;
   }
 }
 

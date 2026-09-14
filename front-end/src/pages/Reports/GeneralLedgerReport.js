@@ -13,6 +13,7 @@ import {
 import { fetchGeneralLedgerReport, clearGLReport } from '../../store/slices/reportSlice';
 import { fetchAccounts } from '../../store/slices/accountSlice';
 import { apiError } from '../../utils/toast';
+import SearchableSelect from '../../components/Common/SearchableSelect';
 
 const GeneralLedgerReport = () => {
   const dispatch = useDispatch();
@@ -120,13 +121,17 @@ const GeneralLedgerReport = () => {
         <CardContent sx={{ pb: 1 }}>
           <Grid container spacing={2} alignItems="center">
             <Grid item xs={12} md={3}>
-              <TextField select fullWidth size="small" label="Account"
-                value={filters.accountId} onChange={(e) => setFilters({ ...filters, accountId: e.target.value })}>
-                <MenuItem value="">All Accounts</MenuItem>
-                {accountsList.map((a) => (
-                  <MenuItem key={a.id} value={a.id}>{a.code} - {a.name}</MenuItem>
-                ))}
-              </TextField>
+              <SearchableSelect
+                fullWidth
+                size="small"
+                label="Account"
+                value={filters.accountId}
+                onChange={(v) => setFilters({ ...filters, accountId: v })}
+                options={[
+                  { value: '', label: 'All Accounts' },
+                  ...accountsList.map((a) => ({ value: a.id, label: `${a.code} - ${a.name}` })),
+                ]}
+              />
             </Grid>
             <Grid item xs={6} md={2}>
               <TextField fullWidth size="small" type="date" label="Date From"

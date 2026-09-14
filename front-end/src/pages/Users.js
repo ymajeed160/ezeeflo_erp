@@ -9,6 +9,7 @@ import {
 import { Add, Edit, Delete, Block, CheckCircle } from '@mui/icons-material';
 import { fetchUsers, createUser, updateUser, deleteUser, toggleUserStatus, clearError } from '../store/slices/userSlice';
 import { fetchRoles } from '../store/slices/roleSlice';
+import SearchableSelect from '../components/Common/SearchableSelect';
 
 const Users = () => {
   const dispatch = useDispatch();
@@ -177,9 +178,14 @@ const Users = () => {
             {!editItem && (
               <TextField label="Password" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} error={!!formErrors.password} helperText={formErrors.password || 'Min 8 chars, uppercase, lowercase & number'} />
             )}
-            <TextField select label="Role" value={form.roleId} onChange={(e) => setForm({ ...form, roleId: e.target.value })} error={!!formErrors.roleId} helperText={formErrors.roleId}>
-              {roles.map((r) => (<MenuItem key={r.id} value={r.id}>{r.name}</MenuItem>))}
-            </TextField>
+            <SearchableSelect
+              label="Role"
+              value={form.roleId}
+              onChange={(v) => setForm({ ...form, roleId: v })}
+              error={!!formErrors.roleId}
+              helperText={formErrors.roleId}
+              options={roles.map((r) => ({ value: r.id, label: r.name }))}
+            />
             <FormControlLabel control={<Switch checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} />} label="Active" />
           </Box>
         </DialogContent>

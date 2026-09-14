@@ -139,8 +139,8 @@ class JournalEntryService {
     this._validateLines(lines);
     this._validateBalanced(lines);
 
-    // Generate entry number
-    const entryNumber = await journalEntryRepository.generateEntryNumber(tenantId);
+    // Generate entry number (transaction-aware so multiple entries in one txn stay unique)
+    const entryNumber = await journalEntryRepository.generateEntryNumber(tenantId, transaction);
 
     const entryData = {
       entryNumber,

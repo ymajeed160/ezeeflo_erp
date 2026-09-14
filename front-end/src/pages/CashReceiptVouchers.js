@@ -11,6 +11,8 @@ import { Add, Edit, Delete, Visibility, Undo, Cancel, PostAdd } from '@mui/icons
 import crvApi from '../services/crvApi';
 import accountApi from '../services/accountApi';
 import { formatCurrency } from '../utils/currency';
+import SearchableSelect from '../components/Common/SearchableSelect';
+import QuickCreate from '../components/QuickCreate/QuickCreate';
 
 const CASH_ACCOUNT_TYPES = ['Cash', 'Bank', 'cash', 'bank'];
 
@@ -66,15 +68,8 @@ const CashReceiptVouchers = () => {
     try {
       const res = await accountApi.getAll({ limit: 500 });
       const all = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
-      // For CRV credit lines, allow income, receivable, liability, equity accounts
-      const creditAccounts = all.filter(a => {
-        const type = (a.type || a.accountType || '').toLowerCase();
-        return type === 'income' || type === 'revenue' || type === 'other income'
-          || type === 'accounts receivable' || type === 'accounts_receivable'
-          || type === 'liability' || type === 'equity' || type === 'other'
-          || type === 'customer advance' || type === 'customer_advance';
-      });
-      setAccounts(creditAccounts);
+      // Show the full Chart of Accounts in the Account lines dropdown
+      setAccounts(all);
       const cashAccs = all.filter(a => {
         const type = (a.type || a.accountType || '').toLowerCase();
         const name = (a.name || '').toLowerCase();
@@ -284,7 +279,7 @@ const CashReceiptVouchers = () => {
       )}
 
       {/* Create/Edit Dialog */}
-      <Dialog open={dialog} onClose={() => setDialog(false)} maxWidth="md" fullWidth>
+      <Dialog open={dialog} onClose={() => setDialog(false)} maxWidth="lg" fullWidth>
         <DialogTitle>{selected ? 'Edit CRV' : 'New Cash Receipt Voucher'}</DialogTitle>
         <DialogContent>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -294,10 +289,13 @@ const CashReceiptVouchers = () => {
                 value={form.voucherDate} onChange={e => setForm(f => ({ ...f, voucherDate: e.target.value }))} />
             </Grid>
             <Grid item xs={6} sm={3}>
-              <TextField select label="Cash Account" fullWidth value={form.cashAccountId}
-                onChange={e => setForm(f => ({ ...f, cashAccountId: e.target.value }))}>
-                {cashAccounts.map(a => <MenuItem key={a.id} value={a.id}>{a.code} - {a.name}</MenuItem>)}
-              </TextField>
+              <SearchableSelect
+                label="Cash Account"
+                fullWidth
+                value={form.cashAccountId}
+                onChange={(v) => setForm(f => ({ ...f, cashAccountId: v }))}
+                options={cashAccounts.map(a => ({ value: a.id, label: `${a.code} - ${a.name}` }))}
+              />
             </Grid>
             <Grid item xs={6} sm={3}>
               <TextField select label="Payer Type" fullWidth value={form.payerType}
@@ -323,14 +321,34 @@ const CashReceiptVouchers = () => {
           </Grid>
 
           {/* Lines */}
-          <Typography variant="subtitle1" fontWeight={600} sx={{ mt: 2, mb: 1 }}>Income Lines</Typography>
+          <Typography variant="subtitle1" fontWeight={600} sx={{ mt: 2, mb: 1 }}>Account Lines</Typography>
           {form.lines.map((line, idx) => (
             <Grid container spacing={1} key={idx} sx={{ mb: 1 }} alignItems="center">
               <Grid item xs={12} sm={3}>
-                <TextField select label="Account" fullWidth size="small" value={line.accountId}
-                  onChange={e => updateLine(idx, 'accountId', e.target.value)}>
-                  {accounts.map(a => <MenuItem key={a.id} value={a.id}>{a.code} - {a.name}</MenuItem>)}
-                </TextField>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <SearchableSelect
+                    label="Account"
+                    size="small"
+                    fullWidth
+                    value={line.accountId}
+                    onChange={(v) => updateLine(idx, 'accountId', v)}
+                    options={accounts.map(a => ({ value: a.id, label: `${a.code} - ${a.name}` }))}
+                  />
+                  <QuickCreate
+                    entityKey="account"
+                    onCreated={(created) => {
+                      if (created?.id) {
+                        setAccounts((prev) =>
+                          prev.some((a) => a.id === created.id)
+                            ? prev
+                            : [...prev, { id: created.id, code: created.code || 'ACC', name: created.name || 'Account', type: created.type || 'revenue' }]
+                        );
+                        updateLine(idx, 'accountId', created.id);
+                      }
+                      loadAccounts();
+                    }}
+                  />
+                </Box>
               </Grid>
               <Grid item xs={12} sm={3}>
                 <TextField label="Description" fullWidth size="small" value={line.description}
