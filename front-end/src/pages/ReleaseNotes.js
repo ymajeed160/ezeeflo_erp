@@ -4,6 +4,23 @@ import { ExpandMore, ExpandLess, NewReleases } from '@mui/icons-material';
 
 const RELEASES = [
   {
+    version: 'v3.6.0',
+    date: '2026-09-15',
+    title: 'Searchable Dropdowns, COA Quick Create & CPV/CRV Edit/Delete',
+    tag: 'Major',
+    tagColor: 'primary',
+    changes: [
+      { type: 'New', text: 'Searchable dropdowns across the ERP — reusable SearchableSelect applied to CPV/CRV accounts, Purchase Orders (Supplier/Warehouse/Item), Goods Receipts, Stock Adjustments, Stock Transfers, Users (Role), POS Sessions (Terminal), and General Ledger Report account filter' },
+      { type: 'New', text: 'Quick Create Chart of Account — inline COA creation with a searchable Parent Account dropdown to link sub-accounts; the new account is auto-selected in CPV/CRV Account lines' },
+      { type: 'New', text: 'CPV/CRV Account lines now show the full Chart of Accounts (previously filtered by type); sections renamed to "Account Lines" and dialogs widened for better readability' },
+      { type: 'New', text: 'CPV Edit & Delete — posted CPVs can now be edited (reverses and recreates the journal entry) and deleted (reverses GL impact + soft delete)' },
+      { type: 'New', text: 'CRV parity — posted CRVs now support edit/delete with General Ledger reversal + recreation, matching CPV behavior' },
+      { type: 'New', text: 'Audit trail added for CPV/CRV update and delete actions (changed fields, previous/new values, and delete reason)' },
+      { type: 'Fixed', text: 'CPV/CRV journal entries were saved as draft and missing from the General Ledger — they are now posted so they appear in GL and reports' },
+      { type: 'Fixed', text: 'Journal-entry number generation is now transaction-aware, preventing duplicate entry numbers when multiple entries are created in one transaction' },
+    ],
+  },
+  {
     version: 'v3.5.0',
     date: '2026-08-07',
     title: 'Cash Payment Voucher, Cash Receipt Voucher & VAT Integration',
@@ -152,7 +169,7 @@ const ReleaseNotes = () => {
           <Typography variant="body2" color="text.secondary">Version history and changelog for EzeeFlo ERP</Typography>
         </Box>
         <Box sx={{ flex: 1 }} />
-        <Chip label="Current: v3.0.0" color="primary" />
+        <Chip label="Current: v3.6.0" color="primary" />
       </Box>
 
       {RELEASES.map((release) => {

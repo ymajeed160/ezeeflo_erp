@@ -1,5 +1,81 @@
 # ERPMTSuite Release Notes
 
+## Version 3.6.0 — September 15, 2026
+
+---
+
+## 🆕 New Features
+
+### Searchable Dropdowns Across the ERP
+
+Introduced a reusable searchable dropdown (`SearchableSelect`) built on the existing MUI Autocomplete, and applied it to all large-record dropdowns across the ERP:
+
+- **Cash Payment Voucher (CPV)** — Cash Account, Account lines
+- **Cash Receipt Voucher (CRV)** — Cash Account, Account lines
+- **Purchase Orders** — Supplier filter, Supplier, Warehouse, Item lines
+- **Goods Receipts** — Supplier filter, Purchase Order, Supplier, Warehouse, Item lines
+- **Stock Adjustments** — Warehouse
+- **Stock Transfers** — From/To Warehouse
+- **Users** — Role
+- **POS Sessions** — Terminal
+- **General Ledger Report** — Account filter
+
+Features: case-insensitive partial matching, keyboard navigation, clearable selection, edit-time value restore, and `+ Create New` (Quick Create) preserved next to master-data fields. Static lists (Status, Reason, Payer/Payee Type, etc.) remain unchanged.
+
+**Files:**
+
+- `front-end/src/components/Common/SearchableSelect.jsx` (new)
+
+---
+
+### Quick Create Chart of Account (COA)
+
+Added a dedicated "Quick Create Account" dialog that lets users create a new Chart of Account inline — including a searchable **Parent Account** dropdown to link the new account as a sub-account. Available from the Account lines of CPV and CRV; the newly created account is automatically selected.
+
+**Files:**
+
+- `front-end/src/components/QuickCreate/QuickCreateAccount.jsx` (new)
+- `front-end/src/components/QuickCreate/QuickCreate.jsx` (routes `account` entity)
+
+---
+
+## 🔧 Improvements
+
+### CPV / CRV Account Lines
+
+- CPV and CRV Account lines now show the **full Chart of Accounts** (previously filtered by account type).
+- Section label updated from "Expense Lines"/"Income Lines" to **"Account Lines"**.
+- CPV and CRV dialogs widened (`md` → `lg`) for better readability.
+
+---
+
+## 🛠 Fixes
+
+### CPV Edit & Delete with Accounting Impact
+
+- Posted CPVs can now be edited: the existing journal entry is reversed and a new posted journal entry is recreated from the revised values.
+- Deleting a posted CPV now reverses its General Ledger impact and soft-deletes the voucher (no orphaned journal entries).
+- Added `CPV_UPDATED` and `CPV_DELETED` audit records (with previous/new values and delete reason).
+- Fixed CPV/CRV journal entries being saved as `draft` — they are now **posted**, so they appear in the General Ledger and reports.
+
+### CRV Parity
+
+Brought CRV in line with CPV: posted CRVs can be edited with GL reversal + recreation, deleting a posted CRV reverses GL and soft-deletes, `CRV_UPDATED`/`CRV_DELETED` audit records added, and delete reason is captured.
+
+### Journal Entry Numbering
+
+Made journal-entry number generation transaction-aware so multiple entries created in a single transaction receive unique, sequential numbers (prevents unique-constraint collisions during CPV/CRV edit).
+
+**Backend files:**
+
+- `back-end/services/CashPaymentVoucherService.js`
+- `back-end/services/CashReceiptVoucherService.js`
+- `back-end/controllers/CashReceiptVoucherController.js`
+- `back-end/services/JournalEntryService.js`
+- `back-end/repositories/JournalEntryRepository.js`
+
+---
+
 ## Version 3.5.0 — August 7, 2026
 
 ---
