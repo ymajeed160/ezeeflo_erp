@@ -121,7 +121,9 @@ class PurchaseInvoiceService {
   async update(id, tenantId, data, userId) {
     const existing = await purchaseInvoiceRepository.findById(id, tenantId);
     if (!existing) throw new Error('Purchase Invoice not found');
-    if (existing.status !== 'draft') throw new Error('Only draft invoices can be edited');
+    if (!['draft', 'confirmed', 'posted'].includes(existing.status)) {
+      throw new Error('This invoice cannot be edited in its current status');
+    }
 
     const { supplierId, invoiceDate, dueDate, supplierInvoiceNumber, warehouseId, notes, items } = data;
     let subtotal = existing.subtotal;
@@ -184,6 +186,27 @@ class PurchaseInvoiceService {
         updatedBy: userId,
       };
 
+      const wasPosted = existing.status === 'posted';
+
+      // If the invoice was already posted, reverse the inventory impact first.
+      // The journal entry is updated in place below.
+      if (wasPosted) {
+        for (const detail of existing.details || existing.PurchaseInvoiceDetails || []) {
+          const item = await db.Item.findByPk(detail.itemId, { transaction });
+          if (item && (item.itemType === 'product' || item.itemType === 'inventory') && existing.warehouseId) {
+            await inventoryService.reduceStock(
+              tenantId,
+              detail.itemId,
+              existing.warehouseId,
+              parseFloat(detail.quantity || 0),
+              parseFloat(detail.unitCost || 0),
+              { id: existing.id, type: 'PurchaseInvoiceEdit', number: existing.invoiceNumber },
+              transaction
+            );
+          }
+        }
+      }
+
       await purchaseInvoiceRepository.update(id, tenantId, updateData, transaction);
 
       if (items && items.length > 0) {
@@ -195,12 +218,96 @@ class PurchaseInvoiceService {
         await purchaseInvoiceRepository.createDetails(detailsToCreate, transaction);
       }
 
+      // Re-apply inventory and update the existing journal entry in place so a
+      // single journal entry per invoice always reflects the latest values.
+      if (wasPosted) {
+        const fresh = await db.PurchaseInvoice.findOne({
+          where: { id, tenantId },
+          include: [{ model: db.PurchaseInvoiceDetail, as: 'details' }],
+          transaction,
+        });
+        const resolved = await this._resolvePosting(fresh, tenantId, transaction);
+
+        const journalLines = [];
+        for (const line of resolved.lines) {
+          const isProduct = line.itemType === 'product';
+
+          journalLines.push({
+            accountId: line.accountId,
+            debit: line.netAmount,
+            credit: 0,
+            description: `Purchase of ${line.itemName}${isProduct ? '' : ' (Service)'} - ${existing.invoiceNumber}`,
+          });
+
+          if (line.taxAmount > 0) {
+            journalLines.push({
+              accountId: resolved.vatReceivableId,
+              debit: line.taxAmount,
+              credit: 0,
+              description: `VAT Input on ${line.itemName} - ${existing.invoiceNumber}`,
+            });
+          }
+
+          if (isProduct) {
+            await inventoryService.addStock(
+              tenantId,
+              line.itemId,
+              fresh.warehouseId,
+              line.quantity,
+              line.unitCost,
+              { id: existing.id, type: 'PurchaseInvoice', number: existing.invoiceNumber },
+              transaction
+            );
+          }
+        }
+
+        journalLines.push({
+          accountId: resolved.apAccountId,
+          debit: 0,
+          credit: resolved.totalAmount,
+          description: `Accounts Payable - ${resolved.supplier.name} - ${existing.invoiceNumber}`,
+        });
+
+        // Update the existing journal entry lines in place (keeps the same entry).
+        await db.JournalEntryLine.destroy({
+          where: { journalEntryId: existing.journalEntryId, tenantId },
+          transaction,
+        });
+        await db.JournalEntryLine.bulkCreate(journalLines.map((line, i) => ({
+          accountId: line.accountId,
+          description: line.description,
+          debit: Number(line.debit || 0),
+          credit: Number(line.credit || 0),
+          tenantId,
+          journalEntryId: existing.journalEntryId,
+          lineNumber: i + 1,
+        })), { transaction });
+        await db.JournalEntry.update({
+          entryDate: fresh.invoiceDate || new Date().toISOString().split('T')[0],
+          reference: existing.invoiceNumber,
+          description: `Purchase Invoice ${existing.invoiceNumber} - ${resolved.supplier.name}`,
+          updatedBy: userId,
+        }, { where: { id: existing.journalEntryId, tenantId }, transaction });
+      }
+
       await GenericAuditService.log({
         tenantId,
         entityType: 'PurchaseInvoice',
         entityId: id,
         action: 'UPDATE',
         performedBy: userId,
+        oldValues: {
+          supplierId: existing.supplierId,
+          invoiceDate: existing.invoiceDate,
+          dueDate: existing.dueDate,
+          supplierInvoiceNumber: existing.supplierInvoiceNumber,
+          warehouseId: existing.warehouseId,
+          notes: existing.notes,
+          subtotal: existing.subtotal,
+          taxAmount: existing.taxAmount,
+          discountAmount: existing.discountAmount,
+          totalAmount: existing.totalAmount,
+        },
         newValues: updateData,
       }, transaction);
 
@@ -592,11 +699,17 @@ class PurchaseInvoiceService {
           entryDate: existing.invoiceDate || new Date().toISOString().split('T')[0],
           reference: existing.invoiceNumber,
           description: `Purchase Invoice ${existing.invoiceNumber} - ${supplier.name || supplier.supplierName}`,
+          source: 'PURCHASE_INVOICE',
+          sourceId: existing.id,
+          isAutoGenerated: true,
         },
         tenantId,
         userId,
         transaction
       );
+
+      // Automatically post the journal entry so it appears in the General Ledger
+      await JournalEntryService.postEntry(journalEntry.id, tenantId, userId, transaction);
 
       // Update invoice with journal entry ID and status
       await purchaseInvoiceRepository.update(id, tenantId, {

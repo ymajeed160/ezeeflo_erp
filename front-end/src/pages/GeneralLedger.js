@@ -69,10 +69,17 @@ const formatCurrency = (value) => {
   });
 };
 
-// Format date for display
+// Format date for display.
+// Parse "YYYY-MM-DD" as a LOCAL date so the document date (invoice date,
+// payment date, voucher date) is shown exactly as stored — avoiding a
+// timezone off-by-one when the browser timezone is behind UTC.
 const formatDate = (dateStr) => {
   if (!dateStr) return '-';
-  const date = new Date(dateStr);
+  const str = String(dateStr).slice(0, 10);
+  const parts = str.split('-').map(Number);
+  const date = (parts.length === 3 && parts.every((n) => Number.isFinite(n)))
+    ? new Date(parts[0], parts[1] - 1, parts[2])
+    : new Date(dateStr);
   return date.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',

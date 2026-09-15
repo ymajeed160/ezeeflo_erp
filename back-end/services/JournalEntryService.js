@@ -62,7 +62,7 @@ class JournalEntryService {
     });
   }
 
-  async getAllEntries(tenantId, { page, limit, status, startDate, endDate } = {}) {
+  async getAllEntries(tenantId, { page, limit, status, startDate, endDate, search } = {}) {
     const filters = {};
 
     if (status) {
@@ -73,6 +73,15 @@ class JournalEntryService {
       filters.entryDate = {};
       if (startDate) filters.entryDate[require('sequelize').Op.gte] = startDate;
       if (endDate) filters.entryDate[require('sequelize').Op.lte] = endDate;
+    }
+
+    if (search) {
+      const { Op } = require('sequelize');
+      filters[Op.or] = [
+        { entryNumber: { [Op.like]: `%${search}%` } },
+        { reference: { [Op.like]: `%${search}%` } },
+        { description: { [Op.like]: `%${search}%` } },
+      ];
     }
 
     if (page && limit) {

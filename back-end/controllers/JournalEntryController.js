@@ -7,7 +7,7 @@ class JournalEntryController {
   async getAllEntries(req, res, next) {
     try {
       const tenantId = req.user.tenantId;
-      const { page, limit, status, startDate, endDate } = req.query;
+      const { page, limit, status, startDate, endDate, search } = req.query;
 
       const result = await journalEntryService.getAllEntries(tenantId, {
         page,
@@ -15,6 +15,7 @@ class JournalEntryController {
         status,
         startDate,
         endDate,
+        search,
       });
 
       if (result.pagination) {

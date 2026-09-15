@@ -1092,6 +1092,11 @@ const PurchaseInvoices = () => {
                         )}
                         {inv.status === 'confirmed' && (
                           <>
+                            <Tooltip title="Edit">
+                              <IconButton size="small" color="warning" onClick={() => handleEdit(inv)}>
+                                <Edit fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
                             <Tooltip title="Post to Journal">
                               <IconButton size="small" color="success" onClick={() => handleOpenPostDialog(inv)}>
                                 <Send fontSize="small" />
@@ -1106,6 +1111,11 @@ const PurchaseInvoices = () => {
                         )}
                         {inv.status === 'posted' && (
                           <>
+                            <Tooltip title="Edit">
+                              <IconButton size="small" color="warning" onClick={() => handleEdit(inv)}>
+                                <Edit fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
                             <Tooltip title="Create Return">
                               <IconButton size="small" color="warning" onClick={() => navigate(`/app/purchases/purchase-returns/new?invoiceId=${inv.id}`)}>
                                 <Replay fontSize="small" />
