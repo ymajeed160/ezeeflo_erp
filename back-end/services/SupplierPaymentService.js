@@ -54,34 +54,159 @@ class SupplierPaymentService {
     const existing = await SupplierPaymentRepository.findById(tenantId, id);
     if (!existing) throw new Error('Supplier Payment not found');
 
-    if (['posted', 'cancelled'].includes(existing.status)) {
-      throw new Error('Cannot edit a posted or cancelled payment');
+    if (existing.status === 'cancelled') {
+      throw new Error('Cannot edit a cancelled payment');
     }
 
-    const record = await SupplierPaymentRepository.update(tenantId, id, data);
-    await AuditService.log(tenantId, data.updatedBy || data.createdBy, 'supplier_payments', id, 'updated', data);
-    return await this.findById(tenantId, record.id);
+    // Validate supplier when being changed
+    const newSupplierId = data.supplierId || existing.supplierId;
+    const supplier = await db.Supplier.findOne({ where: { id: newSupplierId, tenant_id: tenantId } });
+    if (!supplier) throw new Error('Supplier not found');
+
+    // Validate allocations total matches the (new) payment amount
+    if (data.allocations !== undefined) {
+      const amount = data.amount !== undefined ? parseFloat(data.amount) : parseFloat(existing.amount);
+      const totalAllocated = (data.allocations || []).reduce((sum, a) => sum + parseFloat(a.allocatedAmount || 0), 0);
+      if (Math.abs(totalAllocated - amount) > 0.01) {
+        throw new Error('Allocated amounts must equal payment amount');
+      }
+    }
+
+    const wasPosted = existing.status === 'posted';
+    const userId = data.updatedBy || data.createdBy;
+
+    const transaction = await db.sequelize.transaction();
+    try {
+      const record = await SupplierPaymentRepository.update(tenantId, id, data, transaction);
+      if (!record) throw new Error('Supplier Payment not found');
+
+      // For a posted payment, update the linked journal entry in place so the
+      // journal always reflects the latest payment values.
+      if (wasPosted) {
+        await this._syncJournalEntry(tenantId, id, userId, transaction);
+      }
+
+      await AuditService.log(tenantId, userId, 'supplier_payments', id, 'updated', data);
+      await transaction.commit();
+      return await this.findById(tenantId, id);
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
+  }
+
+  /**
+   * Update the linked journal entry of a posted payment in place so it reflects
+   * the latest amount, accounts, date, reference and description.
+   */
+  async _syncJournalEntry(tenantId, id, userId, transaction) {
+    const record = await SupplierPaymentRepository.findById(tenantId, id, false, transaction);
+    if (!record || !record.journalEntryId) return;
+
+    const resolved = await this._resolvePosting(record, tenantId, transaction);
+    const amount = parseFloat(record.amount);
+
+    const lines = [
+      { accountId: resolved.apAccount.id, debit: amount, credit: 0, description: `Payment to ${resolved.supplier.name}` },
+      { accountId: resolved.creditAccount.id, debit: 0, credit: amount, description: `Payment via ${record.paymentMethod}` },
+    ];
+
+    await db.JournalEntryLine.destroy({
+      where: { journalEntryId: record.journalEntryId, tenantId },
+      transaction,
+    });
+    await db.JournalEntryLine.bulkCreate(lines.map((line, i) => ({
+      accountId: line.accountId,
+      description: line.description,
+      debit: Number(line.debit || 0),
+      credit: Number(line.credit || 0),
+      tenantId,
+      journalEntryId: record.journalEntryId,
+      lineNumber: i + 1,
+    })), { transaction });
+
+    await db.JournalEntry.update({
+      entryDate: record.paymentDate || new Date().toISOString().split('T')[0],
+      reference: record.paymentNumber,
+      description: `Supplier Payment - ${resolved.supplier.name} (${record.paymentNumber})`,
+      updatedBy: userId,
+    }, { where: { id: record.journalEntryId, tenantId }, transaction });
   }
 
   async delete(tenantId, id, userId, reason = null) {
     const existing = await SupplierPaymentRepository.findById(tenantId, id);
     if (!existing) throw new Error('Supplier Payment not found');
     await requireDeletionEnabled(tenantId, 'supplier_payments');
-    if (existing.journalEntryId) {
-      throw new Error('This Supplier Payment is linked to a journal entry. Delete the journal entry first, then delete this payment.');
-    }
 
-    const t = await db.sequelize.transaction();
+    const transaction = await db.sequelize.transaction();
     try {
+      // 1. Locate every journal entry linked to this payment (original + reversal)
+      const journalEntries = await db.JournalEntry.findAll({
+        where: {
+          tenantId,
+          sourceId: id,
+          source: { [db.Sequelize.Op.in]: [SOURCE_TYPE, REVERSAL_SOURCE_TYPE] },
+        },
+        transaction,
+      });
+      const journalEntryIds = journalEntries.map((je) => je.id);
+
+      // 2. Clear the journal entry reference and record who deleted this payment
       await db.SupplierPayment.update(
-        { deletedBy: userId, deleteReason: reason || null },
-        { where: { id, tenantId }, transaction: t }
+        { journalEntryId: null, deletedBy: userId, deleteReason: reason || null },
+        { where: { id, tenantId }, transaction }
       );
-      await SupplierPaymentRepository.delete(tenantId, id, { transaction: t });
-      await t.commit();
+
+      // 3. Delete journal entry lines and the journal entries themselves
+      if (journalEntryIds.length > 0) {
+        await db.JournalEntryLine.destroy({
+          where: { journalEntryId: { [db.Sequelize.Op.in]: journalEntryIds }, tenantId },
+          transaction,
+        });
+        await db.JournalEntry.destroy({
+          where: { id: { [db.Sequelize.Op.in]: journalEntryIds }, tenantId },
+          transaction,
+        });
+      }
+
+      // 4. Remove allocations and change the related invoice(s) status back to "posted"
+      //    (status-only change: paid / partially_paid -> posted)
+      const allocations = await db.SupplierPaymentAllocation.findAll({
+        where: { supplierPaymentId: id, tenantId },
+        transaction,
+      });
+      const invoiceIds = [...new Set(allocations.map((a) => a.purchaseInvoiceId).filter(Boolean))];
+      await db.SupplierPaymentAllocation.destroy({
+        where: { supplierPaymentId: id, tenantId },
+        transaction,
+      });
+      if (invoiceIds.length > 0) {
+        await db.PurchaseInvoice.update(
+          { status: 'posted' },
+          {
+            where: {
+              id: { [db.Sequelize.Op.in]: invoiceIds },
+              tenantId,
+              status: { [db.Sequelize.Op.in]: ['paid', 'partially_paid'] },
+            },
+            transaction,
+          }
+        );
+      }
+
+      // 5. Soft-delete the payment
+      await SupplierPaymentRepository.delete(tenantId, id, { transaction });
+
+      await AuditService.log(tenantId, userId, 'supplier_payments', id, 'deleted', {
+        deleteReason: reason || null,
+        deletedJournalEntryIds: journalEntryIds,
+        invoicesRestoredToPosted: invoiceIds,
+      });
+
+      await transaction.commit();
       return true;
     } catch (err) {
-      await t.rollback();
+      await transaction.rollback();
       throw err;
     }
   }

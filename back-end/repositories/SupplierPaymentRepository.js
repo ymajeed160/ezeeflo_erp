@@ -43,10 +43,11 @@ class SupplierPaymentRepository {
     return { rows, count, page: parseInt(page), limit: parseInt(limit) };
   }
 
-  async findById(tenantId, id, includeDeleted = false) {
+  async findById(tenantId, id, includeDeleted = false, transaction = null) {
     return await db.SupplierPayment.findOne({
       where: includeDeleted ? { id, tenantId } : { id, tenantId, deletedAt: null },
       paranoid: !includeDeleted,
+      transaction,
       include: [
         { model: db.Supplier, as: 'supplier' },
         { model: db.Account, as: 'bankAccount', required: false },
@@ -118,6 +119,7 @@ class SupplierPaymentRepository {
       }
 
       const updateFields = {};
+      if (data.supplierId !== undefined) updateFields.supplierId = data.supplierId;
       if (data.paymentDate !== undefined) updateFields.paymentDate = data.paymentDate;
       if (data.paymentMethod !== undefined) updateFields.paymentMethod = data.paymentMethod;
       if (data.amount !== undefined) updateFields.amount = data.amount;

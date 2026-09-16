@@ -229,8 +229,8 @@ const SupplierPayments = () => {
   };
 
   const handleEdit = (sp) => {
-    if (sp.status !== 'draft') {
-      apiError('Only Draft payments can be edited');
+    if (sp.status === 'cancelled') {
+      apiError('Cancelled payments cannot be edited');
       return;
     }
     setViewMode(false);
@@ -251,11 +251,7 @@ const SupplierPayments = () => {
   };
 
   const handleDelete = (sp) => {
-    if (sp.status === 'approved') {
-      apiError('Approved payments cannot be deleted');
-      return;
-    }
-    setReasonDialog({ open: true, action: 'delete', target: sp.id });
+    setReasonDialog({ open: true, action: 'delete', target: sp.id, status: sp.status });
     setReasonText('');
   };
 
@@ -536,6 +532,11 @@ const SupplierPayments = () => {
                       )}
                       {sp.status === 'confirmed' && (
                         <>
+                          <Tooltip title="Edit">
+                            <IconButton size="small" onClick={() => handleEdit(sp)}>
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
                           <Tooltip title="Delete">
                             <IconButton size="small" onClick={() => handleDelete(sp)}>
                               <DeleteIcon fontSize="small" />
@@ -554,9 +555,28 @@ const SupplierPayments = () => {
                         </>
                       )}
                       {sp.status === 'posted' && (
-                        <Tooltip title="Reverse">
-                          <IconButton size="small" color="warning" onClick={() => handleReverse(sp)}>
-                            <ReverseIcon fontSize="small" />
+                        <>
+                          <Tooltip title="Edit">
+                            <IconButton size="small" onClick={() => handleEdit(sp)}>
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Delete">
+                            <IconButton size="small" onClick={() => handleDelete(sp)}>
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Reverse">
+                            <IconButton size="small" color="warning" onClick={() => handleReverse(sp)}>
+                              <ReverseIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </>
+                      )}
+                      {sp.status === 'cancelled' && (
+                        <Tooltip title="Delete">
+                          <IconButton size="small" onClick={() => handleDelete(sp)}>
+                            <DeleteIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
                       )}
@@ -777,7 +797,7 @@ const SupplierPayments = () => {
                   </Box>
                 </Box>
 
-                {!viewMode && (!currentItem || currentItem?.status === 'draft') && selectedSupplierId && (
+                {!viewMode && selectedSupplierId && (
                   <Button
                     size="small"
                     variant="outlined"
@@ -980,6 +1000,16 @@ const SupplierPayments = () => {
       <Dialog open={reasonDialog.open} onClose={() => setReasonDialog({ open: false, action: null, target: null })} fullWidth maxWidth="sm">
         <DialogTitle>{reasonDialog.action === 'delete' ? 'Delete Supplier Payment' : 'Cancel Supplier Payment'}</DialogTitle>
         <DialogContent>
+          {reasonDialog.status === 'posted' && (
+            <Typography variant="body2" color="error" sx={{ mb: 1 }}>
+              This will permanently delete the linked journal entry and change the related invoice(s) status back to &quot;posted&quot;.
+            </Typography>
+          )}
+          {reasonDialog.status === 'cancelled' && (
+            <Typography variant="body2" color="error" sx={{ mb: 1 }}>
+              This will permanently delete the linked journal entries (original and reversal) from the journal.
+            </Typography>
+          )}
           <TextField
             fullWidth
             multiline
