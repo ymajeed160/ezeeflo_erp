@@ -1,0 +1,1 @@
+const db=require("./models");(async()=>{await db.sequelize.query("ALTER TABLE leave_balances ADD COLUMN status VARCHAR(20) DEFAULT 'active' AFTER notes");await db.sequelize.query("ALTER TABLE leave_balances ADD COLUMN void_reason TEXT AFTER status");console.log("done");process.exit(0)})()

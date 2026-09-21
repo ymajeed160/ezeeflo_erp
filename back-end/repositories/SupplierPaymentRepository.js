@@ -1,0 +1,243 @@
+const db = require('../models');
+
+class SupplierPaymentRepository {
+  async findAll(tenantId, options) {
+    const { page = 1, limit = 10, search, status, supplierId, startDate, endDate, sortBy = 'createdAt', sortOrder = 'DESC', includeDeleted } = options;
+    const withDeleted = includeDeleted === 'true' || includeDeleted === true;
+    const where = { tenantId };
+
+    if (search) {
+      where[db.Sequelize.Op.or] = [
+        { paymentNumber: { [db.Sequelize.Op.like]: `%${search}%` } },
+        { referenceNumber: { [db.Sequelize.Op.like]: `%${search}%` } }
+      ];
+    }
+    if (status) where.status = status;
+    if (supplierId) where.supplierId = supplierId;
+    if (startDate && endDate) {
+      where.paymentDate = { [db.Sequelize.Op.between]: [startDate, endDate] };
+    } else if (startDate) {
+      where.paymentDate = { [db.Sequelize.Op.gte]: startDate };
+    } else if (endDate) {
+      where.paymentDate = { [db.Sequelize.Op.lte]: endDate };
+    }
+
+    const offset = (page - 1) * limit;
+    const { rows, count } = await db.SupplierPayment.findAndCountAll({
+      where,
+      include: [
+        { model: db.Supplier, as: 'supplier', attributes: ['id', 'code', 'name'] },
+        { model: db.Account, as: 'bankAccount', attributes: ['id', 'code', 'name'], required: false },
+        { model: db.Account, as: 'cashAccount', attributes: ['id', 'code', 'name'], required: false },
+        { model: db.JournalEntry, as: 'journalEntry', attributes: ['id', 'entry_number'], required: false },
+        { model: db.User, as: 'creator', attributes: ['id', 'username'] },
+        { model: db.SupplierPaymentAllocation, as: 'allocations', include: [{ model: db.PurchaseInvoice, as: 'invoice', attributes: ['id', 'invoice_number'] }] }
+      ],
+      order: [[sortBy, sortOrder]],
+      limit: parseInt(limit),
+      offset,
+      distinct: true,
+      paranoid: !withDeleted
+    });
+
+    return { rows, count, page: parseInt(page), limit: parseInt(limit) };
+  }
+
+  async findById(tenantId, id, includeDeleted = false, transaction = null) {
+    return await db.SupplierPayment.findOne({
+      where: includeDeleted ? { id, tenantId } : { id, tenantId, deletedAt: null },
+      paranoid: !includeDeleted,
+      transaction,
+      include: [
+        { model: db.Supplier, as: 'supplier' },
+        { model: db.Account, as: 'bankAccount', required: false },
+        { model: db.Account, as: 'cashAccount', required: false },
+        { model: db.JournalEntry, as: 'journalEntry', required: false },
+        { model: db.User, as: 'creator', attributes: ['id', 'username'] },
+        { model: db.User, as: 'approver', attributes: ['id', 'username'] },
+        { model: db.SupplierPaymentAllocation, as: 'allocations', include: [{ model: db.PurchaseInvoice, as: 'invoice' }] }
+      ]
+    });
+  }
+
+  async findByNumber(tenantId, paymentNumber) {
+    // Exclude soft-deleted payments from active duplicate validation.
+    return await db.SupplierPayment.findOne({
+      where: { tenantId, paymentNumber },
+      paranoid: true,
+    });
+  }
+
+  async findJournalEntryBySource(tenantId, source, sourceId, transaction = null) {
+    return await db.JournalEntry.findOne({
+      where: { tenantId, source, sourceId },
+      transaction,
+    });
+  }
+
+  async create(tenantId, data, transaction = null) {
+    const t = transaction || await db.sequelize.transaction();
+    try {
+      const record = await db.SupplierPayment.create({
+        tenantId: tenantId,
+        paymentNumber: data.paymentNumber,
+        paymentDate: data.paymentDate,
+        supplierId: data.supplierId,
+        paymentMethod: data.paymentMethod,
+        amount: data.amount,
+        referenceNumber: data.referenceNumber,
+        bankAccountId: data.bankAccountId || data.bankAccount || null,
+        cashAccountId: data.cashAccountId || data.cashAccount || null,
+        notes: data.notes,
+        status: data.status || 'draft',
+        journalEntryId: data.journalEntryId || null,
+        createdBy: data.createdBy
+      }, { transaction: t });
+
+      if (data.allocations && data.allocations.length > 0) {
+        const allocationRecords = data.allocations.map(a => ({
+          tenantId: tenantId,
+          supplierPaymentId: record.id,
+          purchaseInvoiceId: a.purchaseInvoiceId,
+          allocatedAmount: a.allocatedAmount
+        }));
+        await db.SupplierPaymentAllocation.bulkCreate(allocationRecords, { transaction: t });
+        await this._updateInvoiceStatuses(tenantId, data.allocations.map(a => a.purchaseInvoiceId), t);
+      }
+
+      if (!transaction) await t.commit();
+      return record;
+    } catch (error) {
+      if (!transaction) await t.rollback();
+      throw error;
+    }
+  }
+
+  async update(tenantId, id, data, transaction = null) {
+    const t = transaction || await db.sequelize.transaction();
+    try {
+      const record = await db.SupplierPayment.findOne({ where: { id, tenantId }, transaction: t });
+      if (!record) {
+        if (!transaction) await t.rollback();
+        return null;
+      }
+
+      const updateFields = {};
+      if (data.supplierId !== undefined) updateFields.supplierId = data.supplierId;
+      if (data.paymentDate !== undefined) updateFields.paymentDate = data.paymentDate;
+      if (data.paymentMethod !== undefined) updateFields.paymentMethod = data.paymentMethod;
+      if (data.amount !== undefined) updateFields.amount = data.amount;
+      if (data.referenceNumber !== undefined) updateFields.referenceNumber = data.referenceNumber;
+      if (data.bankAccountId !== undefined) updateFields.bankAccountId = data.bankAccountId || null;
+      if (data.bankAccount !== undefined) updateFields.bankAccountId = data.bankAccount || null;
+      if (data.cashAccountId !== undefined) updateFields.cashAccountId = data.cashAccountId || null;
+      if (data.cashAccount !== undefined) updateFields.cashAccountId = data.cashAccount || null;
+      if (data.notes !== undefined) updateFields.notes = data.notes;
+      if (data.status !== undefined) updateFields.status = data.status;
+      if (data.journalEntryId !== undefined) updateFields.journalEntryId = data.journalEntryId;
+
+      await record.update(updateFields, { transaction: t });
+
+      if (data.allocations) {
+        const oldAllocations = await db.SupplierPaymentAllocation.findAll({ where: { supplierPaymentId: id, tenantId }, transaction: t });
+        const oldInvoiceIds = oldAllocations.map(a => a.purchaseInvoiceId);
+
+        await db.SupplierPaymentAllocation.destroy({ where: { supplierPaymentId: id, tenantId }, transaction: t });
+        if (data.allocations.length > 0) {
+          const allocationRecords = data.allocations.map(a => ({
+            tenantId,
+            supplierPaymentId: id,
+            purchaseInvoiceId: a.purchaseInvoiceId,
+            allocatedAmount: a.allocatedAmount
+          }));
+          await db.SupplierPaymentAllocation.bulkCreate(allocationRecords, { transaction: t });
+        }
+
+        const affectedInvoiceIds = [...new Set([...oldInvoiceIds, ...data.allocations.map(a => a.purchaseInvoiceId)])];
+        await this._updateInvoiceStatuses(tenantId, affectedInvoiceIds, t);
+      }
+
+      if (!transaction) await t.commit();
+      return record;
+    } catch (error) {
+      if (!transaction) await t.rollback();
+      throw error;
+    }
+  }
+
+  async delete(tenantId, id, options = {}) {
+    const record = await db.SupplierPayment.findOne({ where: { id, tenantId }, transaction: options.transaction });
+    if (record) {
+      await record.destroy({ transaction: options.transaction });
+      return true;
+    }
+    return false;
+  }
+
+  async restore(tenantId, id, options = {}) {
+    return await db.SupplierPayment.update(
+      { deletedAt: null, deletedBy: null, deleteReason: null },
+      { where: { id, tenantId }, paranoid: false, transaction: options.transaction }
+    );
+  }
+
+  async _updateInvoiceStatuses(tenantId, purchaseInvoiceIds, transaction = null) {
+    const uniqueIds = [...new Set((purchaseInvoiceIds || []).filter(Boolean))];
+    if (uniqueIds.length === 0) return;
+    for (const invoiceId of uniqueIds) {
+      const opts = transaction ? { transaction } : {};
+      const totalAllocated = await db.SupplierPaymentAllocation.sum('allocatedAmount', {
+        where: { purchaseInvoiceId: invoiceId, tenantId },
+        ...opts
+      });
+      const invoice = await db.PurchaseInvoice.findByPk(invoiceId, opts);
+      if (!invoice) continue;
+      const total = parseFloat(invoice.totalAmount || 0);
+      const allocated = parseFloat(totalAllocated || 0);
+      let newStatus = null;
+      if (total > 0 && allocated >= total - 0.009) {
+        newStatus = 'paid';
+      } else if (allocated > 0) {
+        newStatus = 'partially_paid';
+      } else if (['paid', 'partially_paid'].includes(invoice.status)) {
+        newStatus = 'posted';
+      }
+      if (newStatus && newStatus !== invoice.status) {
+        await invoice.update({ status: newStatus }, opts);
+      }
+    }
+  }
+
+  async getNextPaymentNumber(tenantId) {
+    const year = new Date().getFullYear().toString();
+    const prefix = `SPAY-${year}-`;
+
+    // Derive the next number from the maximum existing payment number across
+    // ALL records (including soft-deleted). This keeps payment numbers
+    // historically unique and prevents a newly generated number from colliding
+    // with an existing ACTIVE payment whose number is larger than the current
+    // count of active records (gaps caused by soft-deleted payments).
+    const last = await db.SupplierPayment.findOne({
+      where: {
+        tenantId,
+        paymentNumber: { [db.Sequelize.Op.like]: `${prefix}%` }
+      },
+      order: [['paymentNumber', 'DESC']],
+      attributes: ['paymentNumber'],
+      paranoid: false,
+    });
+
+    let nextNumber = 1;
+    if (last && last.paymentNumber) {
+      const parts = last.paymentNumber.split('-');
+      const lastNum = parseInt(parts[parts.length - 1], 10);
+      if (!isNaN(lastNum)) {
+        nextNumber = lastNum + 1;
+      }
+    }
+
+    return `${prefix}${nextNumber.toString().padStart(5, '0')}`;
+  }
+}
+
+module.exports = new SupplierPaymentRepository();

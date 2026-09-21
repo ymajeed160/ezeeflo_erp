@@ -1,0 +1,3 @@
+import axiosInstance from './axiosInstance';
+const api = { getAll(p) { return axiosInstance.get('/asset-locations', { params: p }).then((r) => r.data); }, getActive() { return axiosInstance.get('/asset-locations/active').then((r) => r.data); }, getById(id) { return axiosInstance.get(`/asset-locations/${id}`).then((r) => r.data); }, create(d) { return axiosInstance.post('/asset-locations', d).then((r) => r.data); }, update(id, d) { return axiosInstance.put(`/asset-locations/${id}`, d).then((r) => r.data); }, toggleStatus(id) { return axiosInstance.patch(`/asset-locations/${id}/toggle-status`).then((r) => r.data); }, del(id) { return axiosInstance.delete(`/asset-locations/${id}`).then((r) => r.data); } };
+export default api;

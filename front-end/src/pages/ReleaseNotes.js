@@ -1,0 +1,219 @@
+import React, { useState } from 'react';
+import { Box, Typography, Paper, Chip, Divider, Collapse, IconButton, Stack } from '@mui/material';
+import { ExpandMore, ExpandLess, NewReleases } from '@mui/icons-material';
+
+const RELEASES = [
+  {
+    version: 'v3.6.0',
+    date: '2026-09-15',
+    title: 'Searchable Dropdowns, COA Quick Create & CPV/CRV Edit/Delete',
+    tag: 'Major',
+    tagColor: 'primary',
+    changes: [
+      { type: 'New', text: 'Searchable dropdowns across the ERP — reusable SearchableSelect applied to CPV/CRV accounts, Purchase Orders (Supplier/Warehouse/Item), Goods Receipts, Stock Adjustments, Stock Transfers, Users (Role), POS Sessions (Terminal), and General Ledger Report account filter' },
+      { type: 'New', text: 'Quick Create Chart of Account — inline COA creation with a searchable Parent Account dropdown to link sub-accounts; the new account is auto-selected in CPV/CRV Account lines' },
+      { type: 'New', text: 'CPV/CRV Account lines now show the full Chart of Accounts (previously filtered by type); sections renamed to "Account Lines" and dialogs widened for better readability' },
+      { type: 'New', text: 'CPV Edit & Delete — posted CPVs can now be edited (reverses and recreates the journal entry) and deleted (reverses GL impact + soft delete)' },
+      { type: 'New', text: 'CRV parity — posted CRVs now support edit/delete with General Ledger reversal + recreation, matching CPV behavior' },
+      { type: 'New', text: 'Audit trail added for CPV/CRV update and delete actions (changed fields, previous/new values, and delete reason)' },
+      { type: 'Fixed', text: 'CPV/CRV journal entries were saved as draft and missing from the General Ledger — they are now posted so they appear in GL and reports' },
+      { type: 'Fixed', text: 'Journal-entry number generation is now transaction-aware, preventing duplicate entry numbers when multiple entries are created in one transaction' },
+    ],
+  },
+  {
+    version: 'v3.5.0',
+    date: '2026-08-07',
+    title: 'Cash Payment Voucher, Cash Receipt Voucher & VAT Integration',
+    tag: 'Major',
+    tagColor: 'primary',
+    changes: [
+      { type: 'New', text: 'Cash Payment Voucher (CPV) — Full module for recording cash payments against expenses with multi-line expense entry, auto-numbering (CPV-YYYY-NNNNNN), tax calculation, and journal entry posting' },
+      { type: 'New', text: 'Cash Receipt Voucher (CRV) — Full module for recording cash receipts from customers and other sources with payer selection (Customer/Supplier/Employee/Other), multi-line income entry, and journal entry posting' },
+      { type: 'New', text: 'CPV Accounting Posting — Dr Expense accounts + Dr VAT Receivable → Cr Cash account (balanced double-entry)' },
+      { type: 'New', text: 'CRV Accounting Posting — Dr Cash account → Cr Income accounts + Cr VAT Payable (balanced double-entry)' },
+      { type: 'New', text: 'VAT Integration — CPV uses System Config accounting.vat_receivable (1202 - VAT Receivable - Input); CRV uses accounting.vat_payable (2501 - VAT Account) for automatic tax posting' },
+      { type: 'New', text: 'CPV reversal — Creates opposite journal entries with linked audit history; no physical deletion of posted vouchers' },
+      { type: 'New', text: 'CRV reversal — Mirrors CPV reversal: reverses cash and income/tax entries with full audit trail' },
+      { type: 'New', text: 'Default Cash Account — System Config Purchase tab now has "Default Cash Account" dropdown; auto-populates in both CPV and CRV new voucher dialogs' },
+      { type: 'New', text: 'CPV Frontend — Full list table with search/filter, create/edit dialog with multi-line expenses and auto-calculating tax/totals, view detail dialog, post/reverse/cancel/delete actions' },
+      { type: 'New', text: 'CRV Frontend — Full list table, create/edit dialog with payer type/name, multi-line income entries, tax calculation, totals display, post/reverse/cancel/delete actions' },
+      { type: 'New', text: 'CPV Sidebar — "Cash Payment Voucher" under Purchases menu' },
+      { type: 'New', text: 'CRV Sidebar — "Cash Receipt Voucher" under Sales menu' },
+      { type: 'New', text: '18 RBAC permissions — 9 CPV (cpv.view, create, edit, delete, post, reverse, cancel, print, export) + 9 CRV (crv.view, create, edit, delete, post, reverse, cancel, print, export)' },
+      { type: 'New', text: '2 database tables each — cash_payment_vouchers + cash_payment_voucher_lines; cash_receipt_vouchers + cash_receipt_voucher_lines with full indexes' },
+      { type: 'New', text: 'Release Notes page — This page! Chronological release history with version tags and expandable details' },
+      { type: 'Fixed', text: 'CPV create returned null voucher due to transaction isolation — findById now accepts transaction parameter for consistent reads within active transactions' },
+      { type: 'Fixed', text: 'CRV post produced unbalanced journal entries when tax was present — now splits tax to VAT Payable account from System Config' },
+      { type: 'Fixed', text: 'CPV tax not posted to proper VAT account — now reads vat_receivable from System Config instead of relying on optional per-line tax ID' },
+      { type: 'Fixed', text: 'Settings API response format mismatch in loadAccounts — fixed to parse nested data.configs structure correctly' },
+      { type: 'Fixed', text: 'CRV permissions not assigned to Admin role — seed script now covers both super_admin and admin roles across all tenants' },
+    ],
+  },
+  {
+    version: 'v3.0.0',
+    date: '2026-07-26',
+    title: 'POS Module & Enhanced Accounting',
+    tag: 'Major',
+    tagColor: 'primary',
+    changes: [
+      { type: 'New', text: 'POS Dashboard — KPIs, daily sales, terminal status overview' },
+      { type: 'New', text: 'POS Register — Main cash register screen for walk-in sales with barcode/item search' },
+      { type: 'New', text: 'POS Terminals — Create and manage POS terminals with warehouse, cash account, bank account defaults' },
+      { type: 'New', text: 'POS Sessions — Open/close cash register sessions with opening cash, expected vs actual reconciliation, manager approval' },
+      { type: 'New', text: 'POS Sales — Complete sale transactions with multi-payment support (cash, card, bank transfer, credit — split tenders)' },
+      { type: 'New', text: 'POS Held Orders — Park and retrieve orders with JSON cart state preservation' },
+      { type: 'New', text: 'POS Cash Management — Record cash in/out, adjustments, and transfers with mandatory reason tracking' },
+      { type: 'New', text: 'POS Returns — Full sale return/refund workflow with original sale linking and refund method selection' },
+      { type: 'New', text: 'POS End of Day — Session closing with cash count, variance calculation, and summary breakdown' },
+      { type: 'New', text: 'POS Reports — Sales by cashier, terminal, item, category, customer; cashier session and cash variance reports' },
+      { type: 'New', text: 'POS Subscription Usage Tracking — Daily transaction/terminal/user/session counts per tenant for billing' },
+      { type: 'New', text: 'POS Accounting Integration — Auto journal entries for sales, returns, and cash movements' },
+      { type: 'New', text: '11 POS database tables: pos_terminals, pos_terminal_users, pos_sessions, pos_sales, pos_sale_lines, pos_payments, pos_held_orders, pos_cash_movements, pos_returns, pos_return_lines, pos_subscription_usage' },
+      { type: 'New', text: '10 POS RBAC permissions: pos.view, pos.manage_terminals, pos.open_session, pos.close_session, pos.create_sale, pos.cancel_sale, pos.hold_sale, pos.return, pos.cash_in, pos.view_reports' },
+      { type: 'New', text: 'Journal Entry Quick-Add Account form now includes all 7 fields: Account Name, Account Code, Account Type, Description, Parent Account (searchable autocomplete), Opening Balance, Active toggle' },
+      { type: 'Changed', text: 'PDF preview dialog buttons now display icons only (no text labels) for cleaner UI' },
+      { type: 'Fixed', text: 'Node.js v24 compatibility — switched to v20.19.0 for react-scripts 5.0.1 compatibility' },
+      { type: 'Fixed', text: 'Front-end production build refreshed from latest source code (July 26)' },
+    ],
+  },
+  {
+    version: 'v2.1.0',
+    date: '2026-07-22',
+    title: 'Audit Trail & History System',
+    tag: 'Major',
+    tagColor: 'primary',
+    changes: [
+      { type: 'New', text: 'Enterprise-grade Audit Trail system with centralized audit_logs table recording all system actions' },
+      { type: 'New', text: 'Audit Service with 20+ methods: recordCreate, recordUpdate (field-level diff), recordDelete, recordLogin, recordLogout, recordCompanySwitch, recordPermissionChange, recordSubscriptionChange, recordPasswordChange, recordSystem, and more' },
+      { type: 'New', text: 'Enhanced Audit Log model with 11 new fields: userEmail, userRole, module, entityReferenceNumber, requestId, sessionId, source (USER/SYSTEM/SCHEDULED_JOB/API/INTEGRATION), status, errorMessage, changedFields, metadata' },
+      { type: 'New', text: '9 database indexes on audit_logs for high-performance filtering: tenant, user, action, module, entity, date-range, and entity history' },
+      { type: 'New', text: 'Audit middleware factory — declarative audit on any route: router.post("/", audit("CREATE", "Sales", "Customer"), controller.create)' },
+      { type: 'New', text: 'Audit Trail page under Administration menu with filter-on-demand: date range, action, module, entity, keyword search' },
+      { type: 'New', text: 'Audit Detail page with full log details and side-by-side change comparison (previous value vs new value with highlighting)' },
+      { type: 'New', text: 'Super Admin Audit Trail page for cross-company audit visibility' },
+      { type: 'New', text: '9 Audit API endpoints: GET list (paginated/filtered), GET by ID, GET entity history, GET by user, GET by module, GET by company, plus 3 report endpoints (user activity, login activity, data changes)' },
+      { type: 'New', text: '6 RBAC permissions: audit.view, audit.view_details, audit.export, audit.delete, audit.view_company, audit.view_all_companies' },
+      { type: 'New', text: 'Multi-company data isolation — users only see logs for their active company; Super Admin can view all' },
+      { type: 'New', text: 'Login/logout/failed login audit tracking with IP, user-agent, and failure reason' },
+      { type: 'New', text: 'Company create/update/switch audit events with before/after values' },
+      { type: 'New', text: 'Password change audit events (passwords masked as ********)' },
+      { type: 'New', text: 'System-generated event support for background jobs, scheduled tasks, automated processes' },
+      { type: 'Changed', text: 'Subscription plan update now auto-syncs all active company subscription modules' },
+      { type: 'Fixed', text: 'Subscription creation failing due to missing tenantId in License number series generation' },
+      { type: 'Fixed', text: 'Super Admin company subscriptions page filtered by selected company (now shows all companies)' },
+      { type: 'Fixed', text: 'Second fallback 404 handler blocking React SPA serving in production deployment' },
+    ],
+  },
+  {
+    version: 'v2.0.0',
+    date: '2026-07-05',
+    title: 'Fixed Assets Management Module',
+    tag: 'Major',
+    tagColor: 'primary',
+    changes: [
+      { type: 'New', text: 'Asset Categories — Create and manage categories with depreciation settings and GL account mappings' },
+      { type: 'New', text: 'Asset Register — Complete asset master with codes, serial numbers, barcodes, condition tracking' },
+      { type: 'New', text: 'Asset Acquisition — Manual, bulk, and purchase-invoice-driven asset creation with journal entry posting' },
+      { type: 'New', text: 'Asset Transfers — Transfer assets between locations, departments, custodians, warehouses, and branches' },
+      { type: 'New', text: 'Asset Depreciation — 5 methods (Straight Line, Declining Balance, DDB, Units of Production, Manual) with monthly/quarterly/yearly frequency' },
+      { type: 'New', text: 'Asset Disposal — Sale, scrap, donation, write-off, lost with auto gain/loss calculation and accounting' },
+      { type: 'New', text: 'Asset Revaluation — Increase/decrease asset values with history and journal entries' },
+      { type: 'New', text: 'Asset Maintenance — Preventive, corrective, and AMC contracts with service provider tracking' },
+      { type: 'New', text: 'Asset Insurance — Policy management with premium, coverage, expiry alerts' },
+      { type: 'New', text: 'Asset Locations — Hierarchical locations (buildings, floors, rooms, clinics, departments, warehouses)' },
+      { type: 'New', text: 'Asset Custodians — Assign ownership to employees, doctors, or departments' },
+      { type: 'New', text: 'Asset Audits — Physical verification with barcode/QR scanning, missing/found tracking' },
+      { type: 'New', text: '10 Fixed Asset Reports — Asset Register, Depreciation Schedule, Movement, Disposal, Revaluation, Maintenance, Insurance Expiry, Warranty Expiry, Audit, Ledger' },
+      { type: 'New', text: 'Accounting Integration — Auto journal entries for acquisition, depreciation, disposal, revaluation' },
+      { type: 'New', text: 'Auto Number Series — FAC, AST, ACQ, ATR, DEP, DSP, REV, AMN, INS, AUD sequences' },
+      { type: 'New', text: '12 RBAC Permissions — fixedasset.view, create, edit, delete, transfer, dispose, depreciate, revalue, audit, maintenance, insurance, report' },
+      { type: 'Changed', text: 'Report workflow redesigned: Select report → Filters → Generate → View on screen → Print/Export' },
+      { type: 'Changed', text: 'API version updated to 2.0.0 with complete Swagger documentation for Fixed Assets' },
+    ],
+  },
+  {
+    version: 'v1.0.0',
+    date: '2026-06-17',
+    title: 'Initial ERP Release',
+    tag: 'Initial',
+    tagColor: 'success',
+    changes: [
+      { type: 'New', text: 'Multi-tenant architecture with complete tenant isolation' },
+      { type: 'New', text: 'JWT-based authentication with role-based access control (RBAC)' },
+      { type: 'New', text: 'User management with role assignment' },
+      { type: 'New', text: 'Chart of Accounts with hierarchical structure' },
+      { type: 'New', text: 'Journal Entries & General Ledger with posting workflow' },
+      { type: 'New', text: 'Sales lifecycle: Customers, Quotations, Sales Orders, Delivery Notes, Sales Invoices, Sales Returns, Credit Notes, Customer Payments' },
+      { type: 'New', text: 'Purchase lifecycle: Suppliers, Purchase Requests, Purchase Orders, Goods Receipts, Purchase Invoices, Purchase Returns, Debit Notes, Supplier Payments' },
+      { type: 'New', text: 'Inventory management: Items, Item Categories, Warehouses, Stock Transfers, Stock Adjustments, Inventory Balances' },
+      { type: 'New', text: 'Bank management: Bank Accounts, Transactions, Payment Receipts, Payment Vouchers, Bank Reconciliation' },
+      { type: 'New', text: 'Reporting & BI analytics dashboards' },
+      { type: 'New', text: 'Security hardening: rate limiting, Helmet, input validation' },
+    ],
+  },
+];
+
+const ReleaseNotes = () => {
+  const [expanded, setExpanded] = useState({});
+
+  const toggleExpand = (version) => {
+    setExpanded((prev) => ({ ...prev, [version]: !prev[version] }));
+  };
+
+  return (
+    <Box sx={{ p: { xs: 2, md: 3 } }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+        <NewReleases color="primary" sx={{ fontSize: 32 }} />
+        <Box>
+          <Typography variant="h5" fontWeight={700}>Release Notes</Typography>
+          <Typography variant="body2" color="text.secondary">Version history and changelog for EzeeFlo ERP</Typography>
+        </Box>
+        <Box sx={{ flex: 1 }} />
+        <Chip label="Current: v3.6.0" color="primary" />
+      </Box>
+
+      {RELEASES.map((release) => {
+        const isExpanded = expanded[release.version] !== false; // default expanded
+        return (
+          <Paper key={release.version} sx={{ mb: 2, overflow: 'hidden' }}>
+            <Box
+              sx={{ p: 2, display: 'flex', alignItems: 'center', cursor: 'pointer', bgcolor: 'action.hover' }}
+              onClick={() => toggleExpand(release.version)}
+            >
+              <Box sx={{ flex: 1 }}>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Typography variant="h6" fontWeight={700}>{release.version}</Typography>
+                  <Chip label={release.tag} color={release.tagColor} size="small" />
+                  <Typography variant="caption" color="text.secondary">{release.date}</Typography>
+                </Stack>
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mt: 0.5 }}>{release.title}</Typography>
+              </Box>
+              <IconButton size="small">
+                {isExpanded ? <ExpandLess /> : <ExpandMore />}
+              </IconButton>
+            </Box>
+            <Collapse in={isExpanded}>
+              <Box sx={{ px: 2, pb: 2 }}>
+                <Divider sx={{ mb: 1.5 }} />
+                {release.changes.map((change, idx) => (
+                  <Box key={idx} sx={{ display: 'flex', gap: 1, py: 0.3, alignItems: 'flex-start' }}>
+                    <Chip
+                      label={change.type}
+                      size="small"
+                      color={change.type === 'New' ? 'success' : change.type === 'Changed' ? 'warning' : change.type === 'Fixed' ? 'error' : 'default'}
+                      variant="outlined"
+                      sx={{ minWidth: 80, fontSize: '0.7rem' }}
+                    />
+                    <Typography variant="body2">{change.text}</Typography>
+                  </Box>
+                ))}
+              </Box>
+            </Collapse>
+          </Paper>
+        );
+      })}
+    </Box>
+  );
+};
+
+export default ReleaseNotes;
