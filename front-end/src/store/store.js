@@ -26,6 +26,7 @@ import salesReturnReducer from './slices/salesReturnSlice';
 import creditNoteReducer from './slices/creditNoteSlice';
 import customerPaymentReducer from './slices/customerPaymentSlice';
 import supplierReducer from './slices/supplierSlice';
+import sellingResourceReducer from './slices/sellingResourceSlice';
 import purchaseRequestReducer from './slices/purchaseRequestSlice';
 import purchaseOrderReducer from './slices/purchaseOrderSlice';
 import goodsReceiptReducer from './slices/goodsReceiptSlice';
@@ -86,6 +87,7 @@ const appReducer = combineReducers({
   creditNotes: creditNoteReducer,
   customerPayments: customerPaymentReducer,
   suppliers: supplierReducer,
+  sellingResources: sellingResourceReducer,
   purchaseRequests: purchaseRequestReducer,
   purchaseOrders: purchaseOrderReducer,
   goodsReceipts: goodsReceiptReducer,

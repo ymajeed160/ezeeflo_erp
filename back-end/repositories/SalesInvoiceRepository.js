@@ -1,5 +1,5 @@
 'use strict';
-const { SalesInvoice, SalesInvoiceDetail, Customer, Warehouse, Item, SalesOrder, DeliveryNote, User, Account } = require('../models');
+const { SalesInvoice, SalesInvoiceDetail, Customer, Warehouse, Item, SalesOrder, DeliveryNote, User, Account, SellingResource } = require('../models');
 
 class SalesInvoiceRepository {
   /**
@@ -48,6 +48,7 @@ class SalesInvoiceRepository {
         { model: Account, as: 'customerAccount', attributes: ['id', 'code', 'name'], required: false },
         { model: Account, as: 'revenueAccount', attributes: ['id', 'code', 'name'], required: false },
         { model: Account, as: 'taxAccount', attributes: ['id', 'code', 'name'], required: false },
+        { model: SellingResource, as: 'sellingResource', attributes: ['id', 'resourceCode', 'resourceName'], required: false },
         { model: User, as: 'creator', attributes: ['id', 'username'] },
       ],
       order,
@@ -125,6 +126,7 @@ class SalesInvoiceRepository {
         { model: Account, as: 'customerAccount', attributes: ['id', 'code', 'name', 'type'], required: false },
         { model: Account, as: 'revenueAccount', attributes: ['id', 'code', 'name', 'type'], required: false },
         { model: Account, as: 'taxAccount', attributes: ['id', 'code', 'name', 'type'], required: false },
+        { model: SellingResource, as: 'sellingResource', attributes: ['id', 'resourceCode', 'resourceName'], required: false },
         { model: User, as: 'creator', attributes: ['id', 'username'] },
         { model: User, as: 'updater', attributes: ['id', 'username'] },
         {
@@ -162,6 +164,7 @@ class SalesInvoiceRepository {
         { model: Account, as: 'customerAccount', attributes: ['id', 'code', 'name'], required: false },
         { model: Account, as: 'revenueAccount', attributes: ['id', 'code', 'name'], required: false },
         { model: Account, as: 'taxAccount', attributes: ['id', 'code', 'name'], required: false },
+        { model: SellingResource, as: 'sellingResource', attributes: ['id', 'resourceCode', 'resourceName'], required: false },
         {
           model: SalesInvoiceDetail,
           as: 'details',

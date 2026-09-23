@@ -118,6 +118,13 @@ const reportRegistry = {
     category: 'sales',
     params: ['p_Page', 'p_PageSize'],
   },
+  'resource-income': {
+    procedure: 'sp_Report_ResourceIncome',
+    permission: 'reports.sales.view',
+    title: 'Resource Income',
+    category: 'sales',
+    params: ['p_DateFrom', 'p_DateTo', 'p_ResourceId', 'p_ResourceTypeId', 'p_CustomerId', 'p_InvoiceNumber', 'p_Status', 'p_Page', 'p_PageSize'],
+  },
   'purchase-order-analysis': {
     procedure: 'sp_Report_PurchaseOrderAnalysis',
     permission: 'reports.purchase.view',

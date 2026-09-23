@@ -5,6 +5,7 @@ import itemCategoryApi from '../services/itemCategoryApi';
 import warehouseApi from '../services/warehouseApi';
 import accountApi from '../services/accountApi';
 import assetCategoryApi from '../services/assetCategoryApi';
+import sellingResourceApi from '../services/sellingResourceApi';
 
 // Random, human-friendly code suffix (avoids ambiguous chars like 0/O/1/I).
 const rand = (len = 6) => {
@@ -94,6 +95,16 @@ export const QUICK_CREATE_ENTITIES = {
       status: 'active',
     }),
     labelOf: (e) => e?.name || '',
+  },
+
+  sellingresource: {
+    key: 'sellingresource',
+    label: 'Selling Resource',
+    permission: 'sellingresource.create',
+    api: sellingResourceApi,
+    fields: [], // handled by the dedicated QuickCreateSellingResource component
+    buildPayload: () => ({}),
+    labelOf: (e) => (e?.resourceCode ? `${e.resourceCode} - ${e.resourceName}` : e?.resourceName || ''),
   },
 
   item: {

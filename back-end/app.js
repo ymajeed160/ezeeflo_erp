@@ -45,6 +45,7 @@ const purchaseInvoiceRoutes = require('./routes/purchaseInvoice.routes');
 const purchaseReturnRoutes = require('./routes/purchaseReturn.routes');
 const debitNoteRoutes = require('./routes/debitNote.routes');
 const supplierPaymentRoutes = require('./routes/supplierPayment.routes');
+const sellingResourceRoutes = require('./routes/sellingResource.routes');
 const cashPaymentVoucherRoutes = require('./routes/cashPaymentVoucher.routes');
 const cashReceiptVoucherRoutes = require('./routes/cashReceiptVoucher.routes');
 const bankAccountRoutes = require('./routes/bankAccountRoutes');
@@ -292,6 +293,7 @@ const businessRoutes = [
   { path: '/api/purchase-returns', router: purchaseReturnRoutes },
   { path: '/api/debit-notes', router: debitNoteRoutes },
   { path: '/api/supplier-payments', router: supplierPaymentRoutes },
+  { path: '/api/selling-resources', router: sellingResourceRoutes },
   { path: '/api/cash-payment-vouchers', router: cashPaymentVoucherRoutes },
   { path: '/api/cash-receipt-vouchers', router: cashReceiptVoucherRoutes },
   { path: '/api/bank-accounts', router: bankAccountRoutes },

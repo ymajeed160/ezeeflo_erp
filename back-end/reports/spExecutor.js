@@ -68,6 +68,7 @@ const ALLOWED_PROCEDURES = new Set([
   'sp_Report_POS_HourlySales',
   'sp_Report_POS_TopItems',
   'sp_Report_POS_StockSold',
+  'sp_Report_ResourceIncome',
 ]);
 
 /**

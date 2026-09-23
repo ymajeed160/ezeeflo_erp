@@ -18,6 +18,7 @@ import usePermissions from '../../hooks/usePermissions';
 import { apiError, apiSuccess } from '../../utils/toast';
 import QuickCreateItem from './QuickCreateItem';
 import QuickCreateAccount from './QuickCreateAccount';
+import QuickCreateSellingResource from './QuickCreateSellingResource';
 
 const emptyValues = (fields) =>
   fields.reduce((acc, f) => {
@@ -61,6 +62,11 @@ const QuickCreate = ({ entityKey, onCreated, disabled = false, size = 'small', t
   // Account uses the full "Quick Create Account" form (with Parent Account)
   if (entityKey === 'account') {
     return <QuickCreateAccount onCreated={onCreated} disabled={disabled} size={size} tooltip={tooltip} />;
+  }
+
+  // Selling Resource uses a dedicated modal (dynamic Resource Type dropdown)
+  if (entityKey === 'sellingresource') {
+    return <QuickCreateSellingResource onCreated={onCreated} disabled={disabled} size={size} tooltip={tooltip} />;
   }
 
   const openDialog = () => {

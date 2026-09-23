@@ -10,6 +10,8 @@ import {
   FileDownload as ExcelIcon, PictureAsPdf as PdfIcon, ArrowBack as BackIcon,
 } from '@mui/icons-material';
 import reportApi from '../../services/reportApi';
+import sellingResourceApi from '../../services/sellingResourceApi';
+import customerApi from '../../services/customerApi';
 import { apiError } from '../../utils/toast';
 
 const reportMeta = {
@@ -22,6 +24,7 @@ const reportMeta = {
   'trial-balance': { title: 'Trial Balance', summaryKeys: [] },
   'profit-and-loss': { title: 'Profit & Loss', summaryKeys: ['total_revenue','total_expense','net_profit'] },
   'balance-sheet': { title: 'Balance Sheet', summaryKeys: [] },
+  'resource-income': { title: 'Resource Income', summaryKeys: ['totalInvoices','totalNet','totalTax','totalGross','totalIncome'] },
 };
 
 const summaryLabels = {
@@ -29,7 +32,7 @@ const summaryLabels = {
   closingBalance: 'Closing Balance', totalOutstanding: 'Total Outstanding',
   totalCustomers: 'Customers', totalSuppliers: 'Suppliers', totalInvoices: 'Invoices',
   totalGross: 'Gross Total', totalNet: 'Net Total', totalTax: 'Total Tax',
-  totalQuantity: 'Total Qty',
+  totalQuantity: 'Total Qty', totalIncome: 'Total Resource Income',
   total_revenue: 'Total Revenue', total_expense: 'Total Expense', net_profit: 'Net Profit',
 };
 
@@ -50,6 +53,20 @@ const ReportViewer = ({ reportName: propReportName }) => {
   const [dateError, setDateError] = useState('');
   const [hasRun, setHasRun] = useState(false);
 
+  // Extra filter data for the Resource Income report
+  const [resourceOptions, setResourceOptions] = useState([]);
+  const [typeOptions, setTypeOptions] = useState([]);
+  const [customerOptions, setCustomerOptions] = useState([]);
+
+  const isResourceIncome = reportName === 'resource-income';
+
+  useEffect(() => {
+    if (!isResourceIncome) return undefined;
+    sellingResourceApi.getSelect().then((res) => setResourceOptions(res.data || [])).catch(() => {});
+    sellingResourceApi.getTypes({ page: 1, limit: 200 }).then((res) => setTypeOptions(res.data || [])).catch(() => {});
+    customerApi.getSelect().then((res) => setCustomerOptions(res.data || [])).catch(() => {});
+  }, [isResourceIncome]);
+
   const loadReport = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -69,12 +86,12 @@ const ReportViewer = ({ reportName: propReportName }) => {
   }, [reportName, filters, page, rowsPerPage]);
 
   const handleSearch = () => {
-    if (!filters.dateFrom || !filters.dateTo) {
-      setDateError('Both Date From and Date To are required');
+    if (filters.dateFrom && filters.dateTo && filters.dateFrom > filters.dateTo) {
+      setDateError('Date From cannot be after Date To');
       return;
     }
-    if (filters.dateFrom > filters.dateTo) {
-      setDateError('Date From cannot be after Date To');
+    if (!isResourceIncome && (!filters.dateFrom || !filters.dateTo)) {
+      setDateError('Both Date From and Date To are required');
       return;
     }
     setDateError('');
@@ -148,9 +165,57 @@ const ReportViewer = ({ reportName: propReportName }) => {
                 InputLabelProps={{ shrink: true }}
                 inputProps={{ min: filters.dateFrom || undefined }} />
             </Grid>
+            {isResourceIncome && (
+              <>
+                <Grid item xs={6} md={2}>
+                  <TextField fullWidth size="small" select label="Resource"
+                    value={filters.resourceId || ''}
+                    onChange={(e) => updateFilter('resourceId', e.target.value)}>
+                    <MenuItem value="">All Resources</MenuItem>
+                    {resourceOptions.map((r) => (
+                      <MenuItem key={r.id} value={r.id}>{r.label || `${r.resourceCode} - ${r.resourceName}`}</MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+                <Grid item xs={6} md={2}>
+                  <TextField fullWidth size="small" select label="Resource Type"
+                    value={filters.resourceTypeId || ''}
+                    onChange={(e) => updateFilter('resourceTypeId', e.target.value)}>
+                    <MenuItem value="">All Types</MenuItem>
+                    {typeOptions.map((t) => (
+                      <MenuItem key={t.id} value={t.id}>{t.typeName}</MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+                <Grid item xs={6} md={2}>
+                  <TextField fullWidth size="small" select label="Customer"
+                    value={filters.customerId || ''}
+                    onChange={(e) => updateFilter('customerId', e.target.value)}>
+                    <MenuItem value="">All Customers</MenuItem>
+                    {customerOptions.map((c) => (
+                      <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+                <Grid item xs={6} md={2}>
+                  <TextField fullWidth size="small" label="Invoice Number"
+                    value={filters.invoiceNumber || ''}
+                    onChange={(e) => updateFilter('invoiceNumber', e.target.value)} />
+                </Grid>
+                <Grid item xs={6} md={2}>
+                  <TextField fullWidth size="small" select label="Status"
+                    value={filters.status || ''}
+                    onChange={(e) => updateFilter('status', e.target.value)}>
+                    <MenuItem value="">Posted only</MenuItem>
+                    <MenuItem value="all">All statuses</MenuItem>
+                    <MenuItem value="cancelled">Cancelled</MenuItem>
+                  </TextField>
+                </Grid>
+              </>
+            )}
             <Grid item xs={12} md={2}>
               <Button variant="contained" onClick={handleSearch}
-                disabled={!filters.dateFrom || !filters.dateTo || filters.dateFrom > filters.dateTo}
+                disabled={!isResourceIncome && (!filters.dateFrom || !filters.dateTo || filters.dateFrom > filters.dateTo)}
                 startIcon={<SearchIcon />}>Run Report</Button>
             </Grid>
             <Grid item xs={12} md={6}>

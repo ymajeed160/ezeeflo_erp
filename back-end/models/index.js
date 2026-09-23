@@ -80,6 +80,9 @@ const CashPaymentVoucher = require('./CashPaymentVoucher')(sequelize, DataTypes)
 const CashPaymentVoucherLine = require('./CashPaymentVoucherLine')(sequelize, DataTypes);
 const CashReceiptVoucher = require('./CashReceiptVoucher')(sequelize, DataTypes);
 const CashReceiptVoucherLine = require('./CashReceiptVoucherLine')(sequelize, DataTypes);
+const SellingResourceType = require('./SellingResourceType');
+const SellingResource = require('./SellingResource');
+const ResourceIncome = require('./ResourceIncome');
 
 // ============================================================
 // Super Admin / SaaS Models
@@ -360,6 +363,48 @@ User.hasMany(Supplier, { foreignKey: 'createdBy' });
 Supplier.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
 User.hasMany(Supplier, { foreignKey: 'updatedBy' });
 Supplier.belongsTo(User, { foreignKey: 'updatedBy', as: 'updater' });
+
+// ============================================================
+// Selling Resource Associations
+// ============================================================
+
+// Tenant - SellingResourceType
+Tenant.hasMany(SellingResourceType, { foreignKey: 'tenantId', sourceKey: 'id' });
+SellingResourceType.belongsTo(Tenant, { foreignKey: 'tenantId', targetKey: 'id' });
+
+// Tenant - SellingResource
+Tenant.hasMany(SellingResource, { foreignKey: 'tenantId', sourceKey: 'id' });
+SellingResource.belongsTo(Tenant, { foreignKey: 'tenantId', targetKey: 'id' });
+
+// SellingResourceType - SellingResource
+SellingResourceType.hasMany(SellingResource, { foreignKey: 'resourceTypeId', as: 'resources' });
+SellingResource.belongsTo(SellingResourceType, { foreignKey: 'resourceTypeId', as: 'resourceType' });
+
+// SellingResource - SalesInvoice (analytical attribution only)
+SellingResource.hasMany(SalesInvoice, { foreignKey: 'sellingResourceId', as: 'invoices' });
+SalesInvoice.belongsTo(SellingResource, { foreignKey: 'sellingResourceId', as: 'sellingResource' });
+
+// SellingResource - ResourceIncome
+SellingResource.hasMany(ResourceIncome, { foreignKey: 'resourceId', as: 'resourceIncome' });
+ResourceIncome.belongsTo(SellingResource, { foreignKey: 'resourceId', as: 'resource' });
+
+// SalesInvoice - ResourceIncome (analytical snapshot)
+SalesInvoice.hasMany(ResourceIncome, { foreignKey: 'salesInvoiceId', as: 'resourceIncome' });
+ResourceIncome.belongsTo(SalesInvoice, { foreignKey: 'salesInvoiceId', as: 'salesInvoice' });
+
+// Customer - ResourceIncome
+Customer.hasMany(ResourceIncome, { foreignKey: 'customerId' });
+ResourceIncome.belongsTo(Customer, { foreignKey: 'customerId', as: 'customer' });
+
+// Tenant - ResourceIncome
+Tenant.hasMany(ResourceIncome, { foreignKey: 'tenantId', sourceKey: 'id' });
+ResourceIncome.belongsTo(Tenant, { foreignKey: 'tenantId', targetKey: 'id' });
+
+// SellingResource - User (createdBy/updatedBy)
+User.hasMany(SellingResource, { foreignKey: 'createdBy' });
+SellingResource.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
+User.hasMany(SellingResource, { foreignKey: 'updatedBy' });
+SellingResource.belongsTo(User, { foreignKey: 'updatedBy', as: 'updater' });
 
 // ============================================================
 // Quotation Associations
@@ -1676,6 +1721,9 @@ module.exports = {
   CashPaymentVoucherLine,
   CashReceiptVoucher,
   CashReceiptVoucherLine,
+  SellingResourceType,
+  SellingResource,
+  ResourceIncome,
   // Super Admin / SaaS Models
   SubscriptionPlan,
   SubscriptionModule,

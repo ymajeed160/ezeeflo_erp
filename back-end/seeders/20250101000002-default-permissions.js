@@ -16,6 +16,7 @@ const modules = {
   'sales-invoices': ['read', 'create', 'update', 'delete', 'approve', 'export'],
   'sales-returns': ['read', 'create', 'update', 'delete', 'approve', 'export'],
   'credit-notes': ['read', 'create', 'update', 'delete', 'approve', 'export'],
+  'selling-resources': ['view', 'create', 'edit', 'delete', 'report'],
 
   // Purchases
   purchases: ['read', 'create', 'update', 'delete', 'approve', 'export'],
@@ -110,6 +111,7 @@ const routeAliases = {
   deliverynote: ['view', 'create', 'edit', 'delete', 'approve'],
   creditnote: ['view', 'create', 'edit', 'delete', 'post', 'cancel'],
   customerpayment: ['view', 'create', 'edit', 'delete', 'post', 'cancel'],
+  sellingresource: ['view', 'create', 'edit', 'delete'],
 
   // Purchases route aliases
   purchaseorder: ['view', 'create', 'approve'],

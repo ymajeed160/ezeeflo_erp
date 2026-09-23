@@ -199,6 +199,7 @@ const menuItems = [
       { text: 'Roles & Permissions', path: '/app/settings/roles' },
       { text: 'Company Profile', path: '/app/settings/company' },
       { text: 'System Config', path: '/app/settings/system' },
+      { text: 'Selling Resources', path: '/app/settings/selling-resources' },
       { text: 'Release Notes', path: '/app/release-notes' },
     ],
   },

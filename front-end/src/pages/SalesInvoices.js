@@ -68,6 +68,7 @@ import {
 import { fetchCustomers } from '../store/slices/customerSlice';
 import { fetchItems } from '../store/slices/itemSlice';
 import { fetchWarehouses } from '../store/slices/warehouseSlice';
+import { fetchSellingResourceSelect } from '../store/slices/sellingResourceSlice';
 import { confirmDialog, apiSuccess, apiError } from '../utils/toast';
 import accountApi from '../services/accountApi';
 import SystemConfigApi from '../services/systemConfigApi';
@@ -98,6 +99,7 @@ const SalesInvoices = () => {
   const customersList = useSelector((s) => s.customers?.customers || []);
   const itemsList = useSelector((s) => s.items?.items || []);
   const warehouseList = useSelector((s) => s.warehouses?.warehouses || []);
+  const sellingResourceList = useSelector((s) => s.sellingResources?.resourceSelect || []);
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -142,6 +144,7 @@ const SalesInvoices = () => {
       customerAccountId: '',
       revenueAccountId: '',
       taxAccountId: '',
+      sellingResourceId: '',
       details: [{ itemId: '', description: '', quantity: 1, unitPrice: 0, taxPercent: 0, discountPercent: 0, costPrice: 0 }],
     },
   });
@@ -158,6 +161,7 @@ const SalesInvoices = () => {
     dispatch(fetchCustomers({ limit: 999 }));
     dispatch(fetchItems({ limit: 999 }));
     dispatch(fetchWarehouses({ limit: 999 }));
+    dispatch(fetchSellingResourceSelect());
   }, [loadData, dispatch]);
 
   // Fetch accounts for Accounting Information section + system config defaults
@@ -236,6 +240,7 @@ const SalesInvoices = () => {
           customerAccountId: '',
           revenueAccountId: configRevenueAccountId,
           taxAccountId: configVatPayableId,
+          sellingResourceId: '',
           details: lines.length > 0 ? lines.map((l) => ({
             salesOrderDetailId: l.salesOrderDetailId,
             itemId: l.itemId,
@@ -285,6 +290,7 @@ const SalesInvoices = () => {
         customerAccountId: selected.customerAccountId || '',
         revenueAccountId: selected.revenueAccountId || configRevenueAccountId,
         taxAccountId: selected.taxAccountId || configVatPayableId,
+        sellingResourceId: selected.sellingResourceId || '',
         details: selected.details?.length ? selected.details.map((d) => ({
           id: d.id,
           itemId: d.itemId || '',
@@ -318,6 +324,7 @@ const SalesInvoices = () => {
       customerAccountId: '',
       revenueAccountId: configRevenueAccountId,
       taxAccountId: configVatPayableId,
+      sellingResourceId: '',
       details: [{ itemId: '', description: '', quantity: 1, unitPrice: 0, taxPercent: 0, discountPercent: 0, costPrice: 0 }],
     });
     setOpenForm(true);
@@ -513,6 +520,7 @@ const SalesInvoices = () => {
       customerAccountId: data.customerAccountId || null,
       revenueAccountId: data.revenueAccountId || null,
       taxAccountId: data.taxAccountId || null,
+      sellingResourceId: data.sellingResourceId || null,
       details: data.details.map((d) => ({
         id: d.id || undefined,
         itemId: d.itemId,
@@ -679,23 +687,64 @@ const SalesInvoices = () => {
 
             {/* Header Row 2 */}
             <Grid item xs={12} sm={4}>
-              <Controller
-                name="warehouseId"
-                control={control}
-                render={({ field }) => (
-                  <Autocomplete
-                    disabled={viewMode}
-                    value={warehouseList.find((w) => w.id === field.value) || null}
-                    onChange={(_, val) => field.onChange(val ? val.id : '')}
-                    options={warehouseList}
-                    getOptionLabel={(opt) => opt.name || opt.warehouseName || ''}
-                    isOptionEqualToValue={(opt, val) => opt.id === val.id}
-                    renderInput={(params) => (
-                      <TextField {...params} label="Warehouse (for inventory)" />
-                    )}
-                  />
-                )}
-              />
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Controller
+                  name="warehouseId"
+                  control={control}
+                  render={({ field }) => (
+                    <Autocomplete
+                      disabled={viewMode}
+                      value={warehouseList.find((w) => w.id === field.value) || null}
+                      onChange={(_, val) => field.onChange(val ? val.id : '')}
+                      options={warehouseList}
+                      getOptionLabel={(opt) => opt.name || opt.warehouseName || ''}
+                      isOptionEqualToValue={(opt, val) => opt.id === val.id}
+                      renderInput={(params) => (
+                        <TextField {...params} label="Warehouse (for inventory)" />
+                      )}
+                      sx={{ flex: 1 }}
+                    />
+                  )}
+                />
+                <QuickCreate
+                  entityKey="warehouse"
+                  disabled={viewMode}
+                  onCreated={(w) => {
+                    dispatch(fetchWarehouses({ limit: 999 }));
+                    setValue('warehouseId', w.id, { shouldValidate: true });
+                  }}
+                />
+              </Box>
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Controller
+                  name="sellingResourceId"
+                  control={control}
+                  render={({ field }) => (
+                    <Autocomplete
+                      disabled={viewMode}
+                      value={sellingResourceList.find((r) => r.id === field.value) || null}
+                      onChange={(_, val) => field.onChange(val ? val.id : '')}
+                      options={sellingResourceList}
+                      getOptionLabel={(opt) => opt.label || `${opt.resourceCode} - ${opt.resourceName}`}
+                      isOptionEqualToValue={(opt, val) => opt.id === val.id}
+                      renderInput={(params) => (
+                        <TextField {...params} label="Selling Resource (reporting only)" />
+                      )}
+                      sx={{ flex: 1 }}
+                    />
+                  )}
+                />
+                <QuickCreate
+                  entityKey="sellingresource"
+                  disabled={viewMode}
+                  onCreated={(r) => {
+                    dispatch(fetchSellingResourceSelect());
+                    setValue('sellingResourceId', r.id, { shouldValidate: true });
+                  }}
+                />
+              </Box>
             </Grid>
             <Grid item xs={12} sm={4}>
               <FormControlLabel

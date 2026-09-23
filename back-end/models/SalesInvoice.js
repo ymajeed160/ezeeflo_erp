@@ -15,6 +15,7 @@ module.exports = (sequelize, DataTypes) => {
       SalesInvoice.belongsTo(models.Account, { foreignKey: 'customerAccountId', as: 'customerAccount' });
       SalesInvoice.belongsTo(models.Account, { foreignKey: 'revenueAccountId', as: 'revenueAccount' });
       SalesInvoice.belongsTo(models.Account, { foreignKey: 'taxAccountId', as: 'taxAccount' });
+      SalesInvoice.belongsTo(models.SellingResource, { foreignKey: 'sellingResourceId', as: 'sellingResource' });
       SalesInvoice.hasMany(models.SalesInvoiceDetail, { foreignKey: 'salesInvoiceId', as: 'details' });
       SalesInvoice.hasMany(models.CustomerPaymentAllocation, { foreignKey: 'salesInvoiceId', as: 'paymentAllocations' });
     }
@@ -73,6 +74,10 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
       },
       taxAccountId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+      sellingResourceId: {
         type: DataTypes.UUID,
         allowNull: true,
       },

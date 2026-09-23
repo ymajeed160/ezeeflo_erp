@@ -30,6 +30,7 @@ const categories = [
       { id: 'sales-invoice-trends', title: 'Sales Invoice Trends' },
       { id: 'delivery-note-trends', title: 'Delivery Note Trends' },
       { id: 'customer-ledger', title: 'Customer Ledger' },
+      { id: 'resource-income', title: 'Resource Income' },
     ],
   },
   {

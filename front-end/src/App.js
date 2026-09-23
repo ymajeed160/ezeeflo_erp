@@ -28,6 +28,7 @@ import SalesInvoices from './pages/SalesInvoices';
 import SalesReturns from './pages/SalesReturns';
 import CreditNotes from './pages/CreditNotes';
 import CustomerPayments from './pages/CustomerPayments';
+import SellingResources from './pages/SellingResources';
 import Suppliers from './pages/Suppliers';
 import PurchaseRequests from './pages/PurchaseRequests';
 import PurchaseOrders from './pages/PurchaseOrders';
@@ -455,6 +456,9 @@ const App = () => {
             <Route path="/app/sales/payments/:id/view" element={<CustomerPayments />} />
             <Route path="/app/sales/crv" element={<CashReceiptVouchers />} />
 
+            {/* Sales - Selling Resources */}
+            <Route path="/app/sales/selling-resources" element={<SellingResources />} />
+
             {/* Purchases - Suppliers */}
             <Route path="/app/purchases/suppliers" element={<Suppliers />} />
             <Route path="/app/purchases/suppliers/new" element={<Suppliers />} />
@@ -603,6 +607,7 @@ const App = () => {
             <Route path="/app/banks/*" element={<Dashboard />} />
             <Route path="/app/settings/company" element={<CompanyProfile />} />
             <Route path="/app/settings/system" element={<SystemConfig />} />
+            <Route path="/app/settings/selling-resources" element={<SellingResources />} />
             <Route path="/app/audit" element={<AuditTrail />} />
             <Route path="/app/audit/:id" element={<AuditDetail />} />
             <Route path="/app/release-notes" element={<ReleaseNotes />} />

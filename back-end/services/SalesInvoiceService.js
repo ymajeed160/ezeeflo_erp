@@ -256,6 +256,12 @@ class SalesInvoiceService {
       // 3. Update status to posted
       await SalesInvoiceRepository.updateStatus(tenantId, id, 'posted', userId, t);
 
+      // 4. Analytical resource-income attribution (reporting only — NO accounting impact)
+      if (invoice.sellingResourceId) {
+        const ResourceIncomeService = require('./ResourceIncomeService');
+        await ResourceIncomeService.syncForInvoice(invoice, t);
+      }
+
       await AuditService.log({
         tenantId,
         userId,
@@ -621,6 +627,12 @@ class SalesInvoiceService {
         { status: 'cancelled', cancelReason: reason || null, updatedBy: userId },
         { where: { tenantId, id }, transaction: t }
       );
+
+      // Analytical resource-income snapshot: mark cancelled (reporting only — NO accounting impact)
+      if (existing.sellingResourceId) {
+        const ResourceIncomeService = require('./ResourceIncomeService');
+        await ResourceIncomeService.cancelForInvoice(existing, t);
+      }
 
       await AuditService.log({
         tenantId,
