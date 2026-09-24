@@ -201,6 +201,7 @@ BEGIN
         COALESCE(SUM(net_amount), 0) AS total_net,
         COALESCE(SUM(tax_amount), 0) AS total_tax,
         COALESCE(SUM(gross_amount), 0) AS total_gross,
+        COALESCE(SUM(gross_amount), 0) AS total_sales,
         COALESCE(SUM(income_amount), 0) AS total_income
     FROM tmp_resource_income;
 

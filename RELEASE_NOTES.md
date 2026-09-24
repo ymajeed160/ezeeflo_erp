@@ -1,5 +1,36 @@
 # ERPMTSuite Release Notes
 
+## Version 3.8.0 — September 24, 2026
+
+---
+
+## 🆕 New Features
+
+### Selling Resources Module
+
+New master-data module for tracking selling resources and attributing sales income for reporting:
+
+- **Selling Resources** — master records with auto-generated codes (`SR-000001`, …) and soft delete, under **Settings → Selling Resources**.
+- **Resource Types** — master data with auto-generated codes (`RT-000001`, …) for grouping resources.
+- **Resource Income report** — a new report in the Reports Center showing revenue attributed to each selling resource, with filters (resource, resource type, customer, invoice number, status) and summary totals. This is **analytical only** — it never creates or modifies journal/ledger transactions.
+- **Sales Invoice integration** — a "Selling Resource" selector on the invoice, plus a Quick Create (+) button to add resources inline without leaving the invoice.
+- **Quick Create Warehouse** — the Warehouse field on Sales Invoices now has an inline (+) button to add warehouses on the fly.
+
+---
+
+### Item-Level Income Account Revenue Posting
+
+Sales revenue accounting now follows **Item → Income Account → Chart of Account**:
+
+- The header-level **Revenue Account** field, dropdown, and auto-selection have been removed from Sales Invoice.
+- Revenue is now credited per line item's **Income Account**, grouped by Chart of Account (e.g., Product A → "Sales – Product A", Product B → "Sales – Product B").
+- Multiple items sharing the same Income Account are combined into a single posting.
+- **Sales Return** revenue reversal now uses the item Income Accounts (grouped by Chart of Account), matching the original invoice posting.
+- Posting is blocked with a clear message ("Income Account is not configured for item: …") when a line's item has no Income Account — no silent fallback to a default account.
+- The existing `revenue_account_id` column is preserved for historical records but is no longer used for new invoices.
+
+---
+
 ## Version 3.6.0 — September 15, 2026
 
 ---

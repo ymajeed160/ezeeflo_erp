@@ -24,15 +24,17 @@ const reportMeta = {
   'trial-balance': { title: 'Trial Balance', summaryKeys: [] },
   'profit-and-loss': { title: 'Profit & Loss', summaryKeys: ['total_revenue','total_expense','net_profit'] },
   'balance-sheet': { title: 'Balance Sheet', summaryKeys: [] },
-  'resource-income': { title: 'Resource Income', summaryKeys: ['totalInvoices','totalNet','totalTax','totalGross','totalIncome'] },
+  'resource-income': { title: 'Resource Income', summaryKeys: ['total_invoices','total_sales','total_net','total_tax','total_income'] },
 };
 
 const summaryLabels = {
   openingBalance: 'Opening Balance', totalDebit: 'Total Debit', totalCredit: 'Total Credit',
   closingBalance: 'Closing Balance', totalOutstanding: 'Total Outstanding',
   totalCustomers: 'Customers', totalSuppliers: 'Suppliers', totalInvoices: 'Invoices',
-  totalGross: 'Gross Total', totalNet: 'Net Total', totalTax: 'Total Tax',
+  totalGross: 'Gross Total', totalSales: 'Total Sales', totalNet: 'Net Total', totalTax: 'Total Tax',
   totalQuantity: 'Total Qty', totalIncome: 'Total Resource Income',
+  total_invoices: 'Invoices', total_sales: 'Total Sales', total_net: 'Net Total',
+  total_tax: 'Total Tax', total_income: 'Total Resource Income',
   total_revenue: 'Total Revenue', total_expense: 'Total Expense', net_profit: 'Net Profit',
 };
 

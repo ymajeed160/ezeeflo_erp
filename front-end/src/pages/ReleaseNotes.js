@@ -4,6 +4,23 @@ import { ExpandMore, ExpandLess, NewReleases } from '@mui/icons-material';
 
 const RELEASES = [
   {
+    version: 'v3.8.0',
+    date: '2026-09-24',
+    title: 'Selling Resources & Item-Level Revenue Accounting',
+    tag: 'Major',
+    tagColor: 'primary',
+    changes: [
+      { type: 'New', text: 'Selling Resources module — master data for selling resources (auto-generated SR-###### codes) and Resource Types (auto-generated RT-###### codes) with full CRUD, search, pagination, and soft delete under Settings → Selling Resources' },
+      { type: 'New', text: 'Resource Income report — a new analytical report in the Reports Center that shows revenue attributed to each selling resource, with resource/type/customer/invoice/status filters and summary totals (reporting only — no ledger impact)' },
+      { type: 'New', text: 'Sales Invoice integration — a "Selling Resource" selector on the invoice with a Quick Create (+) button to add resources inline without leaving the invoice' },
+      { type: 'New', text: 'Quick Create Warehouse — the Warehouse field on Sales Invoices now has an inline (+) button to add warehouses on the fly' },
+      { type: 'New', text: 'Item-level Income Account posting — Sales Invoice revenue is now credited per item Income Account (grouped by Chart of Account) instead of a single header Revenue Account' },
+      { type: 'New', text: 'Sales Return revenue reversal now uses item Income Accounts (grouped by Chart of Account), matching the original invoice posting' },
+      { type: 'Changed', text: 'Removed the header-level Revenue Account field, dropdown, and auto-selection from Sales Invoice; revenue accounts are derived automatically from each line item\'s Income Account' },
+      { type: 'Fixed', text: 'Posting is blocked with a clear message ("Income Account is not configured for item: …") when an invoice line\'s item has no Income Account, instead of silently posting to a default account' },
+    ],
+  },
+  {
     version: 'v3.6.0',
     date: '2026-09-15',
     title: 'Searchable Dropdowns, COA Quick Create & CPV/CRV Edit/Delete',
@@ -169,7 +186,7 @@ const ReleaseNotes = () => {
           <Typography variant="body2" color="text.secondary">Version history and changelog for EzeeFlo ERP</Typography>
         </Box>
         <Box sx={{ flex: 1 }} />
-        <Chip label="Current: v3.6.0" color="primary" />
+        <Chip label="Current: v3.8.0" color="primary" />
       </Box>
 
       {RELEASES.map((release) => {
