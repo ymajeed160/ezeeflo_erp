@@ -523,12 +523,6 @@ const SalesReturns = () => {
                     </Typography>
                   </Grid>
                   <Grid item xs={12} sm={4}>
-                    <Typography variant="caption" color="text.secondary" display="block">Sales Revenue</Typography>
-                    <Typography variant="body2" fontWeight={600}>
-                      {selected.revenueAccount ? `${selected.revenueAccount.code} - ${selected.revenueAccount.name}` : '-'}
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={12} sm={4}>
                     <Typography variant="caption" color="text.secondary" display="block">VAT Account</Typography>
                     <Typography variant="body2" fontWeight={600}>
                       {selected.taxAccount ? `${selected.taxAccount.code} - ${selected.taxAccount.name}` : '-'}
@@ -843,12 +837,16 @@ const SalesReturns = () => {
                   </Typography>
                 </Grid>
                 <Grid item xs={12}>
-                  <Typography variant="caption" color="text.secondary" display="block">Sales Revenue Account</Typography>
-                  <Typography variant="body1" fontWeight={600}>
-                    {postPreview.revenueAccount
-                      ? `${postPreview.revenueAccount.code} - ${postPreview.revenueAccount.name}`
-                      : 'Not resolved'}
-                  </Typography>
+                  <Typography variant="caption" color="text.secondary" display="block">Sales Revenue Accounts (from item Income Accounts)</Typography>
+                  {postPreview.revenueAccounts?.length ? (
+                    postPreview.revenueAccounts.map((ra, idx) => (
+                      <Typography key={idx} variant="body1" fontWeight={600}>
+                        {ra.account ? `${ra.account.code} - ${ra.account.name}` : 'Unknown account'} — {Number(ra.amount || 0).toFixed(2)}
+                      </Typography>
+                    ))
+                  ) : (
+                    <Typography variant="body1" fontWeight={600}>Not resolved</Typography>
+                  )}
                 </Grid>
                 {parseFloat(postPreview.taxTotal) > 0 && (
                   <Grid item xs={12}>

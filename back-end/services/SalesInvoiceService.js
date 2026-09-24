@@ -284,9 +284,9 @@ class SalesInvoiceService {
   /**
    * Resolve and persist the posting accounts for an invoice:
    * - Customer A/R  → Customer profile (arAccountId)
-   * - Sales Revenue → System Config (accounting → revenue_account)
    * - VAT Payable   → System Config (accounting → vat_payable)
-   * Explicit body values take precedence.
+   * Sales Revenue is derived per invoice line from each item's Income Account.
+   * Explicit body values take precedence (customer/tax only).
    */
   static async _resolveAndSetAccounts(tenantId, id, invoice, body, t) {
     const { Customer, SystemConfig } = require('../models');
@@ -298,21 +298,14 @@ class SalesInvoiceService {
       if (customer && customer.arAccountId) resolved.customerAccountId = customer.arAccountId;
     }
 
-    // Sales Revenue from System Config
-    if (!invoice.revenueAccountId) {
-      const cfg = await SystemConfig.findOne({ where: { tenantId, category: 'accounting', configKey: 'revenue_account' }, transaction: t });
-      if (cfg && cfg.configValue) resolved.revenueAccountId = cfg.configValue;
-    }
-
     // VAT Payable from System Config (only when tax exists)
     if (!invoice.taxAccountId && parseFloat(invoice.taxTotal) > 0) {
       const cfg = await SystemConfig.findOne({ where: { tenantId, category: 'accounting', configKey: 'vat_payable' }, transaction: t });
       if (cfg && cfg.configValue) resolved.taxAccountId = cfg.configValue;
     }
 
-    // Explicit overrides win
+    // Explicit overrides win (revenue is item-derived, not overridable at header level)
     if (body.customerAccountId) resolved.customerAccountId = body.customerAccountId;
-    if (body.revenueAccountId) resolved.revenueAccountId = body.revenueAccountId;
     if (body.taxAccountId) resolved.taxAccountId = body.taxAccountId;
 
     if (Object.keys(resolved).length) {
@@ -341,10 +334,14 @@ class SalesInvoiceService {
       if (c && c.arAccountId) customerAccountId = c.arAccountId;
     }
 
-    let revenueAccountId = invoice.revenueAccountId;
-    if (!revenueAccountId) {
-      const cfg = await SystemConfig.findOne({ where: { tenantId, category: 'accounting', configKey: 'revenue_account' } });
-      if (cfg && cfg.configValue) revenueAccountId = cfg.configValue;
+    // Revenue accounts are derived per line from each item's Income Account
+    const revenueMap = new Map();
+    for (const detail of invoice.details || []) {
+      const item = detail.item;
+      if (!item || !item.incomeAccountId) continue;
+      const lineAmount = parseFloat(detail.quantity || 0) * parseFloat(detail.unitPrice || 0);
+      const discountAmount = lineAmount * parseFloat(detail.discountPercent || 0) / 100;
+      revenueMap.set(item.incomeAccountId, (revenueMap.get(item.incomeAccountId) || 0) + (lineAmount - discountAmount));
     }
 
     let taxAccountId = invoice.taxAccountId;
@@ -353,11 +350,16 @@ class SalesInvoiceService {
       if (cfg && cfg.configValue) taxAccountId = cfg.configValue;
     }
 
-    const ids = [customerAccountId, revenueAccountId, taxAccountId].filter(Boolean);
+    const ids = [customerAccountId, taxAccountId, ...revenueMap.keys()].filter(Boolean);
     const accounts = await Account.findAll({ where: { id: { [Op.in]: ids }, tenantId } });
     const byId = {};
     accounts.forEach((a) => { byId[a.id] = a; });
     const fmt = (aid) => (byId[aid] ? { id: byId[aid].id, code: byId[aid].code, name: byId[aid].name, type: byId[aid].type } : null);
+
+    const revenueAccounts = [];
+    for (const [accountId, amount] of revenueMap) {
+      revenueAccounts.push({ account: fmt(accountId), amount: parseFloat(amount.toFixed(2)) });
+    }
 
     return {
       id: invoice.id,
@@ -368,7 +370,7 @@ class SalesInvoiceService {
       discountTotal: parseFloat(invoice.discountTotal),
       customer: invoice.customer ? { id: invoice.customer.id, name: invoice.customer.name } : null,
       customerAccount: fmt(customerAccountId),
-      revenueAccount: fmt(revenueAccountId),
+      revenueAccounts,
       taxAccount: fmt(taxAccountId),
     };
   }
@@ -390,15 +392,27 @@ class SalesInvoiceService {
       throw new Error('Customer Account is invalid, inactive, or belongs to a different tenant');
     }
 
-    // Revenue Account is required
-    if (!invoice.revenueAccountId) {
-      throw new Error('Sales Revenue Account is not configured on this invoice');
+    // Revenue is derived per invoice line from each item's Income Account (Chart of Account)
+    const incomeAccountIds = new Set();
+    for (const detail of invoice.details || []) {
+      if (!detail.itemId) continue;
+      const item = detail.item;
+      if (!item || !item.incomeAccountId) {
+        const itemName = item ? item.name : detail.itemId;
+        throw new Error(`Income Account is not configured for item: ${itemName}. Please configure the item's Income Account before posting this invoice.`);
+      }
+      incomeAccountIds.add(item.incomeAccountId);
     }
-    const revAccount = await Account.findOne({
-      where: { id: invoice.revenueAccountId, tenantId, isActive: true },
-    });
-    if (!revAccount) {
-      throw new Error('Sales Revenue Account is invalid, inactive, or belongs to a different tenant');
+    if (incomeAccountIds.size) {
+      const incomeAccounts = await Account.findAll({
+        where: { id: { [Op.in]: [...incomeAccountIds] }, tenantId, isActive: true },
+      });
+      const validIds = new Set(incomeAccounts.map((a) => a.id));
+      for (const aid of incomeAccountIds) {
+        if (!validIds.has(aid)) {
+          throw new Error('One or more item Income Accounts are invalid, inactive, or belong to a different tenant.');
+        }
+      }
     }
 
     // Tax Account is required when tax exists
@@ -417,13 +431,11 @@ class SalesInvoiceService {
 
   /**
    * Build journal entry lines for sales invoice
-   * 
-   * Uses accounts selected on the invoice (customerAccountId, revenueAccountId, taxAccountId).
-   * 
+   *
    * DR Accounts Receivable (Customer Account) - Grand Total
-   * CR Sales Revenue (Revenue Account) - Sub Total (net of discounts)
+   * CR Sales Revenue (per item Income Account, grouped by Chart of Account) - net of discounts
    * CR VAT Payable (Tax Account) - Tax Total
-   * 
+   *
    * If Inventory Impact is enabled, additional lines are generated:
    * DR Cost of Goods Sold (Item expenseAccountId)
    * CR Inventory Asset (Item inventoryAccountId)
@@ -439,17 +451,25 @@ class SalesInvoiceService {
       description: `Sales Invoice #${invoice.invoiceNumber}`,
     });
 
-    // 2. CR Sales Revenue - subtotal (net of discounts)
-    const subTotal = parseFloat(invoice.subTotal || 0);
-    const discountTotal = parseFloat(invoice.discountTotal || 0);
-    const netRevenue = subTotal - discountTotal;
-
-    lines.push({
-      accountId: invoice.revenueAccountId,
-      debit: 0,
-      credit: parseFloat(netRevenue.toFixed(2)),
-      description: `Sales Invoice #${invoice.invoiceNumber}`,
-    });
+    // 2. CR Sales Revenue per item Income Account (grouped by Chart of Account)
+    const revenueMap = new Map();
+    for (const detail of invoice.details || []) {
+      const item = detail.item;
+      if (!item || !item.incomeAccountId) continue;
+      const lineAmount = parseFloat(detail.quantity || 0) * parseFloat(detail.unitPrice || 0);
+      const discountAmount = lineAmount * parseFloat(detail.discountPercent || 0) / 100;
+      const netAmount = lineAmount - discountAmount;
+      revenueMap.set(item.incomeAccountId, (revenueMap.get(item.incomeAccountId) || 0) + netAmount);
+    }
+    for (const [accountId, amount] of revenueMap) {
+      if (amount === 0) continue;
+      lines.push({
+        accountId,
+        debit: 0,
+        credit: parseFloat(amount.toFixed(2)),
+        description: `Sales Invoice #${invoice.invoiceNumber}`,
+      });
+    }
 
     // 3. CR VAT Payable - taxTotal
     if (parseFloat(invoice.taxTotal) > 0 && invoice.taxAccountId) {

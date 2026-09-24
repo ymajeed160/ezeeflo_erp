@@ -38,7 +38,6 @@ class SalesInvoiceDTO {
       invoiceNumber: body.invoiceNumber,
       customerId: body.customerId,
       customerAccountId: body.customerAccountId || null,
-      revenueAccountId: body.revenueAccountId || null,
       taxAccountId: body.taxAccountId || null,
       salesOrderId: body.salesOrderId || null,
       deliveryNoteId: body.deliveryNoteId || null,
@@ -91,7 +90,6 @@ class SalesInvoiceDTO {
     return {
       customerId: body.customerId,
       customerAccountId: body.customerAccountId || null,
-      revenueAccountId: body.revenueAccountId || null,
       taxAccountId: body.taxAccountId || null,
       salesOrderId: body.salesOrderId || null,
       deliveryNoteId: body.deliveryNoteId || null,

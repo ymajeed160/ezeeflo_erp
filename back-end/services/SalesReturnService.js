@@ -418,13 +418,6 @@ class SalesReturnService {
       resolved.customerAccountId = customer.arAccountId;
     }
 
-    // Sales Revenue from System Config
-    if (!salesReturn.revenueAccountId) {
-      const cfg = await SystemConfig.findOne({ where: { tenantId, category: 'accounting', configKey: 'revenue_account' }, transaction: t });
-      if (!cfg || !cfg.configValue) throw new Error('Sales Revenue account is not configured in System Configuration.');
-      resolved.revenueAccountId = cfg.configValue;
-    }
-
     // VAT Payable from System Config (when VAT exists)
     if (!salesReturn.taxAccountId && parseFloat(salesReturn.taxTotal) > 0) {
       const cfg = await SystemConfig.findOne({ where: { tenantId, category: 'accounting', configKey: 'vat_payable' }, transaction: t });
@@ -458,10 +451,14 @@ class SalesReturnService {
       if (c && c.arAccountId) customerAccountId = c.arAccountId;
     }
 
-    let revenueAccountId = salesReturn.revenueAccountId;
-    if (!revenueAccountId) {
-      const cfg = await SystemConfig.findOne({ where: { tenantId, category: 'accounting', configKey: 'revenue_account' } });
-      if (cfg && cfg.configValue) revenueAccountId = cfg.configValue;
+    // Revenue accounts are derived per line from each item's Income Account
+    const revenueMap = new Map();
+    for (const detail of salesReturn.details || []) {
+      const item = detail.item;
+      if (!item || !item.incomeAccountId) continue;
+      const lineAmount = parseFloat(detail.quantity || 0) * parseFloat(detail.unitPrice || 0);
+      const discountAmount = lineAmount * parseFloat(detail.discountPercent || 0) / 100;
+      revenueMap.set(item.incomeAccountId, (revenueMap.get(item.incomeAccountId) || 0) + (lineAmount - discountAmount));
     }
 
     let taxAccountId = salesReturn.taxAccountId;
@@ -470,11 +467,16 @@ class SalesReturnService {
       if (cfg && cfg.configValue) taxAccountId = cfg.configValue;
     }
 
-    const ids = [customerAccountId, revenueAccountId, taxAccountId].filter(Boolean);
+    const ids = [customerAccountId, taxAccountId, ...revenueMap.keys()].filter(Boolean);
     const accounts = await Account.findAll({ where: { id: { [Op.in]: ids }, tenantId } });
     const byId = {};
     accounts.forEach((a) => { byId[a.id] = a; });
     const fmt = (aid) => (byId[aid] ? { id: byId[aid].id, code: byId[aid].code, name: byId[aid].name, type: byId[aid].type } : null);
+
+    const revenueAccounts = [];
+    for (const [accountId, amount] of revenueMap) {
+      revenueAccounts.push({ account: fmt(accountId), amount: parseFloat(amount.toFixed(2)) });
+    }
 
     return {
       id: salesReturn.id,
@@ -485,7 +487,7 @@ class SalesReturnService {
       discountTotal: parseFloat(salesReturn.discountTotal || 0),
       grandTotal: parseFloat(salesReturn.grandTotal || 0),
       customerAccount: fmt(customerAccountId),
-      revenueAccount: fmt(revenueAccountId),
+      revenueAccounts,
       taxAccount: fmt(taxAccountId),
     };
   }
@@ -665,15 +667,27 @@ class SalesReturnService {
       throw new Error('Customer Account is invalid, inactive, or belongs to a different tenant');
     }
 
-    // Revenue Account is required
-    if (!salesReturn.revenueAccountId) {
-      throw new Error('Sales Return/Revenue Account is required for posting');
+    // Revenue is derived per return line from each item's Income Account (Chart of Account)
+    const incomeAccountIds = new Set();
+    for (const detail of salesReturn.details || []) {
+      if (!detail.itemId) continue;
+      const item = detail.item;
+      if (!item || !item.incomeAccountId) {
+        const itemName = item ? item.name : detail.itemId;
+        throw new Error(`Income Account is not configured for item: ${itemName}. Please configure the item's Income Account before posting this return.`);
+      }
+      incomeAccountIds.add(item.incomeAccountId);
     }
-    const revAccount = await Account.findOne({
-      where: { id: salesReturn.revenueAccountId, tenantId, isActive: true },
-    });
-    if (!revAccount) {
-      throw new Error('Revenue Account is invalid, inactive, or belongs to a different tenant');
+    if (incomeAccountIds.size) {
+      const incomeAccounts = await Account.findAll({
+        where: { id: { [Op.in]: [...incomeAccountIds] }, tenantId, isActive: true },
+      });
+      const validIds = new Set(incomeAccounts.map((a) => a.id));
+      for (const aid of incomeAccountIds) {
+        if (!validIds.has(aid)) {
+          throw new Error('One or more item Income Accounts are invalid, inactive, or belong to a different tenant.');
+        }
+      }
     }
 
     // Tax Account is required when tax exists
@@ -691,9 +705,10 @@ class SalesReturnService {
   }
 
   /**
-   * Build journal entry lines for sales return posting using explicit accounts
+   * Build journal entry lines for sales return posting.
+   * Revenue is reversed per item Income Account (grouped by Chart of Account).
    *
-   * DR Sales Return/Revenue Account (revenueAccountId) - Sub Total (net of discounts)
+   * DR Sales Revenue (per item Income Account) - net of discounts
    * DR Tax Account (taxAccountId) - Tax Total
    * CR Customer Account (customerAccountId) - Grand Total
    *
@@ -704,17 +719,25 @@ class SalesReturnService {
   static async buildPostJournalLines(tenantId, salesReturn) {
     const lines = [];
 
-    // 1. DR Sales Return/Revenue - subtotal (net of discounts)
-    const subTotal = parseFloat(salesReturn.subTotal || 0);
-    const discountTotal = parseFloat(salesReturn.discountTotal || 0);
-    const netAmount = subTotal - discountTotal;
-
-    lines.push({
-      accountId: salesReturn.revenueAccountId,
-      debit: parseFloat(netAmount.toFixed(2)),
-      credit: 0,
-      description: `Sales Return #${salesReturn.returnNumber}`,
-    });
+    // 1. DR Sales Revenue per item Income Account (grouped by Chart of Account)
+    const revenueMap = new Map();
+    for (const detail of salesReturn.details || []) {
+      const item = detail.item;
+      if (!item || !item.incomeAccountId) continue;
+      const lineAmount = parseFloat(detail.quantity || 0) * parseFloat(detail.unitPrice || 0);
+      const discountAmount = lineAmount * parseFloat(detail.discountPercent || 0) / 100;
+      const netAmount = lineAmount - discountAmount;
+      revenueMap.set(item.incomeAccountId, (revenueMap.get(item.incomeAccountId) || 0) + netAmount);
+    }
+    for (const [accountId, amount] of revenueMap) {
+      if (amount === 0) continue;
+      lines.push({
+        accountId,
+        debit: parseFloat(amount.toFixed(2)),
+        credit: 0,
+        description: `Sales Return #${salesReturn.returnNumber}`,
+      });
+    }
 
     // 2. DR Tax Account - taxTotal
     if (parseFloat(salesReturn.taxTotal) > 0 && salesReturn.taxAccountId) {

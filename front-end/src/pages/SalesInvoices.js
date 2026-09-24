@@ -110,9 +110,7 @@ const SalesInvoices = () => {
   const [generateFromSO, setGenerateFromSO] = useState(false);
   const [generateFromDN, setGenerateFromDN] = useState(false);
   const [arAccounts, setArAccounts] = useState([]);
-  const [revenueAccounts, setRevenueAccounts] = useState([]);
   const [taxAccounts, setTaxAccounts] = useState([]);
-  const [configRevenueAccountId, setConfigRevenueAccountId] = useState('');
   const [configVatPayableId, setConfigVatPayableId] = useState('');
   const [openPostDialog, setOpenPostDialog] = useState(false);
   const [postTarget, setPostTarget] = useState(null);
@@ -142,7 +140,6 @@ const SalesInvoices = () => {
       termsConditions: '',
       isInventoryImpact: false,
       customerAccountId: '',
-      revenueAccountId: '',
       taxAccountId: '',
       sellingResourceId: '',
       details: [{ itemId: '', description: '', quantity: 1, unitPrice: 0, taxPercent: 0, discountPercent: 0, costPrice: 0 }],
@@ -168,14 +165,12 @@ const SalesInvoices = () => {
   useEffect(() => {
     const loadAccounts = async () => {
       try {
-        const [arRes, revRes, taxRes] = await Promise.all([
+        const [arRes, taxRes] = await Promise.all([
           accountApi.getByType('asset'),
-          accountApi.getByType('revenue'),
           accountApi.getByType('liability'),
         ]);
         // API returns { success: true, data: [...] }
         setArAccounts(arRes.data || []);
-        setRevenueAccounts(revRes.data || []);
         // Filter liability accounts to ones likely for VAT/Tax
         const allLiabilities = taxRes.data || [];
         setTaxAccounts(allLiabilities);
@@ -189,7 +184,6 @@ const SalesInvoices = () => {
         const cfgRes = await SystemConfigApi.getAll();
         const configMap = cfgRes.data?.configs || cfgRes.configs || cfgRes.data || {};
         const accounting = configMap.accounting || {};
-        if (accounting.revenue_account) setConfigRevenueAccountId(accounting.revenue_account);
         if (accounting.vat_payable) setConfigVatPayableId(accounting.vat_payable);
       } catch (err) {
         console.error('Failed to load accounting system config:', err);
@@ -200,13 +194,7 @@ const SalesInvoices = () => {
     loadConfigDefaults();
   }, []);
 
-  // Auto-resolve Sales Revenue + VAT Payable from System Config (accounting tab)
-  useEffect(() => {
-    if (configRevenueAccountId && !watch('revenueAccountId')) {
-      setValue('revenueAccountId', configRevenueAccountId);
-    }
-  }, [configRevenueAccountId, watch, setValue]);
-
+  // Auto-resolve VAT Payable from System Config (accounting tab)
   useEffect(() => {
     if (configVatPayableId && !watch('taxAccountId')) {
       setValue('taxAccountId', configVatPayableId);
@@ -238,7 +226,6 @@ const SalesInvoices = () => {
           termsConditions: '',
           isInventoryImpact: false,
           customerAccountId: '',
-          revenueAccountId: configRevenueAccountId,
           taxAccountId: configVatPayableId,
           sellingResourceId: '',
           details: lines.length > 0 ? lines.map((l) => ({
@@ -263,7 +250,6 @@ const SalesInvoices = () => {
   useEffect(() => {
     if (selected && openPostDialog && postTarget) {
       setValue('customerAccountId', selected.customerAccountId || '');
-      setValue('revenueAccountId', selected.revenueAccountId || '');
       setValue('taxAccountId', selected.taxAccountId || '');
     }
   }, [selected, openPostDialog, postTarget, setValue]);
@@ -288,7 +274,6 @@ const SalesInvoices = () => {
         termsConditions: selected.termsConditions || '',
         isInventoryImpact: selected.isInventoryImpact || false,
         customerAccountId: selected.customerAccountId || '',
-        revenueAccountId: selected.revenueAccountId || configRevenueAccountId,
         taxAccountId: selected.taxAccountId || configVatPayableId,
         sellingResourceId: selected.sellingResourceId || '',
         details: selected.details?.length ? selected.details.map((d) => ({
@@ -322,7 +307,6 @@ const SalesInvoices = () => {
       termsConditions: '',
       isInventoryImpact: false,
       customerAccountId: '',
-      revenueAccountId: configRevenueAccountId,
       taxAccountId: configVatPayableId,
       sellingResourceId: '',
       details: [{ itemId: '', description: '', quantity: 1, unitPrice: 0, taxPercent: 0, discountPercent: 0, costPrice: 0 }],
@@ -518,7 +502,6 @@ const SalesInvoices = () => {
       customerId: data.customerId,
       warehouseId: data.warehouseId || null,
       customerAccountId: data.customerAccountId || null,
-      revenueAccountId: data.revenueAccountId || null,
       taxAccountId: data.taxAccountId || null,
       sellingResourceId: data.sellingResourceId || null,
       details: data.details.map((d) => ({
@@ -607,8 +590,8 @@ const SalesInvoices = () => {
     setValue(`details.${index}.unitPrice`, item.sellingPrice || 0);
     setValue(`details.${index}.costPrice`, item.costPrice || 0);
     setValue(`details.${index}.taxPercent`, item.taxPercent || item.taxPercentage || 0);
-    // Sales Revenue + VAT Payable are resolved from System Config (accounting tab) —
-    // do NOT override them from the item.
+    // Sales Revenue is derived from the item's Income Account at posting time;
+    // VAT Payable is resolved from System Config (accounting tab).
   };
 
   const renderFormDialog = () => (
@@ -777,7 +760,7 @@ const SalesInvoices = () => {
           </Typography>
           <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
             <Grid container spacing={2}>
-              <Grid item xs={12} sm={4}>
+              <Grid item xs={12} sm={6}>
                 <Controller
                   name="customerAccountId"
                   control={control}
@@ -796,26 +779,7 @@ const SalesInvoices = () => {
                   )}
                 />
               </Grid>
-              <Grid item xs={12} sm={4}>
-                <Controller
-                  name="revenueAccountId"
-                  control={control}
-                  render={({ field }) => (
-                    <Autocomplete
-                      disabled
-                      value={revenueAccounts.find((a) => a.id === field.value) || null}
-                      onChange={(_, val) => field.onChange(val ? val.id : '')}
-                      options={revenueAccounts}
-                      getOptionLabel={(opt) => `${opt.code} - ${opt.name}`}
-                      isOptionEqualToValue={(opt, val) => opt.id === val.id}
-                      renderInput={(params) => (
-                        <TextField {...params} label="Sales Revenue Account" size="small" helperText="Auto from Settings → Accounting" />
-                      )}
-                    />
-                  )}
-                />
-              </Grid>
-              <Grid item xs={12} sm={4}>
+              <Grid item xs={12} sm={6}>
                 <Controller
                   name="taxAccountId"
                   control={control}
@@ -1200,12 +1164,16 @@ const SalesInvoices = () => {
                 </Typography>
               </Grid>
               <Grid item xs={12}>
-                <Typography variant="caption" color="text.secondary">Sales Revenue Account</Typography>
-                <Typography variant="body1" fontWeight={600}>
-                  {postPreview?.revenueAccount
-                    ? `${postPreview.revenueAccount.code} - ${postPreview.revenueAccount.name}`
-                    : 'Not configured'}
-                </Typography>
+                <Typography variant="caption" color="text.secondary">Sales Revenue Accounts (from item Income Accounts)</Typography>
+                {postPreview?.revenueAccounts?.length ? (
+                  postPreview.revenueAccounts.map((ra, idx) => (
+                    <Typography key={idx} variant="body1" fontWeight={600}>
+                      {ra.account ? `${ra.account.code} - ${ra.account.name}` : 'Unknown account'} — {Number(ra.amount || 0).toFixed(2)}
+                    </Typography>
+                  ))
+                ) : (
+                  <Typography variant="body1" fontWeight={600}>Not configured</Typography>
+                )}
               </Grid>
               <Grid item xs={12}>
                 <Typography variant="caption" color="text.secondary">Tax Account (VAT Payable)</Typography>
