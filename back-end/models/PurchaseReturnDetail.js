@@ -6,6 +6,8 @@ module.exports = (sequelize, DataTypes) => {
     purchaseReturnId: { type: DataTypes.UUID, allowNull: false },
     purchaseInvoiceLineId: { type: DataTypes.UUID, allowNull: true },
     itemId: { type: DataTypes.UUID, allowNull: false },
+    variantId: { type: DataTypes.UUID, allowNull: true },
+    variantDescription: { type: DataTypes.STRING(500), allowNull: true },
     description: { type: DataTypes.STRING(500), allowNull: true },
     quantity: { type: DataTypes.DECIMAL(18, 4), allowNull: false },
     unitCost: { type: DataTypes.DECIMAL(18, 4), allowNull: false },

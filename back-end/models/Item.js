@@ -110,6 +110,15 @@ const Item = sequelize.define('Item', {
     allowNull: false,
     defaultValue: true,
   },
+  isVariantEnabled: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+  },
+  attributeTemplateId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+  },
   incomeAccountId: {
     type: DataTypes.UUID,
     allowNull: true,

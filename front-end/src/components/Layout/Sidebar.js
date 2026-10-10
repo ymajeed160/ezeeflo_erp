@@ -116,6 +116,8 @@ const menuItems = [
     subItems: [
       { text: 'Items', path: '/app/inventory/items' },
       { text: 'Item Categories', path: '/app/inventory/item-categories' },
+      { text: 'Attributes', path: '/app/inventory/attributes' },
+      { text: 'Attribute Templates', path: '/app/inventory/attribute-templates' },
       { text: 'Warehouses', path: '/app/inventory/warehouses' },
       { text: 'Stock Transfers', path: '/app/inventory/transfers' },
       { text: 'Stock Adjustments', path: '/app/inventory/adjustments' },

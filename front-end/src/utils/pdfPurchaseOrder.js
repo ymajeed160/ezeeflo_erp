@@ -121,7 +121,7 @@ export async function generatePurchaseOrderPdf(order, companyInfo = null) {
     const tp = parseFloat(line.taxPercent || line.taxPercentage || 0);
     const ta = lt * tp / 100;
     return [
-      line.description || line.item?.name || '-',
+      line.variantDescription || line.description || line.item?.name || '-',
       qty.toString(),
       `${formatCurrency(up, currencyCode)}`,
       tp > 0 ? `${formatCurrency(ta, currencyCode)}` : '-',

@@ -17,6 +17,8 @@ import JournalEntries from './pages/JournalEntries';
 import GeneralLedger from './pages/GeneralLedger';
 import ItemCategories from './pages/ItemCategories';
 import Items from './pages/Items';
+import ItemAttributes from './pages/ItemAttributes';
+import ItemAttributeTemplates from './pages/ItemAttributeTemplates';
 import Warehouses from './pages/Warehouses';
 import StockAdjustments from './pages/StockAdjustments';
 import StockTransfers from './pages/StockTransfers';
@@ -387,6 +389,10 @@ const App = () => {
             <Route path="/app/inventory/items/new" element={<Items />} />
             <Route path="/app/inventory/items/:id/edit" element={<Items />} />
             <Route path="/app/inventory/item-categories" element={<ItemCategories />} />
+
+            {/* Inventory - Attributes & Templates */}
+            <Route path="/app/inventory/attributes" element={<ItemAttributes />} />
+            <Route path="/app/inventory/attribute-templates" element={<ItemAttributeTemplates />} />
 
             {/* Inventory - Warehouses */}
             <Route path="/app/inventory/warehouses" element={<Warehouses />} />

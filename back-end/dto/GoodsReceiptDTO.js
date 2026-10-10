@@ -5,6 +5,8 @@ class GoodsReceiptDetailDTO {
     this.id = data.id || null;
     this.goodsReceiptId = data.goodsReceiptId || null;
     this.itemId = data.itemId || null;
+    this.variantId = data.variantId || null;
+    this.variantDescription = data.variantDescription || null;
     this.itemName = data.item ? (data.item.itemName || data.item.name) : (data.itemName || null);
     this.description = data.description || '';
     this.orderedQuantity = parseFloat(data.orderedQuantity || 0);

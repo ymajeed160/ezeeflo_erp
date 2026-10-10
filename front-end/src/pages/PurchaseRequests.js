@@ -22,6 +22,7 @@ import { fetchItems } from '../store/slices/itemSlice';
 import { generateFromPR } from '../store/slices/purchaseOrderSlice';
 import { apiSuccess, apiError } from '../utils/toast';
 import QuickCreate from '../components/QuickCreate/QuickCreate';
+import VariantSelectorDialog from '../components/VariantSelectorDialog';
 
 const INITIAL_FORM = {
   requestDate: new Date().toISOString().split('T')[0],
@@ -65,6 +66,7 @@ const PurchaseRequests = () => {
   const [currentPage, setCurrentPage] = useState(0);
   const [reasonText, setReasonText] = useState('');
   const [reasonAction, setReasonAction] = useState(null); // 'delete' | 'cancel'
+  const [variantDialog, setVariantDialog] = useState({ open: false, item: null, lineIndex: null });
 
   const loadData = useCallback((query = {}) => {
     const params = {
@@ -96,6 +98,8 @@ const PurchaseRequests = () => {
             id: d.id,
             itemId: d.itemId || '',
             item: d.item || null,
+            variantId: d.variantId || '',
+            variantDescription: d.variantDescription || '',
             description: d.description || '',
             quantity: d.quantity || 0,
             requiredDate: d.requiredDate ? d.requiredDate.split('T')[0] : '',
@@ -128,6 +132,8 @@ const PurchaseRequests = () => {
             id: d.id,
             itemId: d.itemId || '',
             item: d.item || null,
+            variantId: d.variantId || '',
+            variantDescription: d.variantDescription || '',
             description: d.description || '',
             quantity: d.quantity || 0,
             requiredDate: d.requiredDate ? d.requiredDate.split('T')[0] : '',
@@ -192,6 +198,8 @@ const PurchaseRequests = () => {
       requestedBy: currentUser?.id || form.requestedBy,
       details: form.details.map((d) => ({
         itemId: d.itemId,
+        variantId: d.variantId || null,
+        variantDescription: d.variantDescription || null,
         description: d.description,
         quantity: parseFloat(d.quantity),
         requiredDate: d.requiredDate || null,
@@ -253,6 +261,8 @@ const PurchaseRequests = () => {
         {
           itemId: '',
           item: null,
+          variantId: '',
+          variantDescription: '',
           description: '',
           quantity: 1,
           requiredDate: '',
@@ -270,6 +280,19 @@ const PurchaseRequests = () => {
   };
 
   const handleLineChange = (index, field, value) => {
+    // Open the variant dialog OUTSIDE the setForm updater — calling another
+    // setState inside the updater is unreliable (the popup only appeared on a
+    // later re-render, e.g. when clicking Cancel).
+    if (field === 'item' && value && value.isVariantEnabled) {
+      setForm((prev) => {
+        const details = [...prev.details];
+        details[index] = { ...details[index], itemId: value.id, item: value };
+        return { ...prev, details };
+      });
+      setVariantDialog({ open: true, item: value, lineIndex: index });
+      return;
+    }
+
     setForm((prev) => {
       const details = [...prev.details];
       if (field === 'item') {
@@ -277,7 +300,9 @@ const PurchaseRequests = () => {
           ...details[index],
           itemId: value ? value.id : '',
           item: value,
-          description: value ? value.name : '',
+          variantId: '',
+          variantDescription: '',
+          description: value ? value.name || '' : '',
         };
       } else {
         details[index] = { ...details[index], [field]: value };
@@ -466,7 +491,14 @@ const PurchaseRequests = () => {
                         <TableCell>{index + 1}</TableCell>
                         <TableCell sx={{ minWidth: 200 }}>
                           {isView ? (
-                            line.item?.name || line.itemId
+                            <Box>
+                              <Typography variant="body2">{line.item?.name || line.itemId}</Typography>
+                              {(line.variantDescription || line.description) && (
+                                <Typography variant="caption" color="text.secondary">
+                                  {line.variantDescription || line.description}
+                                </Typography>
+                              )}
+                            </Box>
                           ) : (
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                               <Autocomplete
@@ -492,6 +524,20 @@ const PurchaseRequests = () => {
                                   handleLineChange(index, 'item', it);
                                 }}
                               />
+                              {line.variantDescription && (
+                                <Chip
+                                  size="small"
+                                  color="primary"
+                                  variant="outlined"
+                                  label={line.variantDescription}
+                                  onClick={() => setVariantDialog({ open: true, item: line.item, lineIndex: index })}
+                                  onDelete={() => {
+                                    handleLineChange(index, 'variantId', '');
+                                    handleLineChange(index, 'variantDescription', '');
+                                    handleLineChange(index, 'description', '');
+                                  }}
+                                />
+                              )}
                             </Box>
                           )}
                         </TableCell>
@@ -566,6 +612,21 @@ const PurchaseRequests = () => {
             </Button>
           )}
         </Box>
+
+        <VariantSelectorDialog
+          open={variantDialog.open}
+          item={variantDialog.item}
+          onClose={() => setVariantDialog({ open: false, item: null, lineIndex: null })}
+          onConfirm={(variant) => {
+            const idx = variantDialog.lineIndex;
+            if (idx !== null && idx !== undefined) {
+              handleLineChange(idx, 'variantId', variant.variantId || '');
+              handleLineChange(idx, 'variantDescription', variant.variantDescription || '');
+              handleLineChange(idx, 'description', variant.variantDescription || '');
+            }
+            setVariantDialog({ open: false, item: null, lineIndex: null });
+          }}
+        />
       </Box>
     );
   }

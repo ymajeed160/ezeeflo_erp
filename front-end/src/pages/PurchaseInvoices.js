@@ -40,6 +40,7 @@ import { generatePurchaseInvoicePdf } from '../utils/pdfPurchaseInvoice';
 import PdfViewer from '../components/PdfViewer';
 import QuickCreate from '../components/QuickCreate/QuickCreate';
 import PaginationBar from '../components/PaginationBar';
+import VariantSelectorDialog from '../components/VariantSelectorDialog';
 
 const statusColors = {
   draft: { label: 'Draft', color: 'warning' },
@@ -50,7 +51,7 @@ const statusColors = {
   paid: { label: 'Paid', color: 'primary' },
 };
 
-const emptyDetail = () => ({ itemId: '', description: '', quantity: 1, unitCost: 0, taxRate: 0, discountAmount: 0 });
+const emptyDetail = () => ({ itemId: '', variantId: '', variantDescription: '', description: '', quantity: 1, unitCost: 0, taxRate: 0, discountAmount: 0 });
 
 const PurchaseInvoices = () => {
   const dispatch = useDispatch();
@@ -102,6 +103,7 @@ const PurchaseInvoices = () => {
   const [confirmFetching, setConfirmFetching] = useState(false);
   const [reasonDialog, setReasonDialog] = useState({ open: false, action: null, target: null });
   const [reasonText, setReasonText] = useState('');
+  const [variantDialog, setVariantDialog] = useState({ open: false, item: null, lineIndex: null });
   const activeCompany = useSelector((s) => s.company?.activeCompany || null);
 
   const loadData = useCallback(() => {
@@ -174,6 +176,8 @@ const PurchaseInvoices = () => {
         details: (selectedItem.details || selectedItem.PurchaseInvoiceDetails || []).length
           ? (selectedItem.details || selectedItem.PurchaseInvoiceDetails || []).map((d) => ({
               itemId: d.itemId || '',
+              variantId: d.variantId || '',
+              variantDescription: d.variantDescription || '',
               description: d.description || '',
               quantity: d.quantity || 1,
               unitCost: d.unitCost || 0,
@@ -191,6 +195,8 @@ const PurchaseInvoices = () => {
       ...form,
       items: form.details.map((d) => ({
         itemId: d.itemId,
+        variantId: d.variantId || null,
+        variantDescription: d.variantDescription || null,
         description: d.description,
         quantity: parseFloat(d.quantity),
         unitCost: parseFloat(d.unitCost),
@@ -849,9 +855,16 @@ const PurchaseInvoices = () => {
                     <TableRow key={idx}>
                       <TableCell>
                         {viewMode ? (
-                          <Typography variant="body2">
-                            {itemsList.find((i) => String(i.id) === String(line.itemId))?.name || itemsList.find((i) => String(i.id) === String(line.itemId))?.itemName || line.itemId}
-                          </Typography>
+                          <Box>
+                            <Typography variant="body2">
+                              {itemsList.find((i) => String(i.id) === String(line.itemId))?.name || itemsList.find((i) => String(i.id) === String(line.itemId))?.itemName || line.itemId}
+                            </Typography>
+                            {(line.variantDescription || line.description) && (
+                              <Typography variant="caption" color="text.secondary">
+                                {line.variantDescription || line.description}
+                              </Typography>
+                            )}
+                          </Box>
                         ) : (
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                             <Autocomplete
@@ -864,8 +877,22 @@ const PurchaseInvoices = () => {
                               }}
                               value={itemsList.find((i) => String(i.id) === String(line.itemId)) || null}
                               onChange={(e, item) => {
-                                updateDetail(idx, 'itemId', item ? item.id : '');
-                                if (item) updateDetail(idx, 'description', item.description || item.itemName || '');
+                                if (!item) {
+                                  updateDetail(idx, 'itemId', '');
+                                  updateDetail(idx, 'variantId', '');
+                                  updateDetail(idx, 'variantDescription', '');
+                                  updateDetail(idx, 'description', '');
+                                  return;
+                                }
+                                updateDetail(idx, 'itemId', item.id);
+                                if (item.isVariantEnabled) {
+                                  // Prompt for the attribute options from the template.
+                                  setVariantDialog({ open: true, item, lineIndex: idx });
+                                } else {
+                                  updateDetail(idx, 'variantId', '');
+                                  updateDetail(idx, 'variantDescription', '');
+                                  updateDetail(idx, 'description', item.description || item.itemName || '');
+                                }
                               }}
                               isOptionEqualToValue={(opt, val) => String(opt.id) === String(val.id)}
                               renderInput={(params) => <TextField {...params} placeholder="Select Item" />}
@@ -878,6 +905,21 @@ const PurchaseInvoices = () => {
                                 updateDetail(idx, 'itemId', it.id);
                               }}
                             />
+                            {line.variantDescription && (
+                              <Chip
+                                size="small"
+                                color="primary"
+                                variant="outlined"
+                                label={line.variantDescription}
+                                onClick={() => setVariantDialog({ open: true, item: itemsList.find((i) => String(i.id) === String(line.itemId)), lineIndex: idx })}
+                                onDelete={() => {
+                                  updateDetail(idx, 'variantId', '');
+                                  updateDetail(idx, 'variantDescription', '');
+                                  updateDetail(idx, 'description', '');
+                                }}
+                                title="Click to change variant, × to remove"
+                              />
+                            )}
                           </Box>
                         )}
                       </TableCell>
@@ -1178,6 +1220,22 @@ const PurchaseInvoices = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Variant selection dialog */}
+      <VariantSelectorDialog
+        open={variantDialog.open}
+        item={variantDialog.item}
+        onClose={() => setVariantDialog({ open: false, item: null, lineIndex: null })}
+        onConfirm={(variant) => {
+          const idx = variantDialog.lineIndex;
+          if (idx !== null && idx !== undefined) {
+            updateDetail(idx, 'variantId', variant.variantId || '');
+            updateDetail(idx, 'variantDescription', variant.variantDescription || '');
+            updateDetail(idx, 'description', variant.variantDescription || '');
+          }
+          setVariantDialog({ open: false, item: null, lineIndex: null });
+        }}
+      />
     </Box>
   );
 };

@@ -20,6 +20,8 @@ import accountApi from '../services/accountApi';
 import SystemConfigApi from '../services/systemConfigApi';
 import QuickCreate from '../components/QuickCreate/QuickCreate';
 import PaginationBar from '../components/PaginationBar';
+import ItemVariantsPanel from '../components/ItemVariantsPanel';
+import itemAttributeTemplateApi from '../services/itemAttributeTemplateApi';
 
 const ITEM_TYPES = [
   { value: 'product', label: 'Product' },
@@ -66,6 +68,9 @@ const Items = () => {
   const [accounts, setAccounts] = useState([]);
   const [accountsLoading, setAccountsLoading] = useState(false);
 
+  // Attribute templates for variant-enabled items
+  const [templates, setTemplates] = useState([]);
+
   // Item definitions (model, size, ram, etc.)
   const [itemDefinitions, setItemDefinitions] = useState([]);
 
@@ -88,6 +93,8 @@ const Items = () => {
     sellingPrice: '',
     taxPercentage: '',
     isInventoryTracked: true,
+    isVariantEnabled: false,
+    attributeTemplateId: '',
     incomeAccountId: '',
     expenseAccountId: '',
     inventoryAccountId: '',
@@ -104,6 +111,7 @@ const Items = () => {
         itemType: 'product', unitOfMeasure: 'Each',
         costPrice: '', sellingPrice: '', taxPercentage: '',
         isInventoryTracked: true,
+        isVariantEnabled: false, attributeTemplateId: '',
         incomeAccountId: '', expenseAccountId: '', inventoryAccountId: '',
         isActive: true,
       });
@@ -128,6 +136,8 @@ const Items = () => {
         sellingPrice: currentItem.sellingPrice != null ? String(currentItem.sellingPrice) : '',
         taxPercentage: currentItem.taxPercentage != null ? String(currentItem.taxPercentage) : '',
         isInventoryTracked: currentItem.isInventoryTracked !== false,
+        isVariantEnabled: currentItem.isVariantEnabled === true,
+        attributeTemplateId: currentItem.attributeTemplateId || '',
         incomeAccountId: currentItem.incomeAccountId || '',
         expenseAccountId: currentItem.expenseAccountId || '',
         inventoryAccountId: currentItem.inventoryAccountId || '',
@@ -184,6 +194,20 @@ const Items = () => {
     loadDefs();
   }, []);
 
+  // Load attribute templates for variant-enabled items
+  useEffect(() => {
+    const loadTemplates = async () => {
+      try {
+        const res = await itemAttributeTemplateApi.getAll({ limit: 100 });
+        setTemplates(res.data || res.rows || []);
+      } catch (err) {
+        console.error('Failed to load attribute templates:', err);
+        setTemplates([]);
+      }
+    };
+    loadTemplates();
+  }, []);
+
   // Load current item for edit/view
   useEffect(() => {
     if (id && !isNew) {
@@ -238,6 +262,8 @@ const Items = () => {
       sellingPrice: form.sellingPrice ? Number(form.sellingPrice) : null,
       taxPercentage: form.taxPercentage ? Number(form.taxPercentage) : null,
       isInventoryTracked: form.itemType === 'service' ? false : form.isInventoryTracked,
+      isVariantEnabled: form.itemType === 'service' ? false : form.isVariantEnabled,
+      attributeTemplateId: form.attributeTemplateId || null,
       incomeAccountId: form.incomeAccountId || null,
       expenseAccountId: form.expenseAccountId || null,
       inventoryAccountId: form.itemType === 'service' ? null : (form.inventoryAccountId || null),
@@ -297,6 +323,16 @@ const Items = () => {
 
   const itemTypeOption = (type) => ITEM_TYPES.find((t) => t.value === type) || null;
   const uomOption = UOM_OPTIONS.find((u) => u.value === form.unitOfMeasure) || UOM_OPTIONS[0];
+
+  // Attribute template options
+  const templateOptions = useMemo(() => {
+    return templates.map((t) => ({ id: t.id, label: t.name }));
+  }, [templates]);
+
+  const findTemplateOption = (templateId) => {
+    if (!templateId) return null;
+    return templateOptions.find((t) => t.id === templateId) || null;
+  };
 
   // Definition options for each category
   const getDefOptions = (cat) => {
@@ -368,6 +404,7 @@ const Items = () => {
         <Typography variant="caption" color="text.secondary">Description</Typography>
         <Typography>{item.description || 'No description'}</Typography>
       </Box>
+      <ItemVariantsPanel itemId={item.id} item={item} />
       <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
         <Box>
           <Typography variant="caption" color="text.secondary">Income Account</Typography>
@@ -436,83 +473,6 @@ const Items = () => {
             multiline
             rows={2}
             fullWidth
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Autocomplete
-            freeSolo
-            options={modelOptions}
-            value={modelOptions.find(o => o.value === form.model) || null}
-            inputValue={form.model || ''}
-            onInputChange={(_, v) => setForm({ ...form, model: v })}
-            onChange={(_, v) => setForm({ ...form, model: v?.value || '' })}
-            renderInput={(params) => <TextField {...params} label="Model" fullWidth />}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Autocomplete
-            freeSolo
-            options={sizeOptions}
-            value={sizeOptions.find(o => o.value === form.size) || null}
-            inputValue={form.size || ''}
-            onInputChange={(_, v) => setForm({ ...form, size: v })}
-            onChange={(_, v) => setForm({ ...form, size: v?.value || '' })}
-            renderInput={(params) => <TextField {...params} label="Size" fullWidth />}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Autocomplete
-            freeSolo
-            options={ramOptions}
-            value={ramOptions.find(o => o.value === form.ram) || null}
-            inputValue={form.ram || ''}
-            onInputChange={(_, v) => setForm({ ...form, ram: v })}
-            onChange={(_, v) => setForm({ ...form, ram: v?.value || '' })}
-            renderInput={(params) => <TextField {...params} label="RAM" fullWidth placeholder="e.g. 16GB" />}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Autocomplete
-            freeSolo
-            options={processorOptions}
-            value={processorOptions.find(o => o.value === form.processor) || null}
-            inputValue={form.processor || ''}
-            onInputChange={(_, v) => setForm({ ...form, processor: v })}
-            onChange={(_, v) => setForm({ ...form, processor: v?.value || '' })}
-            renderInput={(params) => <TextField {...params} label="Processor" fullWidth placeholder="e.g. Intel i7" />}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Autocomplete
-            freeSolo
-            options={ssdOptions}
-            value={ssdOptions.find(o => o.value === form.ssd) || null}
-            inputValue={form.ssd || ''}
-            onInputChange={(_, v) => setForm({ ...form, ssd: v })}
-            onChange={(_, v) => setForm({ ...form, ssd: v?.value || '' })}
-            renderInput={(params) => <TextField {...params} label="SSD" fullWidth placeholder="e.g. 512GB" />}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Autocomplete
-            freeSolo
-            options={generationOptions}
-            value={generationOptions.find(o => o.value === form.generation) || null}
-            inputValue={form.generation || ''}
-            onInputChange={(_, v) => setForm({ ...form, generation: v })}
-            onChange={(_, v) => setForm({ ...form, generation: v?.value || '' })}
-            renderInput={(params) => <TextField {...params} label="Generation" fullWidth placeholder="e.g. 12th Gen" />}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Autocomplete
-            freeSolo
-            options={colourOptions}
-            value={colourOptions.find(o => o.value === form.colour) || null}
-            inputValue={form.colour || ''}
-            onInputChange={(_, v) => setForm({ ...form, colour: v })}
-            onChange={(_, v) => setForm({ ...form, colour: v?.value || '' })}
-            renderInput={(params) => <TextField {...params} label="Colour" fullWidth />}
           />
         </Grid>
         <Grid item xs={12} sm={6}>
@@ -635,6 +595,38 @@ const Items = () => {
             }
             label="Active"
           />
+        </Grid>
+        <Grid item xs={12}>
+          <Box sx={{ borderTop: '1px solid', borderColor: 'divider', pt: 2 }}>
+            <Typography variant="subtitle2" fontWeight={600} gutterBottom>Attributes &amp; Variants</Typography>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={form.isVariantEnabled}
+                  onChange={(e) => setForm({ ...form, isVariantEnabled: e.target.checked })}
+                  disabled={form.itemType === 'service'}
+                />
+              }
+              label="Supports Variants"
+            />
+            {form.isVariantEnabled && (
+              <Autocomplete
+                options={templateOptions}
+                value={findTemplateOption(form.attributeTemplateId)}
+                onChange={(_, v) => setForm({ ...form, attributeTemplateId: v?.id || '' })}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Attribute Template"
+                    fullWidth
+                    size="small"
+                    helperText="The template defines which attributes produce distinct variants"
+                  />
+                )}
+                sx={{ mt: 1, maxWidth: 420 }}
+              />
+            )}
+          </Box>
         </Grid>
       </Grid>
     </Box>

@@ -110,7 +110,7 @@ class GoodsReceiptRepository {
     return true;
   }
 
-  async getAlreadyReceivedQty(tenantId, purchaseOrderId, itemId, excludeGoodsReceiptId = null) {
+  async getAlreadyReceivedQty(tenantId, purchaseOrderId, itemId, excludeGoodsReceiptId = null, variantId = null) {
     if (!purchaseOrderId) return 0;
     const whereClause = {
       goodsReceiptId: { [Op.in]: sequelize.literal(
@@ -118,6 +118,11 @@ class GoodsReceiptRepository {
       ) },
       itemId,
     };
+    // Track received quantity per variant so different configurations of the
+    // same parent item do not consume each other's ordered quantity.
+    if (variantId) {
+      whereClause.variantId = variantId;
+    }
     const result = await GoodsReceiptDetail.sum('receivedQuantity', { where: whereClause });
     return parseFloat(result || 0);
   }

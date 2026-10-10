@@ -9,12 +9,13 @@ class InventoryService {
   /**
    * Increase inventory (e.g. from Goods Receipt or Purchase Return reversal).
    */
-  static async addStock(tenantId, itemId, warehouseId, quantity, unitCost, referenceInfo, transaction) {
+  static async addStock(tenantId, itemId, warehouseId, quantity, unitCost, referenceInfo, transaction, variantId = null) {
     const totalCost = quantity * unitCost;
     const InventoryTransactionService = require('./InventoryTransactionService');
     return InventoryTransactionService.recordTransaction({
       tenantId,
       itemId,
+      variantId,
       warehouseId,
       transactionType: 'purchase',
       referenceId: referenceInfo.id,
@@ -29,12 +30,13 @@ class InventoryService {
   /**
    * Decrease inventory (e.g. from Sales Delivery or Purchase Return).
    */
-  static async reduceStock(tenantId, itemId, warehouseId, quantity, unitCost, referenceInfo, transaction) {
+  static async reduceStock(tenantId, itemId, warehouseId, quantity, unitCost, referenceInfo, transaction, variantId = null) {
     const totalCost = quantity * unitCost;
     const InventoryTransactionService = require('./InventoryTransactionService');
     return InventoryTransactionService.recordTransaction({
       tenantId,
       itemId,
+      variantId,
       warehouseId,
       transactionType: 'sale',
       referenceId: referenceInfo.id,
@@ -49,9 +51,9 @@ class InventoryService {
   /**
    * Get current stock for an item in a warehouse.
    */
-  static async getStock(tenantId, itemId, warehouseId) {
+  static async getStock(tenantId, itemId, warehouseId, variantId = null) {
     const balance = await InventoryBalance.findOne({
-      where: { tenantId, itemId, warehouseId },
+      where: { tenantId, itemId, warehouseId, variantId },
     });
     return balance ? parseFloat(balance.quantityOnHand) : 0;
   }

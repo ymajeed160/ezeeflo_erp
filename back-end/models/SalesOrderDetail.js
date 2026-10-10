@@ -21,6 +21,8 @@ module.exports = (sequelize, DataTypes) => {
       salesOrderId: { type: DataTypes.UUID, allowNull: false },
       quotationDetailId: { type: DataTypes.UUID, allowNull: true },
       itemId: { type: DataTypes.UUID, allowNull: false },
+      variantId: { type: DataTypes.UUID, allowNull: true },
+      variantDescription: { type: DataTypes.STRING(500), allowNull: true },
       description: { type: DataTypes.STRING(255), allowNull: true },
       quantity: { type: DataTypes.DECIMAL(15, 3), allowNull: false, defaultValue: 0 },
       deliveredQuantity: { type: DataTypes.DECIMAL(15, 3), allowNull: false, defaultValue: 0 },

@@ -33,6 +33,7 @@ import PdfViewer from '../components/PdfViewer';
 import goodsReceiptApi from '../services/goodsReceiptApi';
 import QuickCreate from '../components/QuickCreate/QuickCreate';
 import SearchableSelect from '../components/Common/SearchableSelect';
+import VariantSelectorDialog from '../components/VariantSelectorDialog';
 
 const statusColors = {
   draft: 'default',
@@ -72,6 +73,7 @@ const GoodsReceipts = () => {
   const [confirmState, setConfirmState] = useState(null);
   const [reasonDialog, setReasonDialog] = useState({ open: false, action: null, target: null });
   const [reasonText, setReasonText] = useState('');
+  const [variantDialog, setVariantDialog] = useState({ open: false, item: null, lineIndex: null });
   const activeCompany = useSelector((s) => s.company?.activeCompany || null);
   const poList = useSelector((s) => s.purchaseOrders?.list || []);
   const poListRef = useRef(poList);
@@ -146,6 +148,8 @@ const GoodsReceipts = () => {
             poData.details.forEach((d) => {
               append({
                 itemId: d.item?.id || d.Item?.id || d.itemId || '',
+                variantId: d.variantId || '',
+                variantDescription: d.variantDescription || '',
                 orderedQuantity: d.quantity || 0,
                 receivedQuantity: d.quantity || 0,
                 unitCost: d.unitPrice || 0,
@@ -206,7 +210,7 @@ const GoodsReceipts = () => {
     setValue('notes', d.notes || '');
     remove();
     (d.details || d.GoodsReceiptDetails || d.items || []).forEach((item) => {
-      append({ itemId: item.Item?.id || item.itemId || '', orderedQuantity: item.orderedQuantity || 0, receivedQuantity: item.receivedQuantity || 0, unitCost: item.unitPrice || item.unitCost || 0, taxPercentage: item.taxPercentage || 0 });
+      append({ itemId: item.Item?.id || item.itemId || '', variantId: item.variantId || '', variantDescription: item.variantDescription || '', orderedQuantity: item.orderedQuantity || 0, receivedQuantity: item.receivedQuantity || 0, unitCost: item.unitPrice || item.unitCost || 0, taxPercentage: item.taxPercentage || 0 });
     });
     setOpenForm(true);
   };
@@ -639,7 +643,16 @@ const GoodsReceipts = () => {
                           size="small"
                           label="Item *"
                           value={f.value || ''}
-                          onChange={(v) => f.onChange(v)}
+                          onChange={(v) => {
+                            f.onChange(v);
+                            const item = itemsList.find((it) => it.id === v);
+                            if (item?.isVariantEnabled) {
+                              setVariantDialog({ open: true, item, lineIndex: idx });
+                            } else {
+                              setValue(`items.${idx}.variantId`, '');
+                              setValue(`items.${idx}.variantDescription`, '');
+                            }
+                          }}
                           error={!!errors.items?.[idx]?.itemId}
                           helperText={errors.items?.[idx]?.itemId?.message}
                           options={itemsList?.map((it) => ({ value: it.id, label: it.name || it.itemName || '' })) || []}
@@ -654,6 +667,19 @@ const GoodsReceipts = () => {
                         if (it.costPrice) setValue(`items.${idx}.unitCost`, Number(it.costPrice) || 0);
                       }}
                     />
+                    {watchedItems?.[idx]?.variantDescription && (
+                      <Chip
+                        size="small"
+                        color="primary"
+                        variant="outlined"
+                        label={watchedItems[idx].variantDescription}
+                        onClick={() => setVariantDialog({ open: true, item: itemsList.find((it) => it.id === watchedItems[idx].itemId), lineIndex: idx })}
+                        onDelete={() => {
+                          setValue(`items.${idx}.variantId`, '');
+                          setValue(`items.${idx}.variantDescription`, '');
+                        }}
+                      />
+                    )}
                   </Box>
                 </Grid>
                 <Grid item xs={4} md={2}>
@@ -740,7 +766,12 @@ const GoodsReceipts = () => {
                   <TableBody>
                     {(current.details || current.GoodsReceiptDetails || []).map((d, i) => (
                       <TableRow key={i}>
-                        <TableCell>{d.itemName || d.Item?.itemName || '-'}</TableCell>
+                        <TableCell>
+                          <Typography variant="body2">{d.itemName || d.Item?.itemName || '-'}</Typography>
+                          {d.variantDescription && (
+                            <Typography variant="caption" color="text.secondary">{d.variantDescription}</Typography>
+                          )}
+                        </TableCell>
                         <TableCell>{d.orderedQuantity || 0}</TableCell>
                         <TableCell>{d.receivedQuantity || 0}</TableCell>
                         <TableCell align="right">{Number(d.unitPrice || 0).toFixed(2)}</TableCell>
@@ -841,6 +872,20 @@ const GoodsReceipts = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <VariantSelectorDialog
+        open={variantDialog.open}
+        item={variantDialog.item}
+        onClose={() => setVariantDialog({ open: false, item: null, lineIndex: null })}
+        onConfirm={(variant) => {
+          const idx = variantDialog.lineIndex;
+          if (idx !== null && idx !== undefined) {
+            setValue(`items.${idx}.variantId`, variant.variantId || '');
+            setValue(`items.${idx}.variantDescription`, variant.variantDescription || '');
+          }
+          setVariantDialog({ open: false, item: null, lineIndex: null });
+        }}
+      />
     </Box>
   );
 };

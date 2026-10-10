@@ -19,6 +19,10 @@ const InventoryBalance = sequelize.define('InventoryBalance', {
     type: DataTypes.UUID,
     allowNull: false,
   },
+  variantId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+  },
   quantityOnHand: {
     type: DataTypes.DECIMAL(18, 4),
     defaultValue: 0,
@@ -38,8 +42,8 @@ const InventoryBalance = sequelize.define('InventoryBalance', {
   indexes: [
     {
       unique: true,
-      fields: ['warehouse_id', 'item_id'],
-      name: 'unique_warehouse_item',
+      fields: ['warehouse_id', 'item_id', 'variant_id'],
+      name: 'unique_warehouse_item_variant',
     },
     {
       fields: ['tenant_id'],

@@ -58,7 +58,9 @@ class PurchaseInvoiceService {
 
       lineItems.push({
         itemId: item.itemId,
-        description: item.description || dbItem.itemName,
+        variantId: item.variantId || null,
+        variantDescription: item.variantDescription || null,
+        description: item.description || item.variantDescription || dbItem.name,
         quantity: qty,
         unitCost,
         taxPercent: taxPct,
@@ -152,7 +154,9 @@ class PurchaseInvoiceService {
 
         lineItems.push({
           itemId: item.itemId,
-          description: item.description || dbItem.itemName,
+          variantId: item.variantId || null,
+          variantDescription: item.variantDescription || null,
+          description: item.description || item.variantDescription || dbItem.name,
           quantity: qty,
           unitCost,
           taxPercent: taxPct,
@@ -201,7 +205,8 @@ class PurchaseInvoiceService {
               parseFloat(detail.quantity || 0),
               parseFloat(detail.unitCost || 0),
               { id: existing.id, type: 'PurchaseInvoiceEdit', number: existing.invoiceNumber },
-              transaction
+              transaction,
+              detail.variantId || null
             );
           }
         }
@@ -256,7 +261,8 @@ class PurchaseInvoiceService {
               line.quantity,
               line.unitCost,
               { id: existing.id, type: 'PurchaseInvoice', number: existing.invoiceNumber },
-              transaction
+              transaction,
+              line.variantId || null
             );
           }
         }
@@ -423,6 +429,8 @@ class PurchaseInvoiceService {
 
       lines.push({
         itemId: detail.itemId,
+        variantId: detail.variantId || null,
+        variantDescription: detail.variantDescription || null,
         itemName,
         itemType: item.itemType,
         accountId,
@@ -529,7 +537,8 @@ class PurchaseInvoiceService {
             line.quantity,
             line.unitCost,
             { id: existing.id, type: 'PurchaseInvoice', number: existing.invoiceNumber },
-            transaction
+            transaction,
+            line.variantId || null
           );
         }
       }
@@ -755,7 +764,8 @@ class PurchaseInvoiceService {
               parseFloat(detail.quantity || 0),
               parseFloat(detail.unitCost || 0),
               { id: existing.id, type: 'PurchaseInvoiceCancel', number: existing.invoiceNumber },
-              transaction
+              transaction,
+              detail.variantId || null
             );
           }
         }
@@ -847,7 +857,9 @@ class PurchaseInvoiceService {
 
       lineItems.push({
         itemId: detail.itemId,
-        description: detail.description || (item ? item.itemName : ''),
+        variantId: detail.variantId || null,
+        variantDescription: detail.variantDescription || null,
+        description: detail.description || detail.variantDescription || (item ? item.name : ''),
         quantity: qty,
         unitCost: unitPrice,
         taxPercent: taxPct,
@@ -969,7 +981,9 @@ class PurchaseInvoiceService {
 
       lineItems.push({
         itemId: detail.itemId,
-        description: detail.description || (item ? item.itemName : ''),
+        variantId: detail.variantId || null,
+        variantDescription: detail.variantDescription || null,
+        description: detail.description || detail.variantDescription || (item ? item.name : ''),
         quantity: qty,
         unitCost: unitPrice,
         taxPercent: taxPct,

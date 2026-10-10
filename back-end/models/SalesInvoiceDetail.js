@@ -38,6 +38,14 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
       },
+      variantId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+      variantDescription: {
+        type: DataTypes.STRING(500),
+        allowNull: true,
+      },
       description: {
         type: DataTypes.STRING(255),
         allowNull: true,

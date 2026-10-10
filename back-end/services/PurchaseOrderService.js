@@ -112,6 +112,8 @@ class PurchaseOrderService {
     // Here we need to provide unit prices; they could be 0 or fetched from item
     const details = pr.details.map(d => ({
       itemId: d.itemId,
+      variantId: d.variantId || null,
+      variantDescription: d.variantDescription || null,
       description: d.description,
       quantity: parseFloat(d.quantity || 0),
       unitPrice: d.item ? parseFloat(d.item.purchasePrice || 0) : 0,

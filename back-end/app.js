@@ -24,6 +24,9 @@ const generalLedgerRoutes = require('./routes/generalLedgerRoutes');
 const tenantRoutes = require('./routes/tenantRoutes');
 const itemCategoryRoutes = require('./routes/itemCategoryRoutes');
 const itemRoutes = require('./routes/itemRoutes');
+const itemAttributeRoutes = require('./routes/itemAttributeRoutes');
+const itemAttributeTemplateRoutes = require('./routes/itemAttributeTemplateRoutes');
+const itemVariantRoutes = require('./routes/itemVariantRoutes');
 const warehouseRoutes = require('./routes/warehouseRoutes');
 const stockAdjustmentRoutes = require('./routes/stockAdjustmentRoutes');
 const stockTransferRoutes = require('./routes/stockTransferRoutes');
@@ -273,6 +276,9 @@ const businessRoutes = [
   { path: '/api/tenant', router: tenantRoutes },
   { path: '/api/item-categories', router: itemCategoryRoutes },
   { path: '/api/items', router: itemRoutes },
+  { path: '/api/item-attributes', router: itemAttributeRoutes },
+  { path: '/api/item-attribute-templates', router: itemAttributeTemplateRoutes },
+  { path: '/api/item-variants', router: itemVariantRoutes },
   { path: '/api/warehouses', router: warehouseRoutes },
   { path: '/api/stock-adjustments', router: stockAdjustmentRoutes },
   { path: '/api/stock-transfers', router: stockTransferRoutes },

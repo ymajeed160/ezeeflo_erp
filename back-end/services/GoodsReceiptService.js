@@ -106,16 +106,25 @@ class GoodsReceiptService {
         let taxPct = parseFloat(d.taxPercentage || 0);
         let discPct = parseFloat(d.discountPercentage || 0);
         let description = d.description || '';
+        let variantId = d.variantId || null;
+        let variantDescription = d.variantDescription || '';
 
         // If PO exists, get values from PO details
         if (po) {
-          const pod = po.details.find((pd) => pd.itemId === d.itemId);
+          // Match the PO line by variant when a configuration is known,
+          // otherwise fall back to item-level matching.
+          const pod = po.details.find((pd) => {
+            if (variantId) return pd.itemId === d.itemId && pd.variantId === variantId;
+            return pd.itemId === d.itemId;
+          });
           if (pod) {
             orderedQty = parseFloat(pod.quantity);
             unitPrice = parseFloat(d.unitPrice || pod.unitPrice || 0);
             taxPct = parseFloat(d.taxPercentage || pod.taxPercentage || 0);
             discPct = parseFloat(d.discountPercentage || pod.discountPercentage || 0);
             description = d.description || pod.description || '';
+            if (!variantId) variantId = pod.variantId || null;
+            if (!variantDescription) variantDescription = pod.variantDescription || '';
           }
         }
 
@@ -145,12 +154,12 @@ class GoodsReceiptService {
         // Check already received quantity (only when linked to a PO)
         if (po) {
           const alreadyReceived = await goodsReceiptRepository.getAlreadyReceivedQty(
-            tenantId, data.purchaseOrderId, d.itemId
+            tenantId, data.purchaseOrderId, d.itemId, null, variantId || null
           );
           const newTotal = alreadyReceived + receivedQty;
           if (orderedQty > 0 && newTotal > orderedQty) {
             throw Object.assign(
-              new Error(`Cannot receive more than ordered. Item: ${d.itemId}, Ordered: ${orderedQty}, Already Received: ${alreadyReceived}, This: ${receivedQty}`),
+              new Error(`Cannot receive more than ordered. Item: ${d.itemId}${variantId ? `, Variant: ${variantId}` : ''}, Ordered: ${orderedQty}, Already Received: ${alreadyReceived}, This: ${receivedQty}`),
               { statusCode: 400 }
             );
           }
@@ -165,6 +174,8 @@ class GoodsReceiptService {
 
         detailItems.push({
           itemId: d.itemId,
+          variantId,
+          variantDescription,
           description,
           orderedQuantity: orderedQty,
           receivedQuantity: qty,
@@ -324,7 +335,7 @@ class GoodsReceiptService {
 
         // Find or create inventory balance
         let balance = await InventoryBalance.findOne({
-          where: { itemId: detail.itemId, warehouseId: existing.warehouseId, tenantId },
+          where: { itemId: detail.itemId, warehouseId: existing.warehouseId, tenantId, variantId: detail.variantId || null },
           transaction: t,
         });
 
@@ -332,6 +343,7 @@ class GoodsReceiptService {
           balance = await InventoryBalance.create({
             tenantId,
             itemId: detail.itemId,
+            variantId: detail.variantId || null,
             warehouseId: existing.warehouseId,
             quantity: 0,
             totalValue: 0,
@@ -354,6 +366,7 @@ class GoodsReceiptService {
         await InventoryTransaction.create({
           tenantId,
           itemId: detail.itemId,
+          variantId: detail.variantId || null,
           warehouseId: existing.warehouseId,
           referenceId: existing.id,
           referenceType: 'GoodsReceipt',
@@ -403,7 +416,7 @@ class GoodsReceiptService {
           if (!existing.warehouseId) continue;
 
           const balance = await InventoryBalance.findOne({
-            where: { itemId: detail.itemId, warehouseId: existing.warehouseId, tenantId },
+            where: { itemId: detail.itemId, warehouseId: existing.warehouseId, tenantId, variantId: detail.variantId || null },
             transaction: t,
           });
 
@@ -424,6 +437,7 @@ class GoodsReceiptService {
             await InventoryTransaction.create({
               tenantId,
               itemId: detail.itemId,
+              variantId: detail.variantId || null,
               warehouseId: existing.warehouseId,
               referenceId: existing.id,
               referenceType: 'GoodsReceipt_Cancelled',
@@ -466,7 +480,7 @@ class GoodsReceiptService {
 
     for (const detail of po.details) {
       const alreadyReceived = await goodsReceiptRepository.getAlreadyReceivedQty(
-        tenantId, purchaseOrderId, detail.itemId
+        tenantId, purchaseOrderId, detail.itemId, null, detail.variantId || null
       );
       const ordered = parseFloat(detail.quantity);
 

@@ -87,6 +87,9 @@ class ItemService {
     // Apply inventory rules based on item type
     this.validateItemTypeRules(data);
 
+    // Validate attribute template (if variant support requested)
+    await this.validateAttributeTemplate(data, tenantId);
+
     // Validate accounting integration
     await this.validateAccountingAccounts(data, tenantId);
 
@@ -131,6 +134,9 @@ class ItemService {
       { ...data, itemType: effectiveType },
       tenantId
     );
+
+    // Validate attribute template (if variant support requested)
+    await this.validateAttributeTemplate({ ...data, itemType: effectiveType }, tenantId);
 
     const updated = await itemRepository.update(id, data, tenantId, userId);
     logger.info(`Item updated: ${id} (${item.itemCode}) by user ${userId}`);
@@ -188,6 +194,21 @@ class ItemService {
     }
 
     return data;
+  }
+
+  /**
+   * Validate an assigned attribute template belongs to the tenant when variants are enabled.
+   */
+  async validateAttributeTemplate(data, tenantId) {
+    if (data.attributeTemplateId) {
+      const { ItemAttributeTemplate } = require('../models');
+      const template = await ItemAttributeTemplate.findOne({
+        where: { id: data.attributeTemplateId, tenantId },
+      });
+      if (!template) {
+        throw new BadRequestError('Attribute template not found in your tenant');
+      }
+    }
   }
 
   /**

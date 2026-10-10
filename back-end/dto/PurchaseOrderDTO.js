@@ -63,6 +63,8 @@ class PurchaseOrderDTO {
       id: detail.id,
       purchaseOrderId: detail.purchaseOrderId,
       itemId: detail.itemId,
+      variantId: detail.variantId || null,
+      variantDescription: detail.variantDescription || null,
       description: detail.description,
       quantity: detail.quantity ? parseFloat(detail.quantity) : 0,
       receivedQuantity: detail.receivedQuantity ? parseFloat(detail.receivedQuantity) : 0,

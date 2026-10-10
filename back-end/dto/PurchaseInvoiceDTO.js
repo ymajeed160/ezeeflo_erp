@@ -32,6 +32,8 @@ class PurchaseInvoiceDTO {
       details: (data.details || data.PurchaseInvoiceDetails || []).map((d) => ({
         id: d.id,
         itemId: d.itemId,
+        variantId: d.variantId || null,
+        variantDescription: d.variantDescription || null,
         description: d.description,
         quantity: parseFloat(d.quantity || 0),
         unitCost: parseFloat(d.unitCost || 0),
@@ -40,7 +42,7 @@ class PurchaseInvoiceDTO {
         discountPercent: parseFloat(d.discountPercent || 0),
         discountAmount: parseFloat(d.discountAmount || 0),
         lineTotal: parseFloat(d.lineTotal || 0),
-        Item: d.Item ? { id: d.Item.id, itemName: d.Item.name, itemCode: d.Item.itemCode, itemType: d.Item.itemType } : null,
+        Item: (d.item || d.Item) ? { id: (d.item || d.Item).id, itemName: (d.item || d.Item).name, itemCode: (d.item || d.Item).itemCode, itemType: (d.item || d.Item).itemType } : null,
       })),
       createdAt: data.createdAt,
       updatedAt: data.updatedAt,

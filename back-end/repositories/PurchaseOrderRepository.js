@@ -92,6 +92,8 @@ class PurchaseOrderRepository {
         const detail = await PurchaseOrderDetail.create({
           purchaseOrderId: order.id,
           itemId: d.itemId,
+          variantId: d.variantId || null,
+          variantDescription: d.variantDescription || null,
           description: d.description || null,
           quantity: qty,
           receivedQuantity: 0,
@@ -155,6 +157,8 @@ class PurchaseOrderRepository {
           const detail = await PurchaseOrderDetail.create({
             purchaseOrderId: id,
             itemId: d.itemId,
+            variantId: d.variantId || null,
+            variantDescription: d.variantDescription || null,
             description: d.description || null,
             quantity: qty,
             receivedQuantity: 0,

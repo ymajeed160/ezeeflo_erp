@@ -113,6 +113,16 @@ const PurchaseRequestDetail = sequelize.define('PurchaseRequestDetail', {
     allowNull: false,
     field: 'item_id',
   },
+  variantId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    field: 'variant_id',
+  },
+  variantDescription: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+    field: 'variant_description',
+  },
   description: {
     type: DataTypes.STRING(255),
     allowNull: true,

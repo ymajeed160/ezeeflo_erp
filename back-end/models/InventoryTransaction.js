@@ -15,6 +15,10 @@ const InventoryTransaction = sequelize.define('InventoryTransaction', {
     type: DataTypes.UUID,
     allowNull: false,
   },
+  variantId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+  },
   warehouseId: {
     type: DataTypes.UUID,
     allowNull: false,
@@ -31,6 +35,10 @@ const InventoryTransaction = sequelize.define('InventoryTransaction', {
     allowNull: true,
   },
   referenceId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+  },
+  referenceLineId: {
     type: DataTypes.UUID,
     allowNull: true,
   },
@@ -68,6 +76,14 @@ const InventoryTransaction = sequelize.define('InventoryTransaction', {
     {
       fields: ['item_id'],
       name: 'idx_inv_tx_item',
+    },
+    {
+      fields: ['variant_id'],
+      name: 'idx_inv_trans_variant',
+    },
+    {
+      fields: ['item_id', 'variant_id'],
+      name: 'idx_inv_trans_item_variant',
     },
     {
       fields: ['warehouse_id'],

@@ -68,6 +68,7 @@ import PdfViewer from '../components/PdfViewer';
 import purchaseOrderApi from '../services/purchaseOrderApi';
 import QuickCreate from '../components/QuickCreate/QuickCreate';
 import SearchableSelect from '../components/Common/SearchableSelect';
+import VariantSelectorDialog from '../components/VariantSelectorDialog';
 
 const statusColors = {
   draft: 'default',
@@ -109,6 +110,7 @@ const PurchaseOrders = () => {
   const [selectedPRs, setSelectedPRs] = useState([]);
   const [reasonDialog, setReasonDialog] = useState({ open: false, action: null, target: null });
   const [reasonText, setReasonText] = useState('');
+  const [variantDialog, setVariantDialog] = useState({ open: false, item: null, lineIndex: null });
 
   const { register, handleSubmit, control, reset, watch, setValue, formState: { errors } } = useForm({
     defaultValues: {
@@ -154,6 +156,8 @@ const PurchaseOrders = () => {
         status: selectedOrder.status || 'draft',
         details: selectedOrder.details?.length ? selectedOrder.details.map((d) => ({
           itemId: d.itemId || '',
+          variantId: d.variantId || '',
+          variantDescription: d.variantDescription || '',
           description: d.description || '',
           quantity: d.quantity || 0,
           unitPrice: d.unitPrice || 0,
@@ -206,6 +210,8 @@ const PurchaseOrders = () => {
             status: 'draft',
             details: pr.details.map((d) => ({
               itemId: d.itemId || '',
+              variantId: d.variantId || '',
+              variantDescription: d.variantDescription || '',
               description: d.description || '',
               quantity: d.quantity || 0,
               unitPrice: 0,
@@ -630,8 +636,14 @@ const PurchaseOrders = () => {
                             f.onChange(v);
                             const item = itemsList.find((it) => it.id === v);
                             if (item) {
-                              setValue(`details.${index}.description`, item.description || '');
-                              setValue(`details.${index}.unitPrice`, item.purchasePrice || item.costPrice || 0);
+                              if (item.isVariantEnabled) {
+                                setVariantDialog({ open: true, item, lineIndex: index });
+                              } else {
+                                setValue(`details.${index}.variantId`, '');
+                                setValue(`details.${index}.variantDescription`, '');
+                                setValue(`details.${index}.description`, item.description || '');
+                                setValue(`details.${index}.unitPrice`, item.purchasePrice || item.costPrice || 0);
+                              }
                             }
                           }}
                           disabled={viewMode}
@@ -651,6 +663,20 @@ const PurchaseOrders = () => {
                         setValue(`details.${index}.unitPrice`, Number(it.purchasePrice || it.costPrice || 0));
                       }}
                     />
+                    {details[index]?.variantDescription && (
+                      <Chip
+                        size="small"
+                        color="primary"
+                        variant="outlined"
+                        label={details[index].variantDescription}
+                        onClick={() => setVariantDialog({ open: true, item: itemsList.find((it) => it.id === details[index].itemId), lineIndex: index })}
+                        onDelete={() => {
+                          setValue(`details.${index}.variantId`, '');
+                          setValue(`details.${index}.variantDescription`, '');
+                          setValue(`details.${index}.description`, '');
+                        }}
+                      />
+                    )}
                   </Box>
                 </Grid>
                 <Grid item xs={12} sm={2}>
@@ -833,6 +859,21 @@ const PurchaseOrders = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <VariantSelectorDialog
+        open={variantDialog.open}
+        item={variantDialog.item}
+        onClose={() => setVariantDialog({ open: false, item: null, lineIndex: null })}
+        onConfirm={(variant) => {
+          const idx = variantDialog.lineIndex;
+          if (idx !== null && idx !== undefined) {
+            setValue(`details.${idx}.variantId`, variant.variantId || '');
+            setValue(`details.${idx}.variantDescription`, variant.variantDescription || '');
+            setValue(`details.${idx}.description`, variant.variantDescription || '');
+          }
+          setVariantDialog({ open: false, item: null, lineIndex: null });
+        }}
+      />
     </Box>
   );
 };

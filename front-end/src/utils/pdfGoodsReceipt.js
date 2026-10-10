@@ -89,7 +89,7 @@ export async function generateGoodsReceiptPdf(grn, companyInfo = null) {
     const rq = parseFloat(line.receivedQuantity || line.quantity || 0);
     const uc = parseFloat(line.unitCost || line.unitPrice || 0);
     const total = rq * uc;
-    const itemName = line.itemName || line.item?.name || line.Item?.name || line.description || '-';
+    const itemName = line.variantDescription || line.itemName || line.item?.name || line.Item?.name || line.description || '-';
     return [
       itemName,
       oq.toString(),

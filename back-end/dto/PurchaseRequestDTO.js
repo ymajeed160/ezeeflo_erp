@@ -49,6 +49,8 @@ class PurchaseRequestDetailDTO {
     this.tenantId = data.tenantId;
     this.purchaseRequestId = data.purchaseRequestId;
     this.itemId = data.itemId;
+    this.variantId = data.variantId || null;
+    this.variantDescription = data.variantDescription || null;
     this.description = data.description;
     this.quantity = data.quantity;
     this.requiredDate = data.requiredDate;

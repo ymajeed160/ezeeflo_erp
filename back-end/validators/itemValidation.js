@@ -32,6 +32,14 @@ const createItemValidation = [
     .withMessage('Item type is required')
     .isIn(['product', 'service'])
     .withMessage('Item type must be "product" or "service"'),
+  body('isVariantEnabled')
+    .optional()
+    .isBoolean()
+    .withMessage('isVariantEnabled must be a boolean'),
+  body('attributeTemplateId')
+    .optional({ nullable: true })
+    .isUUID(4)
+    .withMessage('Invalid attribute template ID format'),
   body('unitOfMeasure')
     .optional({ nullable: true })
     .trim()
@@ -121,6 +129,14 @@ const updateItemValidation = [
     .trim()
     .isIn(['product', 'service'])
     .withMessage('Item type must be "product" or "service"'),
+  body('isVariantEnabled')
+    .optional()
+    .isBoolean()
+    .withMessage('isVariantEnabled must be a boolean'),
+  body('attributeTemplateId')
+    .optional({ nullable: true })
+    .isUUID(4)
+    .withMessage('Invalid attribute template ID format'),
   body('unitOfMeasure')
     .optional({ nullable: true })
     .trim()

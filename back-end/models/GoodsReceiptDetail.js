@@ -14,6 +14,8 @@ module.exports = (sequelize, DataTypes) => {
     id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
     goodsReceiptId: { type: DataTypes.UUID, allowNull: false },
     itemId: { type: DataTypes.UUID, allowNull: false },
+    variantId: { type: DataTypes.UUID, allowNull: true },
+    variantDescription: { type: DataTypes.STRING(500), allowNull: true },
     purchaseOrderDetailId: { type: DataTypes.UUID, allowNull: true },
     description: { type: DataTypes.STRING(255), allowNull: true },
     orderedQuantity: { type: DataTypes.DECIMAL(18, 4), defaultValue: 0 },

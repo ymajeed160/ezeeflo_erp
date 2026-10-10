@@ -95,7 +95,7 @@ export async function generatePurchaseInvoicePdf(invoice, companyInfo = null) {
     const tp = parseFloat(line.taxPercent || line.taxRate || 0);
     const ta = lt * tp / 100;
     return [
-      line.description || line.item?.name || '-',
+      line.variantDescription || line.description || line.item?.name || line.Item?.name || '-',
       qty.toString(),
       `${formatCurrency(uc, currencyCode)}`,
       tp > 0 ? `${formatCurrency(ta, currencyCode)}` : '-',

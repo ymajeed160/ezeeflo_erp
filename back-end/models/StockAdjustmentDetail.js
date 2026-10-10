@@ -19,6 +19,14 @@ const StockAdjustmentDetail = sequelize.define('StockAdjustmentDetail', {
     type: DataTypes.UUID,
     allowNull: false,
   },
+  variantId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+  },
+  variantDescription: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+  },
   currentQuantity: {
     type: DataTypes.DECIMAL(18, 4),
     defaultValue: 0,

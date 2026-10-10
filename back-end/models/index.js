@@ -10,6 +10,12 @@ const EmailSetting = require('./EmailSetting');
 const TaxRate = require('./TaxRate');
 const VatCategoryCode = require('./VatCategoryCode');
 const ItemDefinition = require('./ItemDefinition');
+const ItemAttribute = require('./ItemAttribute');
+const ItemAttributeOption = require('./ItemAttributeOption');
+const ItemAttributeTemplate = require('./ItemAttributeTemplate');
+const ItemAttributeTemplateAttribute = require('./ItemAttributeTemplateAttribute');
+const ItemVariant = require('./ItemVariant');
+const ItemVariantAttributeValue = require('./ItemVariantAttributeValue');
 const UserRole = require('./UserRole');
 const RolePermission = require('./RolePermission');
 const RefreshToken = require('./RefreshToken');
@@ -223,6 +229,62 @@ Item.belongsTo(Account, { foreignKey: 'expenseAccountId', as: 'expenseAccount' }
 // Item - Account (Inventory)
 Account.hasMany(Item, { foreignKey: 'inventoryAccountId' });
 Item.belongsTo(Account, { foreignKey: 'inventoryAccountId', as: 'inventoryAccount' });
+
+// ============================================================
+// Item Variants & Attributes Associations
+// ============================================================
+
+// Item - ItemVariant
+Item.hasMany(ItemVariant, { foreignKey: 'itemId', as: 'variants' });
+ItemVariant.belongsTo(Item, { foreignKey: 'itemId', as: 'item' });
+
+// Item - ItemAttributeTemplate
+Item.belongsTo(ItemAttributeTemplate, { foreignKey: 'attributeTemplateId', as: 'attributeTemplate' });
+ItemAttributeTemplate.hasMany(Item, { foreignKey: 'attributeTemplateId', as: 'items' });
+
+// Tenant - ItemVariant
+Tenant.hasMany(ItemVariant, { foreignKey: 'tenantId', sourceKey: 'id' });
+ItemVariant.belongsTo(Tenant, { foreignKey: 'tenantId', targetKey: 'id' });
+
+// Tenant - ItemAttribute
+Tenant.hasMany(ItemAttribute, { foreignKey: 'tenantId', sourceKey: 'id' });
+ItemAttribute.belongsTo(Tenant, { foreignKey: 'tenantId', targetKey: 'id' });
+
+// Tenant - ItemAttributeTemplate
+Tenant.hasMany(ItemAttributeTemplate, { foreignKey: 'tenantId', sourceKey: 'id' });
+ItemAttributeTemplate.belongsTo(Tenant, { foreignKey: 'tenantId', targetKey: 'id' });
+
+// ItemAttribute - ItemAttributeOption
+ItemAttribute.hasMany(ItemAttributeOption, { foreignKey: 'attributeId', as: 'options' });
+ItemAttributeOption.belongsTo(ItemAttribute, { foreignKey: 'attributeId', as: 'attribute' });
+
+// ItemAttributeTemplate - ItemAttributeTemplateAttribute
+ItemAttributeTemplate.hasMany(ItemAttributeTemplateAttribute, { foreignKey: 'templateId', as: 'templateAttributes' });
+ItemAttributeTemplateAttribute.belongsTo(ItemAttributeTemplate, { foreignKey: 'templateId', as: 'template' });
+
+// ItemAttribute - ItemAttributeTemplateAttribute
+ItemAttribute.hasMany(ItemAttributeTemplateAttribute, { foreignKey: 'attributeId', as: 'templateLinks' });
+ItemAttributeTemplateAttribute.belongsTo(ItemAttribute, { foreignKey: 'attributeId', as: 'attribute' });
+
+// ItemVariant - ItemVariantAttributeValue
+ItemVariant.hasMany(ItemVariantAttributeValue, { foreignKey: 'variantId', as: 'attributeValues' });
+ItemVariantAttributeValue.belongsTo(ItemVariant, { foreignKey: 'variantId', as: 'variant' });
+
+// ItemAttribute - ItemVariantAttributeValue
+ItemAttribute.hasMany(ItemVariantAttributeValue, { foreignKey: 'attributeId', as: 'variantValues' });
+ItemVariantAttributeValue.belongsTo(ItemAttribute, { foreignKey: 'attributeId', as: 'attribute' });
+
+// ItemAttributeOption - ItemVariantAttributeValue
+ItemAttributeOption.hasMany(ItemVariantAttributeValue, { foreignKey: 'optionId', as: 'variantValues' });
+ItemVariantAttributeValue.belongsTo(ItemAttributeOption, { foreignKey: 'optionId', as: 'option' });
+
+// InventoryTransaction - ItemVariant
+ItemVariant.hasMany(InventoryTransaction, { foreignKey: 'variantId' });
+InventoryTransaction.belongsTo(ItemVariant, { foreignKey: 'variantId', as: 'variant' });
+
+// InventoryBalance - ItemVariant
+ItemVariant.hasMany(InventoryBalance, { foreignKey: 'variantId' });
+InventoryBalance.belongsTo(ItemVariant, { foreignKey: 'variantId', as: 'variant' });
 
 // ============================================================
 // Warehouse Associations
@@ -1704,6 +1766,12 @@ module.exports = {
   BankReconciliationLine,
   UserTenant,
   ItemDefinition,
+  ItemAttribute,
+  ItemAttributeOption,
+  ItemAttributeTemplate,
+  ItemAttributeTemplateAttribute,
+  ItemVariant,
+  ItemVariantAttributeValue,
   AssetCategory,
   Asset,
   AssetAcquisition,

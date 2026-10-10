@@ -19,6 +19,14 @@ const StockTransferDetail = sequelize.define('StockTransferDetail', {
     type: DataTypes.UUID,
     allowNull: false,
   },
+  variantId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+  },
+  variantDescription: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+  },
   quantity: {
     type: DataTypes.DECIMAL(18, 4),
     defaultValue: 0,

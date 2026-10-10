@@ -22,12 +22,12 @@ class InventoryTransactionService {
    * @param {number} params.totalCost
    * @param {Object} [transaction] - sequelize transaction
    */
-  static async recordTransaction({ tenantId, itemId, warehouseId, transactionType,
-    referenceId, referenceType, referenceNumber, quantity, unitCost, totalCost }, transaction) {
+  static async recordTransaction({ tenantId, itemId, variantId = null, warehouseId, transactionType,
+    referenceId, referenceType, referenceNumber, referenceLineId = null, quantity, unitCost, totalCost }, transaction) {
     
     // Get current balance
     let balance = await InventoryBalance.findOne({
-      where: { tenantId, itemId, warehouseId },
+      where: { tenantId, itemId, variantId, warehouseId },
       transaction,
     });
 
@@ -38,6 +38,7 @@ class InventoryTransactionService {
       balance = await InventoryBalance.create({
         tenantId,
         itemId,
+        variantId,
         warehouseId,
         quantityOnHand: Math.max(0, newQty),
         lastUpdated: new Date(),
@@ -52,10 +53,12 @@ class InventoryTransactionService {
     const record = await InventoryTransaction.create({
       tenantId,
       itemId,
+      variantId,
       warehouseId,
       transactionType,
       referenceId,
       referenceType,
+      referenceLineId,
       quantityIn: quantity > 0 ? quantity : 0,
       quantityOut: quantity < 0 ? Math.abs(quantity) : 0,
       runningBalance: Math.max(0, newQty),
@@ -69,16 +72,18 @@ class InventoryTransactionService {
   /**
    * Reverse a previous inventory transaction.
    */
-  static async reverseTransaction({ tenantId, itemId, warehouseId, transactionType,
-    referenceId, referenceType, referenceNumber, quantity, unitCost, totalCost }, transaction) {
+  static async reverseTransaction({ tenantId, itemId, variantId = null, warehouseId, transactionType,
+    referenceId, referenceType, referenceNumber, referenceLineId = null, quantity, unitCost, totalCost }, transaction) {
     return InventoryTransactionService.recordTransaction({
       tenantId,
       itemId,
+      variantId,
       warehouseId,
       transactionType: transactionType + '_reversal',
       referenceId,
       referenceType,
       referenceNumber,
+      referenceLineId,
       quantity: -quantity,
       unitCost: unitCost || 0,
       totalCost: -(totalCost || 0),
