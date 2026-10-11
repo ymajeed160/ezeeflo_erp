@@ -141,6 +141,22 @@ axiosInstance.interceptors.response.use(
           localStorage.setItem('persist:root', JSON.stringify(state));
         }
 
+        // Keep Redux in sync too — the request interceptor reads the store first,
+        // so a stale store token would keep sending the expired access token.
+        if (_store) {
+          const current = _store.getState().auth || {};
+          _store.dispatch({
+            type: 'auth/setCredentials',
+            payload: {
+              user: current.user,
+              accessToken: newToken,
+              refreshToken: newRefreshToken,
+              companies: current.companies,
+              defaultCompanyId: current.defaultCompanyId,
+            },
+          });
+        }
+
         originalRequest.headers.Authorization = `Bearer ${newToken}`;
         processQueue(null, newToken);
         return axiosInstance(originalRequest);

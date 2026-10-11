@@ -1,6 +1,28 @@
 const BaseRepository = require('./BaseRepository');
-const { InventoryTransaction, Warehouse, Item } = require('../models');
+const {
+  InventoryTransaction, Warehouse, Item,
+  ItemVariant, ItemVariantAttributeValue, ItemAttribute, ItemAttributeOption,
+} = require('../models');
 const { Op } = require('sequelize');
+
+// Variant with its attribute values (for displaying item attributes on transactions)
+const VARIANT_INCLUDE = {
+  model: ItemVariant,
+  as: 'variant',
+  required: false,
+  attributes: ['id', 'sku'],
+  include: [
+    {
+      model: ItemVariantAttributeValue,
+      as: 'attributeValues',
+      required: false,
+      include: [
+        { model: ItemAttribute, as: 'attribute', required: false, attributes: ['id', 'name', 'code', 'displayOrder'] },
+        { model: ItemAttributeOption, as: 'option', required: false, attributes: ['id', 'value'] },
+      ],
+    },
+  ],
+};
 
 class InventoryTransactionRepository extends BaseRepository {
   constructor() {
@@ -31,6 +53,7 @@ class InventoryTransactionRepository extends BaseRepository {
       include: [
         { model: Warehouse, as: 'warehouse', attributes: ['id', 'code', 'name'] },
         { model: Item, as: 'item', attributes: ['id', 'itemCode', 'name', 'itemType', 'unitOfMeasure'] },
+        VARIANT_INCLUDE,
       ],
     });
 

@@ -4,6 +4,32 @@ import { ExpandMore, ExpandLess, NewReleases } from '@mui/icons-material';
 
 const RELEASES = [
   {
+    version: 'v3.9.0',
+    date: '2026-10-11',
+    title: 'Item Variants in Sales, Variant Attributes & Session Management',
+    tag: 'Major',
+    tagColor: 'primary',
+    changes: [
+      { type: 'New', text: 'Attributes & Attribute Templates master data — define attributes (Dropdown/Text/Number) with options under Inventory → Attributes, and group them into templates that decide which attributes produce distinct variants' },
+      { type: 'New', text: 'Configurable item variants — auto-generated variant SKUs, configuration-key de-duplication (the same combination reuses the existing variant), and variant/attribute search' },
+      { type: 'New', text: 'Variant-aware inventory — inventory transactions and balances post per item + variant, with per-variant over-receipt validation on Goods Receipts' },
+      { type: 'New', text: 'Procurement integration — variants propagate through Purchase Requests → Purchase Orders → Goods Receipts → Purchase Invoices, with a variant selector dialog on each; variant descriptions on purchase PDFs' },
+      { type: 'New', text: 'Sales item picker now lists one row per variant showing the item name, its attribute values and the available stock (e.g. "ASUS TUF · TUF F15 · Core i9 · 16 GB · 1 TB SSD · Black — 1 available")' },
+      { type: 'New', text: 'New API GET /api/items/sellable-options — returns sellable items/variants with attributes and on-hand stock for document item pickers' },
+      { type: 'New', text: 'Inventory Transactions page now shows the linked attribute values of each movement\'s variant beneath the item name (e.g. "1 TB SSD · Black · 16 GB · Core i9 · TUF F15")' },
+      { type: 'New', text: 'Sales Invoice and Sales Order lines now store the selected variant (variant_id, variant_description)' },
+      { type: 'New', text: 'Single active session per user — signing in from a second browser is blocked with "You are already logged in from another browser. Please sign out from that browser and try again." Re-login from the same browser replaces the previous session' },
+      { type: 'New', text: 'Closed-browser sessions end automatically — the app sends a heartbeat every minute while a tab is open; if the browser is closed without signing out the heartbeat stops and the session is treated as ended after ~5 minutes of inactivity, so the next login can take over instead of being blocked' },
+      { type: 'New', text: 'IP address and user agent continue to be recorded for logins and sessions (audit trail + refresh-token records)' },
+      { type: 'Changed', text: 'Removed the Cost Price column/input from Sales Invoice line items — cost is still derived automatically for COGS' },
+      { type: 'Changed', text: 'Widened the Sales Invoice/Sales Order line fields and the item dropdown so full values and attribute lists are readable' },
+      { type: 'Changed', text: 'Item pickers display only the item name with its attributes — searching still matches the item code and variant SKU' },
+      { type: 'Fixed', text: 'Random logouts — after a token refresh the new tokens were written only to localStorage while the request interceptor read Redux first, so requests kept sending the expired access token (401 storm) until the single-use refresh token was rotated/revoked and the user was signed out; the refresh flow now updates Redux too' },
+      { type: 'Fixed', text: 'Quantity can no longer exceed available stock for inventory-tracked products on Sales Invoice/Sales Order — clamped in the form and validated on save' },
+      { type: 'Fixed', text: 'Removed a redundant refresh-token lookup that ran on every authenticated request' },
+    ],
+  },
+  {
     version: 'v3.8.0',
     date: '2026-09-24',
     title: 'Selling Resources & Item-Level Revenue Accounting',
@@ -186,7 +212,7 @@ const ReleaseNotes = () => {
           <Typography variant="body2" color="text.secondary">Version history and changelog for EzeeFlo ERP</Typography>
         </Box>
         <Box sx={{ flex: 1 }} />
-        <Chip label="Current: v3.8.0" color="primary" />
+        <Chip label="Current: v3.9.0" color="primary" />
       </Box>
 
       {RELEASES.map((release) => {

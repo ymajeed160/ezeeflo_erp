@@ -42,6 +42,7 @@ class InventoryTransactionDTO {
     return {
       id: data.id,
       itemId: data.itemId,
+      variantId: data.variantId,
       warehouseId: data.warehouseId,
       transactionType: data.transactionType,
       referenceType: data.referenceType,
@@ -53,10 +54,31 @@ class InventoryTransactionDTO {
       item: data.item
         ? { id: data.item.id, itemCode: data.item.itemCode, name: data.item.name }
         : null,
+      variant: InventoryTransactionDTO.toVariantResponse(data.variant),
       warehouse: data.warehouse
         ? { id: data.warehouse.id, code: data.warehouse.code, name: data.warehouse.name }
         : null,
     };
+  }
+
+  static toVariantResponse(variant) {
+    if (!variant) return null;
+
+    const data = variant.toJSON ? variant.toJSON() : variant;
+    const attributeValues = Array.isArray(data.attributeValues) ? data.attributeValues : [];
+
+    const attributes = attributeValues
+      .map((av) => ({
+        name: av.attribute ? av.attribute.name : null,
+        code: av.attribute ? av.attribute.code : null,
+        value: av.displayValue || av.value || (av.option ? av.option.value : null),
+        displayOrder: av.attribute ? av.attribute.displayOrder || 0 : 0,
+      }))
+      .filter((a) => a.name && a.value !== null && a.value !== '')
+      .sort((a, b) => a.displayOrder - b.displayOrder)
+      .map(({ name, code, value }) => ({ name, code, value }));
+
+    return { id: data.id, sku: data.sku, attributes };
   }
 
   static toCompactListResponse(transactions) {

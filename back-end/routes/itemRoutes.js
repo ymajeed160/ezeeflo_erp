@@ -19,6 +19,13 @@ router.get(
   (req, res, next) => itemController.getItems(req, res, next)
 );
 
+// GET /api/items/sellable-options - Item/variant options for document pickers
+router.get(
+  '/sellable-options',
+  requirePermission('item.view'),
+  (req, res, next) => itemController.getSellableOptions(req, res, next)
+);
+
 // GET /api/items/:id - Get item by ID
 router.get(
   '/:id',

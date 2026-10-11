@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { getToken } from '../../utils/auth';
+import authApi from '../../services/authApi';
 import { clearAuth } from '../../store/slices/authSlice';
 import { setActiveCompany, fetchCompanies } from '../../store/slices/companySlice';
 
@@ -27,6 +28,36 @@ const ProtectedRoute = ({ children, allowedRoles = [], requireCompany = true }) 
     window.addEventListener('pageshow', handlePageShow);
     return () => window.removeEventListener('pageshow', handlePageShow);
   }, []);
+
+  // Keep the server-side session alive while this tab is open. If the browser is
+  // closed without signing out, the heartbeat stops and the session is treated as
+  // ended, so a login from another browser can take over.
+  useEffect(() => {
+    if (!isAuthenticated) return undefined;
+    const beat = () => { authApi.heartbeat().catch(() => {}); };
+    beat();
+    const id = setInterval(beat, 60000);
+    return () => clearInterval(id);
+  }, [isAuthenticated]);
+
+  // Tell the server to end this session when the tab is closed or the user
+  // navigates away. A plain reload comes straight back and resumes the session.
+  useEffect(() => {
+    if (!isAuthenticated) return undefined;
+    const handlePageHide = () => {
+      try {
+        const state = JSON.parse(localStorage.getItem('persist:root') || '{}');
+        const auth = state.auth ? JSON.parse(state.auth) : null;
+        const refreshToken = auth?.refreshToken;
+        if (!refreshToken) return;
+        const url = `${process.env.REACT_APP_API_URL || '/api'}/auth/session-end`;
+        const blob = new Blob([JSON.stringify({ refreshToken })], { type: 'application/json' });
+        if (navigator.sendBeacon) navigator.sendBeacon(url, blob);
+      } catch { /* ignore */ }
+    };
+    window.addEventListener('pagehide', handlePageHide);
+    return () => window.removeEventListener('pagehide', handlePageHide);
+  }, [isAuthenticated]);
 
   // Initialize active company from URL param
   useEffect(() => {

@@ -1,7 +1,8 @@
 const jwt = require('jsonwebtoken');
-const { User, RefreshToken } = require('../models');
+const { User } = require('../models');
 const ApiResponse = require('../utils/apiResponse');
 const logger = require('../utils/logger');
+const sessionActivity = require('../utils/sessionActivity');
 
 const authMiddleware = async (req, res, next) => {
   try {
@@ -22,7 +23,9 @@ const authMiddleware = async (req, res, next) => {
       return ApiResponse.unauthorized(res, { message: 'Invalid token' });
     }
 
-    const user = await User.scope('withPassword').findByPk(decoded.userId);
+    const user = await User.scope('withPassword').findByPk(decoded.userId, {
+      attributes: { include: ['password', 'refreshToken'] },
+    });
     if (!user) {
       return ApiResponse.unauthorized(res, { message: 'User not found' });
     }
@@ -35,13 +38,15 @@ const authMiddleware = async (req, res, next) => {
       return ApiResponse.unauthorized(res, { message: 'Account is locked. Contact administrator.' });
     }
 
-    // Check if refresh token exists and is not revoked
-    const storedToken = await RefreshToken.findOne({
-      where: { userId: user.id, token: token, isRevoked: false },
-    });
+    // Single active session: reject tokens issued before a newer login.
+    if (decoded.sid && user.refreshToken && decoded.sid !== user.refreshToken) {
+      return ApiResponse.unauthorized(res, {
+        message: 'Session ended: your account was signed in from another browser',
+      });
+    }
 
-    // For access token, we skip this check. Only for refresh token validation.
-    // Here we just need to verify the access token is valid.
+    // Keep the session alive in the activity tracker (used by the single-session rule).
+    sessionActivity.touch(decoded.sid);
 
     // Preserve tenant context if already set by companyMiddleware (runs before duplicate authMiddleware calls)
     const existingTenantId = req.tenantId || req.user?.tenantId;

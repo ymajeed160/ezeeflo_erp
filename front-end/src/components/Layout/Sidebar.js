@@ -539,7 +539,7 @@ const Sidebar = () => {
             flexShrink: 0,
           }} />
           <Typography variant="caption" color={SIDEBAR_TEXT_DIM} noWrap sx={{ fontWeight: 500 }}>
-            ezeeflo ERP v3.8.0
+            ezeeflo ERP v3.9.0
           </Typography>
         </Box>
       )}

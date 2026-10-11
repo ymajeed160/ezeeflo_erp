@@ -231,6 +231,113 @@ class ItemService {
       await this.validateAccount(data.inventoryAccountId, tenantId, this.INVENTORY_ACCOUNT_TYPES, 'Inventory Account');
     }
   }
+
+  /**
+   * Build the list of selectable items for sales document pickers.
+   * Variant-enabled items are expanded into one option per variant so the
+   * option carries the variant attributes (and, when a warehouse is given,
+   * the on-hand stock for that variant).
+   */
+  async getSellableOptions(tenantId, query = {}) {
+    const { warehouseId } = query;
+    const {
+      Item, ItemVariant, ItemVariantAttributeValue, ItemAttribute,
+      ItemAttributeOption, InventoryBalance,
+    } = require('../models');
+    const { Op } = require('sequelize');
+
+    const items = await Item.findAll({
+      where: { tenantId, isActive: true },
+      order: [['itemCode', 'ASC']],
+    });
+
+    const variantItemIds = items.filter((item) => item.isVariantEnabled).map((item) => item.id);
+    const variantsByItem = new Map();
+    if (variantItemIds.length) {
+      const variants = await ItemVariant.findAll({
+        where: { tenantId, itemId: { [Op.in]: variantItemIds }, isActive: true },
+        include: [{
+          model: ItemVariantAttributeValue,
+          as: 'attributeValues',
+          required: false,
+          include: [
+            { model: ItemAttribute, as: 'attribute', required: false },
+            { model: ItemAttributeOption, as: 'option', required: false },
+          ],
+        }],
+        order: [['sku', 'ASC']],
+      });
+      for (const variant of variants) {
+        const list = variantsByItem.get(variant.itemId) || [];
+        list.push(variant);
+        variantsByItem.set(variant.itemId, list);
+      }
+    }
+
+    const balanceWhere = { tenantId };
+    if (warehouseId) balanceWhere.warehouseId = warehouseId;
+    const balances = await InventoryBalance.findAll({ where: balanceWhere });
+    const stockByKey = new Map();
+    for (const balance of balances) {
+      const key = `${balance.itemId}|${balance.variantId || ''}`;
+      stockByKey.set(key, (stockByKey.get(key) || 0) + (parseFloat(balance.quantityOnHand) || 0));
+    }
+    const stockFor = (itemId, variantId) => stockByKey.get(`${itemId}|${variantId || ''}`) || 0;
+
+    const attributeValuesOf = (rows) => (rows || [])
+      .map((row) => row.displayValue || row.value || (row.option ? row.option.value : null))
+      .filter((value) => value !== null && value !== undefined && value !== '');
+
+    const options = [];
+    for (const item of items) {
+      const shared = {
+        itemId: item.id,
+        itemCode: item.itemCode,
+        itemName: item.name,
+        itemType: item.itemType,
+        unitOfMeasure: item.unitOfMeasure,
+        isInventoryTracked: item.isInventoryTracked === true,
+        isVariantEnabled: item.isVariantEnabled === true,
+        sellingPrice: parseFloat(item.sellingPrice) || 0,
+        costPrice: parseFloat(item.costPrice) || 0,
+        taxPercentage: parseFloat(item.taxPercentage) || 0,
+      };
+
+      const variants = item.isVariantEnabled ? (variantsByItem.get(item.id) || []) : [];
+      if (variants.length) {
+        for (const variant of variants) {
+          const values = attributeValuesOf(variant.attributeValues);
+          const variantPrice = parseFloat(variant.sellingPrice);
+          const variantCost = parseFloat(variant.costPrice);
+          options.push({
+            ...shared,
+            key: `${item.id}|${variant.id}`,
+            variantId: variant.id,
+            variantSku: variant.sku,
+            variantDescription: variant.description || `${item.name} ${values.join(' ')}`.trim(),
+            attributeValues: values,
+            availableStock: stockFor(item.id, variant.id),
+            sellingPrice: variantPrice > 0 ? variantPrice : shared.sellingPrice,
+            costPrice: variantCost > 0 ? variantCost : shared.costPrice,
+          });
+        }
+      } else {
+        const values = [item.model, item.processor, item.ram, item.ssd, item.size, item.colour, item.generation]
+          .filter((value) => value !== null && value !== undefined && value !== '');
+        options.push({
+          ...shared,
+          key: `${item.id}|`,
+          variantId: null,
+          variantSku: null,
+          variantDescription: values.length ? `${item.name} ${values.join(' ')}` : item.name,
+          attributeValues: values,
+          availableStock: stockFor(item.id, null),
+        });
+      }
+    }
+
+    return options;
+  }
 }
 
 module.exports = new ItemService();

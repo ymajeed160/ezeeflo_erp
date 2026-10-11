@@ -5,6 +5,10 @@ const itemApi = {
     return axiosInstance.get('/items', { params }).then(res => res.data);
   },
 
+  getSellableOptions(params = {}) {
+    return axiosInstance.get('/items/sellable-options', { params }).then(res => res.data);
+  },
+
   getById(id) {
     return axiosInstance.get(`/items/${id}`).then(res => res.data);
   },

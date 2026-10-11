@@ -62,6 +62,8 @@ class SalesOrderService {
         salesOrderId: order.id,
         quotationDetailId: line.quotationDetailId || null,
         itemId: line.itemId,
+        variantId: line.variantId || null,
+        variantDescription: line.variantDescription || null,
         description: line.description || null,
         quantity: line.quantity,
         deliveredQuantity: 0,
@@ -126,6 +128,8 @@ class SalesOrderService {
         const detailRecords = data.details.map((line) => ({
           salesOrderId: id,
           itemId: line.itemId,
+          variantId: line.variantId || null,
+          variantDescription: line.variantDescription || null,
           description: line.description || null,
           quantity: line.quantity,
           deliveredQuantity: line.deliveredQuantity || 0,

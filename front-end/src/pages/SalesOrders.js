@@ -69,6 +69,8 @@ import salesOrderApi from '../services/salesOrderApi';
 import quotationApi from '../services/quotationApi';
 import PdfViewer from '../components/PdfViewer';
 import QuickCreate from '../components/QuickCreate/QuickCreate';
+import itemApi from '../services/itemApi';
+import { createFilterOptions } from '@mui/material/Autocomplete';
 
 const statusColors = {
   draft: 'default',
@@ -79,6 +81,20 @@ const statusColors = {
   cancelled: 'error',
 };
 
+// Option label: item name + variant attribute values, with on-hand stock.
+const sellableOptionLabel = (opt) => {
+  if (!opt) return '';
+  const base = [opt.itemName, ...(opt.attributeValues || [])].filter(Boolean).join(' · ') || opt.itemName || '';
+  return Number.isFinite(opt.availableStock) ? `${base} — ${opt.availableStock} available` : base;
+};
+
+// Keep searching by item code / SKU even though only the name is displayed.
+const filterSellableOptions = createFilterOptions({
+  stringify: (opt) => [
+    opt.itemName, opt.itemCode, opt.variantSku, ...(opt.attributeValues || []),
+  ].filter(Boolean).join(' '),
+});
+
 const SalesOrders = () => {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -86,7 +102,6 @@ const SalesOrders = () => {
   const dispatch = useDispatch();
   const { list, total, page, limit, selectedOrder, loading, submitting } = useSelector((s) => s.salesOrders);
   const { customers: customersList } = useSelector((s) => s.customers);
-  const { items: itemsList } = useSelector((s) => s.items);
   const { warehouses: warehouseList } = useSelector((s) => s.warehouses);
 
   const [search, setSearch] = useState('');
@@ -109,6 +124,7 @@ const SalesOrders = () => {
   const [quotationDetailIds, setQuotationDetailIds] = useState([]);
   const [reasonDialog, setReasonDialog] = useState({ open: false, action: null, target: null });
   const [reasonText, setReasonText] = useState('');
+  const [sellableOptions, setSellableOptions] = useState([]);
   const activeCompany = useSelector((s) => s.company?.activeCompany || null);
 
   const { register, handleSubmit, control, reset, watch, setValue, formState: { errors } } = useForm({
@@ -155,6 +171,8 @@ const SalesOrders = () => {
         status: selectedOrder.status || 'draft',
         details: selectedOrder.details?.length ? selectedOrder.details.map((d) => ({
           itemId: d.itemId || '',
+          variantId: d.variantId || '',
+          variantDescription: d.variantDescription || '',
           description: d.description || '',
           quantity: d.quantity || 0,
           unitPrice: d.unitPrice || 0,
@@ -412,6 +430,57 @@ const SalesOrders = () => {
   };
 
   const details = watch('details');
+  const selectedWarehouseId = watch('warehouseId');
+
+  const loadSellableOptions = useCallback(async (whId) => {
+    try {
+      const res = await itemApi.getSellableOptions(whId ? { warehouseId: whId } : {});
+      const list = res.data || [];
+      setSellableOptions(list);
+      return list;
+    } catch (e) {
+      return [];
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!openForm) return;
+    loadSellableOptions(selectedWarehouseId);
+  }, [openForm, selectedWarehouseId, loadSellableOptions]);
+
+  const optionForLine = (line) => {
+    if (!line || !line.itemId) return null;
+    return sellableOptions.find(
+      (o) => o.itemId === line.itemId && (o.variantId || '') === (line.variantId || '')
+    ) || null;
+  };
+
+  const maxStockForLine = (line) => {
+    if (!line) return null;
+    const opt = optionForLine(line);
+    if (!opt || opt.itemType !== 'product' || !opt.isInventoryTracked) return null;
+    return Number.isFinite(opt.availableStock) ? opt.availableStock : null;
+  };
+
+  const handleItemSelect = (index, opt) => {
+    if (!opt) {
+      setValue(`details.${index}.variantId`, '');
+      setValue(`details.${index}.variantDescription`, '');
+      return;
+    }
+    setValue(`details.${index}.itemId`, opt.itemId);
+    setValue(`details.${index}.variantId`, opt.variantId || '');
+    setValue(`details.${index}.variantDescription`, opt.variantDescription || '');
+    setValue(`details.${index}.description`, opt.variantDescription || opt.itemName || '');
+    setValue(`details.${index}.unitPrice`, opt.sellingPrice || 0);
+    setValue(`details.${index}.taxPercentage`, opt.taxPercentage || 0);
+    if (Number.isFinite(opt.availableStock)) {
+      const qty = parseFloat(details?.[index]?.quantity);
+      if (Number.isFinite(qty) && qty > opt.availableStock) {
+        setValue(`details.${index}.quantity`, opt.availableStock);
+      }
+    }
+  };
 
   const calculateLineTotal = (line) => {
     const qty = parseFloat(line.quantity) || 0;
@@ -643,14 +712,14 @@ const SalesOrders = () => {
                   <Table size="small">
                     <TableHead>
                       <TableRow>
-                        <TableCell width="25%">Item</TableCell>
-                        <TableCell width="20%">Description</TableCell>
-                        <TableCell width="10%">Qty</TableCell>
-                        <TableCell width="10%">Unit Price</TableCell>
-                        <TableCell width="10%">Tax %</TableCell>
-                        <TableCell width="10%">Disc %</TableCell>
-                        <TableCell width="10%">Total</TableCell>
-                        {!viewMode && <TableCell width="5%"></TableCell>}
+                        <TableCell width="32%">Item</TableCell>
+                        <TableCell width="17%">Description</TableCell>
+                        <TableCell width="8%">Qty</TableCell>
+                        <TableCell width="14%">Unit Price</TableCell>
+                        <TableCell width="8%">Tax %</TableCell>
+                        <TableCell width="8%">Disc %</TableCell>
+                        <TableCell width="9%">Total</TableCell>
+                        {!viewMode && <TableCell width="4%"></TableCell>}
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -665,32 +734,34 @@ const SalesOrders = () => {
                                 render={({ field: f }) => (
                                   <Autocomplete
                                     size="small"
-                                    options={itemsList}
-                                    getOptionLabel={(opt) => `${opt.itemCode || opt.code} - ${opt.name}`}
-                                    value={itemsList.find((i) => i.id === f.value) || null}
+                                    options={sellableOptions}
+                                    getOptionLabel={sellableOptionLabel}
+                                    isOptionEqualToValue={(opt, val) => opt.key === val.key}
+                                    filterOptions={filterSellableOptions}
+                                    renderOption={(props, option) => (
+                                      <li {...props} key={option.key}>{sellableOptionLabel(option)}</li>
+                                    )}
+                                    value={sellableOptions.find((o) => o.itemId === f.value && (o.variantId || '') === (details[index]?.variantId || '')) || null}
                                     onChange={(e, val) => {
-                                      f.onChange(val?.id || '');
-                                      if (val) {
-                                        setValue(`details.${index}.unitPrice`, Number(val.sellingPrice) || 0);
-                                        setValue(`details.${index}.taxPercentage`, Number(val.taxPercentage) || 0);
-                                      }
+                                      f.onChange(val?.itemId || '');
+                                      handleItemSelect(index, val);
                                     }}
                                     renderInput={(params) => (
-                                      <TextField {...params} error={!!errors.details?.[index]?.itemId} helperText={errors.details?.[index]?.itemId?.message} />
+                                      <TextField {...params} placeholder="Select Item" error={!!errors.details?.[index]?.itemId} helperText={errors.details?.[index]?.itemId?.message} />
                                     )}
                                     disabled={viewMode}
-                                    sx={{ flex: 1 }}
+                                    sx={{ flex: 1, minWidth: 320 }}
                                   />
                                 )}
                               />
                               <QuickCreate
                                 entityKey="item"
                                 disabled={viewMode}
-                                onCreated={(it) => {
-                                  dispatch(fetchItems({ limit: 999 }));
-                                  setValue(`details.${index}.itemId`, it.id, { shouldValidate: true });
-                                  if (it.sellingPrice) setValue(`details.${index}.unitPrice`, Number(it.sellingPrice) || 0);
-                                  if (it.taxPercentage) setValue(`details.${index}.taxPercentage`, Number(it.taxPercentage) || 0);
+                                onCreated={async (it) => {
+                                  const list = await loadSellableOptions(selectedWarehouseId);
+                                  const opt = list.find((o) => o.itemId === it.id && !o.variantId)
+                                    || list.find((o) => o.itemId === it.id);
+                                  if (opt) handleItemSelect(index, opt);
                                 }}
                               />
                             </Box>
@@ -699,7 +770,26 @@ const SalesOrders = () => {
                             <TextField size="small" fullWidth {...register(`details.${index}.description`)} disabled={viewMode} />
                           </TableCell>
                           <TableCell>
-                            <TextField size="small" type="number" fullWidth {...register(`details.${index}.quantity`, { required: true, valueAsNumber: true })} disabled={viewMode} inputProps={{ min: 0, step: 1 }} />
+                            <TextField size="small" type="number" fullWidth
+                              {...register(`details.${index}.quantity`, {
+                                required: true,
+                                valueAsNumber: true,
+                                validate: (value) => {
+                                  const max = maxStockForLine(details[index]);
+                                  if (max === null) return true;
+                                  return !Number.isFinite(value) || value <= max || `Only ${max} available`;
+                                },
+                              })}
+                              onChange={(e) => {
+                                const max = maxStockForLine(details[index]);
+                                let raw = e.target.value;
+                                if (max !== null && raw !== '' && parseFloat(raw) > max) raw = String(max);
+                                setValue(`details.${index}.quantity`, raw === '' ? '' : Number(raw), { shouldValidate: true, shouldDirty: true });
+                              }}
+                              error={!!errors.details?.[index]?.quantity}
+                              helperText={errors.details?.[index]?.quantity?.message}
+                              disabled={viewMode}
+                              inputProps={{ min: 0, step: 1, max: maxStockForLine(details[index]) ?? undefined }} />
                           </TableCell>
                           <TableCell>
                             <TextField size="small" type="number" fullWidth {...register(`details.${index}.unitPrice`, { required: true, valueAsNumber: true })} disabled={viewMode} inputProps={{ min: 0, step: 0.01 }} />

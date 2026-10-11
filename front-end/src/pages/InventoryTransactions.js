@@ -66,6 +66,15 @@ const InventoryTransactions = () => {
     return w ? w.name : 'Unknown Warehouse';
   };
 
+  const getItemAttributesText = (txn) => {
+    const attributes = txn?.variant?.attributes;
+    if (!Array.isArray(attributes)) return '';
+    return attributes
+      .map((a) => (a ? a.value : null))
+      .filter(Boolean)
+      .join(' · ');
+  };
+
   const filtered = Array.isArray(transactions) ? transactions : [];
 
   const TRANSACTION_TYPES = [
@@ -168,7 +177,14 @@ const InventoryTransactions = () => {
                     <TableCell>
                       {txn.transactionDate ? new Date(txn.transactionDate).toLocaleDateString() : '-'}
                     </TableCell>
-                    <TableCell>{getItemName(txn.itemId)}</TableCell>
+                    <TableCell>
+                      <Typography variant="body2">{getItemName(txn.itemId)}</Typography>
+                      {getItemAttributesText(txn) !== '' && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
+                          {getItemAttributesText(txn)}
+                        </Typography>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <Chip label={getWarehouseName(txn.warehouseId)} size="small" variant="outlined" />
                     </TableCell>

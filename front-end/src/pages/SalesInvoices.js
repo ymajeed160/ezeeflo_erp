@@ -52,6 +52,7 @@ import {
   Email as EmailIcon,
 } from '@mui/icons-material';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
+import { createFilterOptions } from '@mui/material/Autocomplete';
 import {
   fetchInvoices,
   fetchInvoice,
@@ -76,19 +77,33 @@ import SalesInvoiceApi from '../services/salesInvoiceApi';
 import salesOrderApi from '../services/salesOrderApi';
 import { generateSalesInvoicePdf } from '../utils/pdfInvoice';
 import QuickCreate from '../components/QuickCreate/QuickCreate';
+import itemApi from '../services/itemApi';
 import PdfViewer from '../components/PdfViewer';
 import {
   AccountBalance as AccountBalanceIcon,
 } from '@mui/icons-material';
 
 const statusColors = {
-  draft: 'default',
-  posted: 'success',
+  draft: 'default',  posted: 'success',
   partially_paid: 'info',
   paid: 'primary',
   overdue: 'warning',
   cancelled: 'error',
 };
+
+// Option label: item name + variant attribute values, with on-hand stock.
+const sellableOptionLabel = (opt) => {
+  if (!opt) return '';
+  const base = [opt.itemName, ...(opt.attributeValues || [])].filter(Boolean).join(' · ') || opt.itemName || '';
+  return Number.isFinite(opt.availableStock) ? `${base} — ${opt.availableStock} available` : base;
+};
+
+// Keep searching by item code / SKU even though only the name is displayed.
+const filterSellableOptions = createFilterOptions({
+  stringify: (opt) => [
+    opt.itemName, opt.itemCode, opt.variantSku, ...(opt.attributeValues || []),
+  ].filter(Boolean).join(' '),
+});
 
 const SalesInvoices = () => {
   const navigate = useNavigate();
@@ -97,7 +112,6 @@ const SalesInvoices = () => {
   const dispatch = useDispatch();
   const { items, selected, loading, error, count, page, limit, totalPages } = useSelector((s) => s.salesInvoices);
   const customersList = useSelector((s) => s.customers?.customers || []);
-  const itemsList = useSelector((s) => s.items?.items || []);
   const warehouseList = useSelector((s) => s.warehouses?.warehouses || []);
   const sellingResourceList = useSelector((s) => s.sellingResources?.resourceSelect || []);
 
@@ -126,6 +140,7 @@ const SalesInvoices = () => {
   const [sendingEmail, setSendingEmail] = useState(false);
   const [reasonDialog, setReasonDialog] = useState({ open: false, action: null, target: null });
   const [reasonText, setReasonText] = useState('');
+  const [sellableOptions, setSellableOptions] = useState([]);
   const activeCompany = useSelector((s) => s.company?.activeCompany || null);
 
   const { register, handleSubmit, control, reset, watch, setValue, formState: { errors } } = useForm({
@@ -231,6 +246,8 @@ const SalesInvoices = () => {
           details: lines.length > 0 ? lines.map((l) => ({
             salesOrderDetailId: l.salesOrderDetailId,
             itemId: l.itemId,
+            variantId: l.variantId || '',
+            variantDescription: l.variantDescription || '',
             description: l.description || '',
             quantity: l.remainingQuantity,
             unitPrice: l.unitPrice,
@@ -279,6 +296,8 @@ const SalesInvoices = () => {
         details: selected.details?.length ? selected.details.map((d) => ({
           id: d.id,
           itemId: d.itemId || '',
+          variantId: d.variantId || '',
+          variantDescription: d.variantDescription || '',
           description: d.description || '',
           quantity: d.quantity || 0,
           unitPrice: d.unitPrice || 0,
@@ -507,6 +526,8 @@ const SalesInvoices = () => {
       details: data.details.map((d) => ({
         id: d.id || undefined,
         itemId: d.itemId,
+        variantId: d.variantId || null,
+        variantDescription: d.variantDescription || null,
         description: d.description || '',
         quantity: parseFloat(d.quantity) || 0,
         unitPrice: parseFloat(d.unitPrice) || 0,
@@ -547,6 +568,7 @@ const SalesInvoices = () => {
   };
 
   const details = watch('details');
+  const selectedWarehouseId = watch('warehouseId');
   const isInventoryImpact = watch('isInventoryImpact');
 
   const calculateLineTotal = (line) => {
@@ -584,14 +606,57 @@ const SalesInvoices = () => {
   };
 
   const handleItemSelect = async (index, item) => {
-    if (!item) return;
-    setValue(`details.${index}.itemId`, item.id);
-    setValue(`details.${index}.description`, item.itemName || item.name || '');
+    if (!item) {
+      setValue(`details.${index}.itemId`, '');
+      setValue(`details.${index}.variantId`, '');
+      setValue(`details.${index}.variantDescription`, '');
+      return;
+    }
+    setValue(`details.${index}.itemId`, item.itemId);
+    setValue(`details.${index}.variantId`, item.variantId || '');
+    setValue(`details.${index}.variantDescription`, item.variantDescription || '');
+    setValue(`details.${index}.description`, item.variantDescription || item.itemName || '');
     setValue(`details.${index}.unitPrice`, item.sellingPrice || 0);
     setValue(`details.${index}.costPrice`, item.costPrice || 0);
-    setValue(`details.${index}.taxPercent`, item.taxPercent || item.taxPercentage || 0);
+    setValue(`details.${index}.taxPercent`, item.taxPercentage || 0);
+    if (Number.isFinite(item.availableStock)) {
+      const qty = parseFloat(details?.[index]?.quantity);
+      if (Number.isFinite(qty) && qty > item.availableStock) {
+        setValue(`details.${index}.quantity`, item.availableStock);
+      }
+    }
     // Sales Revenue is derived from the item's Income Account at posting time;
     // VAT Payable is resolved from System Config (accounting tab).
+  };
+
+  const loadSellableOptions = useCallback(async (whId) => {
+    try {
+      const res = await itemApi.getSellableOptions(whId ? { warehouseId: whId } : {});
+      const list = res.data || [];
+      setSellableOptions(list);
+      return list;
+    } catch (e) {
+      return [];
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!openForm) return;
+    loadSellableOptions(selectedWarehouseId);
+  }, [openForm, selectedWarehouseId, loadSellableOptions]);
+
+  const optionForLine = (line) => {
+    if (!line || !line.itemId) return null;
+    return sellableOptions.find(
+      (o) => o.itemId === line.itemId && (o.variantId || '') === (line.variantId || '')
+    ) || null;
+  };
+
+  const maxStockForLine = (line) => {
+    if (!line || line.deliveryNoteDetailId) return null;
+    const opt = optionForLine(line);
+    if (!opt || opt.itemType !== 'product' || !opt.isInventoryTracked) return null;
+    return Number.isFinite(opt.availableStock) ? opt.availableStock : null;
   };
 
   const renderFormDialog = () => (
@@ -809,13 +874,12 @@ const SalesInvoices = () => {
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ minWidth: 200 }}>Item</TableCell>
+                  <TableCell sx={{ minWidth: 340 }}>Item</TableCell>
                   <TableCell sx={{ minWidth: 150 }}>Description</TableCell>
-                  <TableCell sx={{ minWidth: 90 }}>Qty</TableCell>
+                  <TableCell sx={{ minWidth: 110 }}>Qty</TableCell>
                   <TableCell sx={{ minWidth: 120 }}>Unit Price</TableCell>
                   <TableCell sx={{ minWidth: 110 }}>Tax %</TableCell>
                   <TableCell sx={{ minWidth: 110 }}>Disc %</TableCell>
-                  <TableCell sx={{ minWidth: 120 }}>Cost Price</TableCell>
                   <TableCell sx={{ minWidth: 120 }}>Line Total</TableCell>
                   {!viewMode && <TableCell width={50}></TableCell>}
                 </TableRow>
@@ -828,20 +892,26 @@ const SalesInvoices = () => {
                         <Autocomplete
                           disabled={viewMode}
                           size="small"
-                          value={itemsList.find((it) => it.id === details[index]?.itemId) || null}
+                          value={optionForLine(details[index])}
                           onChange={(_, val) => handleItemSelect(index, val)}
-                          options={itemsList}
-                          getOptionLabel={(opt) => `${opt.itemCode} - ${opt.name || opt.itemName || ''}`}
-                          isOptionEqualToValue={(opt, val) => opt.id === val.id}
+                          options={sellableOptions}
+                          getOptionLabel={sellableOptionLabel}
+                          isOptionEqualToValue={(opt, val) => opt.key === val.key}
+                          filterOptions={filterSellableOptions}
+                          renderOption={(props, option) => (
+                            <li {...props} key={option.key}>{sellableOptionLabel(option)}</li>
+                          )}
                           renderInput={(params) => <TextField {...params} placeholder="Select Item" />}
-                          sx={{ flex: 1 }}
+                          sx={{ flex: 1, minWidth: 320 }}
                         />
                         <QuickCreate
                           entityKey="item"
                           disabled={viewMode}
-                          onCreated={(it) => {
-                            dispatch(fetchItems({ limit: 999 }));
-                            handleItemSelect(index, it);
+                          onCreated={async (it) => {
+                            const list = await loadSellableOptions(selectedWarehouseId);
+                            const opt = list.find((o) => o.itemId === it.id && !o.variantId)
+                              || list.find((o) => o.itemId === it.id);
+                            if (opt) handleItemSelect(index, opt);
                           }}
                         />
                       </Box>
@@ -860,8 +930,25 @@ const SalesInvoices = () => {
                         size="small"
                         type="number"
                         disabled={viewMode}
-                        {...register(`details.${index}.quantity`, { min: 0 })}
-                        inputProps={{ step: 'any', min: 0 }}
+                        {...register(`details.${index}.quantity`, {
+                          min: { value: 0, message: 'Must be 0 or more' },
+                          validate: (value) => {
+                            const max = maxStockForLine(details[index]);
+                            if (max === null) return true;
+                            const qty = parseFloat(value);
+                            return !Number.isFinite(qty) || qty <= max || `Only ${max} available`;
+                          },
+                        })}
+                        onChange={(e) => {
+                          const max = maxStockForLine(details[index]);
+                          let value = e.target.value;
+                          if (max !== null && value !== '' && parseFloat(value) > max) value = String(max);
+                          setValue(`details.${index}.quantity`, value, { shouldValidate: true, shouldDirty: true });
+                        }}
+                        error={!!errors.details?.[index]?.quantity}
+                        helperText={errors.details?.[index]?.quantity?.message}
+                        fullWidth
+                        inputProps={{ step: 'any', min: 0, max: maxStockForLine(details[index]) ?? undefined }}
                       />
                     </TableCell>
                     <TableCell>
@@ -871,6 +958,7 @@ const SalesInvoices = () => {
                         disabled={viewMode}
                         {...register(`details.${index}.unitPrice`, { min: 0 })}
                         inputProps={{ step: 'any', min: 0 }}
+                        fullWidth
                       />
                     </TableCell>
                     <TableCell>
@@ -880,6 +968,7 @@ const SalesInvoices = () => {
                         disabled={viewMode}
                         {...register(`details.${index}.taxPercent`, { min: 0, max: 100 })}
                         inputProps={{ step: 'any', min: 0 }}
+                        fullWidth
                       />
                     </TableCell>
                     <TableCell>
@@ -889,15 +978,7 @@ const SalesInvoices = () => {
                         disabled={viewMode}
                         {...register(`details.${index}.discountPercent`, { min: 0, max: 100 })}
                         inputProps={{ step: 'any', min: 0 }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <TextField
-                        size="small"
-                        type="number"
-                        disabled={viewMode}
-                        {...register(`details.${index}.costPrice`, { min: 0 })}
-                        inputProps={{ step: 'any', min: 0 }}
+                        fullWidth
                       />
                     </TableCell>
                     <TableCell>

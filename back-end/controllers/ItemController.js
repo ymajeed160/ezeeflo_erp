@@ -25,6 +25,23 @@ class ItemController {
   }
 
   /**
+   * GET /api/items/sellable-options
+   * Item/variant options for sales document pickers (with attributes + stock)
+   */
+  async getSellableOptions(req, res, next) {
+    try {
+      const tenantId = req.user.tenantId;
+      const options = await itemService.getSellableOptions(tenantId, req.query);
+      return ApiResponse.success(res, {
+        data: options,
+        message: 'Sellable options retrieved successfully',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * GET /api/items/:id
    * Get item by ID
    */

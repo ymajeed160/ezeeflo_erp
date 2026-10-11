@@ -11,6 +11,8 @@ class SalesInvoiceDTO {
   static toCreate(body, tenantId, userId) {
     const details = (body.details || []).map((line) => ({
       itemId: line.itemId,
+      variantId: line.variantId || null,
+      variantDescription: line.variantDescription || null,
       description: line.description || '',
       quantity: parseFloat(line.quantity) || 0,
       unitPrice: parseFloat(line.unitPrice) || 0,
@@ -66,6 +68,8 @@ class SalesInvoiceDTO {
     const details = (body.details || []).map((line) => ({
       id: line.id || undefined,
       itemId: line.itemId,
+      variantId: line.variantId || null,
+      variantDescription: line.variantDescription || null,
       description: line.description || '',
       quantity: parseFloat(line.quantity) || 0,
       unitPrice: parseFloat(line.unitPrice) || 0,
@@ -214,6 +218,8 @@ class SalesInvoiceDTO {
       details: (record.details || []).map((line) => ({
         id: line.id,
         itemId: line.itemId,
+        variantId: line.variantId || null,
+        variantDescription: line.variantDescription || null,
         itemName: line.item ? line.item.name : '',
         itemCode: line.item ? line.item.itemCode : '',
         description: line.description,

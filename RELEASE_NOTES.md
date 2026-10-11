@@ -1,5 +1,57 @@
 # ERPMTSuite Release Notes
 
+## Version 3.9.0 — October 11, 2026
+
+---
+
+## 🆕 New Features
+
+### Configurable Item Variants & Dynamic Attributes
+
+Items can now be sold and purchased as configurable variants driven by tenant-defined attributes:
+
+- **Attributes** — define attributes (Dropdown / Text / Number) with their options, under **Inventory → Attributes**.
+- **Attribute Templates** — group attributes into a template and assign it to an item; the template defines which attributes produce distinct variants.
+- **Item Variants** — auto-generated variant SKUs, configuration-key de-duplication (the same attribute combination reuses the existing variant), and variant/attribute search.
+- **Variant-aware inventory** — inventory transactions and balances post per (item + variant); Goods Receipts validate over-receipt per variant.
+- **Procurement integration** — variants propagate through Purchase Requests → Purchase Orders → Goods Receipts → Purchase Invoices.
+- **Variant selector dialog** on Purchase Requests, Purchase Orders, Goods Receipts and Purchase Invoices; an "Attributes & Variants" section on the item form; variant descriptions on purchase PDFs.
+- **Database** — new tables `item_attributes`, `item_attribute_options`, `item_attribute_templates`, `item_attribute_template_attributes`, `item_variants`, `item_variant_attribute_values`, plus `variant_id` / `variant_description` on inventory and purchase/sales line tables.
+
+---
+
+### Variant Attributes in Sales Documents
+
+Sales Invoice and Sales Order lines now select the sellable configuration directly:
+
+- The item picker lists **one row per variant**, showing the item name with its attribute values and the **available stock** (e.g. `ASUS TUF · TUF F15 · Core i9 · 16 GB · 1 TB SSD · Black — 1 available`).
+- Searching still matches the item code and variant SKU even though only the name is displayed.
+- Selecting a variant fills the line description, unit price, tax and cost from that variant.
+- The selected variant is stored on the line (`variant_id`, `variant_description`).
+- **Quantity is limited to available stock** for inventory-tracked products — the value is clamped in the form and validated on save.
+- New API: `GET /api/items/sellable-options` returns sellable items/variants with attributes and on-hand stock for document pickers.
+
+### Item Attributes on Inventory Transactions
+
+- The Inventory Transactions page now shows the linked attribute values of each movement's variant beneath the item name (e.g. `1 TB SSD · Black · 16 GB · Core i9 · TUF F15`).
+
+---
+
+## 🔐 Security & Session Management
+
+- **Single active session per user** — signing in from a second browser is blocked with the message *"You are already logged in from another browser. Please sign out from that browser and try again."* Re-login from the same browser replaces the previous session.
+- **Closed-browser sessions end automatically** — the app sends a heartbeat every minute while a tab is open. If the browser is closed without signing out, the heartbeat stops and the session is treated as ended after ~5 minutes of inactivity, so the next login (from any browser) takes over instead of being blocked.
+- **IP & user-agent recording** — login attempts and sessions continue to record the client IP address and user agent (audit trail and refresh-token records).
+
+---
+
+## 🐛 Bug Fixes
+
+- **Random logouts fixed** — after the access token was refreshed, the new tokens were written only to `localStorage` while the request interceptor read the Redux store first, so every request kept sending the *expired* access token (a 401 storm) until the single-use refresh token was rotated/revoked and the user was forced to sign in again. The refresh flow now updates Redux as well as `localStorage`.
+- Removed a redundant refresh-token lookup that ran on every authenticated request.
+
+---
+
 ## Version 3.8.0 — September 24, 2026
 
 ---

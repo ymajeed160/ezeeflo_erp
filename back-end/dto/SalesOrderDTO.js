@@ -48,6 +48,8 @@ class SalesOrderDTO {
       salesOrderId: plain.salesOrderId,
       itemId: plain.itemId,
       item: plain.item || null,
+      variantId: plain.variantId || null,
+      variantDescription: plain.variantDescription || null,
       description: plain.description,
       quantity: parseFloat(plain.quantity) || 0,
       deliveredQuantity: parseFloat(plain.deliveredQuantity) || 0,
