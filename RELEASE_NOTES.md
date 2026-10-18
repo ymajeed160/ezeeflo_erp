@@ -34,6 +34,8 @@ Sales Invoice and Sales Order lines now select the sellable configuration direct
 ### Item Attributes on Inventory Transactions
 
 - The Inventory Transactions page now shows the linked attribute values of each movement's variant beneath the item name (e.g. `1 TB SSD · Black · 16 GB · Core i9 · TUF F15`).
+- **New "Balance Cost" column** — each row shows the value of the remaining stock (`running balance × unit cost`, e.g. `10 × 900.00 = 9,000.00`).
+- **Page totals row** at the end of each page — totals for **Qty In**, **Qty Out**, **Balance**, **Unit Cost** and **Balance Cost**.
 
 ---
 
@@ -48,6 +50,9 @@ Sales Invoice and Sales Order lines now select the sellable configuration direct
 
 - **Random logouts fixed** — after the access token was refreshed, the new tokens were written only to `localStorage` while the request interceptor read the Redux store first, so every request kept sending the *expired* access token (a 401 storm) until the single-use refresh token was rotated/revoked and the user was forced to sign in again. The refresh flow now updates Redux as well as `localStorage`.
 - Removed a redundant refresh-token lookup that ran on every authenticated request.
+- **Purchase Order "Internal Server Error" fixed** — an empty **Expected Delivery Date** was saved as an empty string, which MySQL rejected (`Invalid date`). Empty date/UUID values are now stored as `NULL`.
+- **Purchase Invoice "Internal Server Error" fixed** — invoices saved **without a warehouse** could not be read back because the warehouse was joined as an `INNER JOIN`; it is now a `LEFT JOIN`.
+- **Deployment database patch** — existing/deployed databases need the variant columns (`variant_id`, `variant_description`). Run `deploy-tezhost/variant-columns-patch.sql` once in phpMyAdmin; without it purchase documents fail with `Unknown column 'variant_id'`.
 
 ---
 

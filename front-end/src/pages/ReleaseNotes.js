@@ -25,7 +25,11 @@ const RELEASES = [
       { type: 'Changed', text: 'Item pickers display only the item name with its attributes — searching still matches the item code and variant SKU' },
       { type: 'Fixed', text: 'Random logouts — after a token refresh the new tokens were written only to localStorage while the request interceptor read Redux first, so requests kept sending the expired access token (401 storm) until the single-use refresh token was rotated/revoked and the user was signed out; the refresh flow now updates Redux too' },
       { type: 'Fixed', text: 'Quantity can no longer exceed available stock for inventory-tracked products on Sales Invoice/Sales Order — clamped in the form and validated on save' },
+      { type: 'New', text: 'Inventory Transactions now show a Balance Cost column — the value of remaining stock per row (running balance × unit cost) — plus a page totals row for Qty In, Qty Out, Balance, Unit Cost and Balance Cost' },
       { type: 'Fixed', text: 'Removed a redundant refresh-token lookup that ran on every authenticated request' },
+      { type: 'Fixed', text: 'Purchase Order "Internal Server Error" — an empty Expected Delivery Date was saved as an empty string (MySQL: Invalid date); empty date/UUID values are now stored as NULL' },
+      { type: 'Fixed', text: 'Purchase Invoice "Internal Server Error" — invoices saved without a warehouse could not be read back (INNER JOIN on warehouse); now a LEFT JOIN' },
+      { type: 'Fixed', text: 'Deployed databases missing the variant columns (Unknown column variant_id) — run deploy-tezhost/variant-columns-patch.sql once in phpMyAdmin' },
     ],
   },
   {
