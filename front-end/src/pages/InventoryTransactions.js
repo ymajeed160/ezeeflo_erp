@@ -87,8 +87,9 @@ const InventoryTransactions = () => {
     acc.balance += parseFloat(txn.runningBalance) || 0;
     acc.unitCost += unitCost;
     acc.totalCost += (qtyIn - qtyOut) * unitCost;
+    acc.balanceCost += (parseFloat(txn.runningBalance) || 0) * unitCost;
     return acc;
-  }, { qtyIn: 0, qtyOut: 0, balance: 0, unitCost: 0, totalCost: 0 });
+  }, { qtyIn: 0, qtyOut: 0, balance: 0, unitCost: 0, totalCost: 0, balanceCost: 0 });
 
   const money = (value) => (parseFloat(value) || 0).toLocaleString(undefined, {
     minimumFractionDigits: 2,
@@ -180,12 +181,13 @@ const InventoryTransactions = () => {
                 <TableCell align="right"><strong>Qty Out</strong></TableCell>
                 <TableCell align="right"><strong>Balance</strong></TableCell>
                 <TableCell align="right"><strong>Unit Cost</strong></TableCell>
+                <TableCell align="right"><strong>Balance Cost</strong></TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
                     <Typography color="text.secondary">No transactions found</Typography>
                   </TableCell>
                 </TableRow>
@@ -250,6 +252,11 @@ const InventoryTransactions = () => {
                           })
                         : '-'}
                     </TableCell>
+                    <TableCell align="right">
+                      <Typography fontWeight={600}>
+                        {money((parseFloat(txn.runningBalance) || 0) * (parseFloat(txn.unitCost) || 0))}
+                      </Typography>
+                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -279,9 +286,9 @@ const InventoryTransactions = () => {
                   </TableCell>
                   <TableCell align="right">
                     <Typography fontWeight={700}>{money(pageTotals.unitCost)}</Typography>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                      Cost of balance: {money(pageTotals.totalCost)}
-                    </Typography>
+                  </TableCell>
+                  <TableCell align="right">
+                    <Typography fontWeight={700}>{money(pageTotals.balanceCost)}</Typography>
                   </TableCell>
                 </TableRow>
               </TableFooter>
