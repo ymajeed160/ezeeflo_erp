@@ -2,7 +2,6 @@ const jwt = require('jsonwebtoken');
 const { User } = require('../models');
 const ApiResponse = require('../utils/apiResponse');
 const logger = require('../utils/logger');
-const sessionActivity = require('../utils/sessionActivity');
 
 const authMiddleware = async (req, res, next) => {
   try {
@@ -23,9 +22,7 @@ const authMiddleware = async (req, res, next) => {
       return ApiResponse.unauthorized(res, { message: 'Invalid token' });
     }
 
-    const user = await User.scope('withPassword').findByPk(decoded.userId, {
-      attributes: { include: ['password', 'refreshToken'] },
-    });
+    const user = await User.scope('withPassword').findByPk(decoded.userId);
     if (!user) {
       return ApiResponse.unauthorized(res, { message: 'User not found' });
     }
@@ -37,16 +34,6 @@ const authMiddleware = async (req, res, next) => {
     if (user.isLocked) {
       return ApiResponse.unauthorized(res, { message: 'Account is locked. Contact administrator.' });
     }
-
-    // Single active session: reject tokens issued before a newer login.
-    if (decoded.sid && user.refreshToken && decoded.sid !== user.refreshToken) {
-      return ApiResponse.unauthorized(res, {
-        message: 'Session ended: your account was signed in from another browser',
-      });
-    }
-
-    // Keep the session alive in the activity tracker (used by the single-session rule).
-    sessionActivity.touch(decoded.sid);
 
     // Preserve tenant context if already set by companyMiddleware (runs before duplicate authMiddleware calls)
     const existingTenantId = req.tenantId || req.user?.tenantId;

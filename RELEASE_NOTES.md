@@ -39,8 +39,7 @@ Sales Invoice and Sales Order lines now select the sellable configuration direct
 
 ## 🔐 Security & Session Management
 
-- **Single active session per user** — signing in from a second browser is blocked with the message *"You are already logged in from another browser. Please sign out from that browser and try again."* Re-login from the same browser replaces the previous session.
-- **Closed-browser sessions end automatically** — the app sends a heartbeat every minute while a tab is open. If the browser is closed without signing out, the heartbeat stops and the session is treated as ended after ~5 minutes of inactivity, so the next login (from any browser) takes over instead of being blocked.
+- **Multiple browser sessions supported** — a user may stay signed in from several browsers/devices at the same time. (Single-session enforcement was removed.)
 - **IP & user-agent recording** — login attempts and sessions continue to record the client IP address and user agent (audit trail and refresh-token records).
 
 ---

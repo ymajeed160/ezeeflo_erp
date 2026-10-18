@@ -40,11 +40,6 @@ const authApi = {
     const { data } = await axiosInstance.get('/auth/me');
     return data;
   },
-
-  heartbeat: async () => {
-    const { data } = await axiosInstance.post('/auth/heartbeat');
-    return data;
-  },
 };
 
 export default authApi;

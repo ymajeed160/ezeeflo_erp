@@ -1,35 +1,28 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const { Op } = require('sequelize');
 const userRepository = require('../repositories/UserRepository');
 const companyRepository = require('../repositories/CompanyRepository');
 const { RefreshToken, User } = require('../models');
-const sessionActivity = require('../utils/sessionActivity');
-const { BadRequestError, UnauthorizedError, NotFoundError, ConflictError } = require('../utils/appError');
+const { BadRequestError, UnauthorizedError, NotFoundError } = require('../utils/appError');
 const logger = require('../utils/logger');
 
 class AuthService {
-  generateAccessToken(user, sessionId) {
+  generateAccessToken(user) {
     return jwt.sign(
       {
         userId: user.id,
         tenantId: user.tenantId,
         username: user.username,
-        ...(sessionId ? { sid: sessionId } : {}),
       },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRE || '1h' }
     );
   }
 
-  generateRefreshToken(user, sessionId) {
+  generateRefreshToken(user) {
     return jwt.sign(
-      {
-        userId: user.id,
-        tenantId: user.tenantId,
-        ...(sessionId ? { sid: sessionId } : {}),
-      },
+      { userId: user.id, tenantId: user.tenantId },
       process.env.JWT_REFRESH_SECRET,
       { expiresIn: process.env.JWT_REFRESH_EXPIRE || '7d' }
     );
@@ -59,34 +52,9 @@ class AuthService {
     await userRepository.resetFailedAttempts(user.id);
     await userRepository.updateLastLogin(user.id);
 
-    // Single active session per user: block a login from another browser while
-    // an existing session is still active (re-login from the same browser is fine).
-    const activeSession = await RefreshToken.findOne({
-      where: { userId: user.id, isRevoked: false, expiresAt: { [Op.gt]: new Date() } },
-      order: [['createdAt', 'DESC']],
-    });
-
-    if (activeSession && (activeSession.userAgent || '') !== (userAgent || '')) {
-      // Only block while that other session is actually in use. If its browser
-      // was closed without signing out it goes idle, and this login takes over.
-      const marker = await User.unscoped().findByPk(user.id, { attributes: ['refreshToken'] });
-      if (sessionActivity.isActive(marker?.refreshToken)) {
-        throw new ConflictError(
-          'You are already logged in from another browser. Please sign out from that browser and try again.'
-        );
-      }
-    }
-
-    // Single active session per user: a new login ends every previous session.
-    const sessionId = crypto.randomUUID();
-    const accessToken = this.generateAccessToken(user, sessionId);
-    const refreshToken = this.generateRefreshToken(user, sessionId);
-
-    // Revoke any existing sessions' refresh tokens before starting the new one.
-    await RefreshToken.update(
-      { isRevoked: true, revokedAt: new Date() },
-      { where: { userId: user.id, isRevoked: false } }
-    );
+    // Multiple concurrent sessions are allowed (one per browser/device).
+    const accessToken = this.generateAccessToken(user);
+    const refreshToken = this.generateRefreshToken(user);
 
     // Store refresh token
     const expiresAt = new Date();
@@ -100,10 +68,6 @@ class AuthService {
       userAgent,
       ipAddress,
     });
-
-    // Mark this session as the active one (checked by authMiddleware).
-    await userRepository.updateRefreshToken(user.id, sessionId);
-    sessionActivity.touch(sessionId);
 
     // Remove sensitive fields
     const userData = user.toJSON();
@@ -162,15 +126,8 @@ class AuthService {
       throw new UnauthorizedError('User not found or deactivated');
     }
 
-    // Only the active session may refresh — a newer login invalidates this one.
-    const marker = await User.unscoped().findByPk(decoded.userId, { attributes: ['refreshToken'] });
-    if (decoded.sid && marker?.refreshToken && decoded.sid !== marker.refreshToken) {
-      await storedToken.update({ isRevoked: true, revokedAt: new Date() });
-      throw new UnauthorizedError('Session ended: account signed in from another browser');
-    }
-
-    const newAccessToken = this.generateAccessToken(user, decoded.sid);
-    const newRefreshToken = this.generateRefreshToken(user, decoded.sid);
+    const newAccessToken = this.generateAccessToken(user);
+    const newRefreshToken = this.generateRefreshToken(user);
 
     // Revoke old token and create new one
     await storedToken.update({ isRevoked: true, revokedAt: new Date() });
@@ -193,17 +150,6 @@ class AuthService {
     };
   }
 
-  async markSessionClosing(refreshTokenString) {
-    if (!refreshTokenString) return false;
-    try {
-      const decoded = jwt.verify(refreshTokenString, process.env.JWT_REFRESH_SECRET);
-      if (decoded.sid) sessionActivity.markClosing(decoded.sid);
-      return true;
-    } catch (err) {
-      return false;
-    }
-  }
-
   async logout(userId, refreshTokenString) {
     const where = { userId, isRevoked: false };
     if (refreshTokenString) {
@@ -213,9 +159,7 @@ class AuthService {
       { isRevoked: true, revokedAt: new Date() },
       { where }
     );
-    const marker = await User.unscoped().findByPk(userId, { attributes: ['refreshToken'] });
     await userRepository.updateRefreshToken(userId, null);
-    sessionActivity.clear(marker?.refreshToken);
     return true;
   }
 
@@ -224,9 +168,7 @@ class AuthService {
       { isRevoked: true, revokedAt: new Date() },
       { where: { userId, isRevoked: false } }
     );
-    const marker = await User.unscoped().findByPk(userId, { attributes: ['refreshToken'] });
     await userRepository.updateRefreshToken(userId, null);
-    sessionActivity.clear(marker?.refreshToken);
     return true;
   }
 

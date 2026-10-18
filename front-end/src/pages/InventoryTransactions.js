@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Box, Typography, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, Paper, TextField, Button,
+  TableHead, TableRow, TableFooter, Paper, TextField, Button,
   CircularProgress, Grid, MenuItem, Chip,
   InputAdornment,
 } from '@mui/material';
@@ -76,6 +76,24 @@ const InventoryTransactions = () => {
   };
 
   const filtered = Array.isArray(transactions) ? transactions : [];
+
+  // Page totals (totals of the rows currently shown)
+  const pageTotals = filtered.reduce((acc, txn) => {
+    const qtyIn = parseFloat(txn.quantityIn) || 0;
+    const qtyOut = parseFloat(txn.quantityOut) || 0;
+    const unitCost = parseFloat(txn.unitCost) || 0;
+    acc.qtyIn += qtyIn;
+    acc.qtyOut += qtyOut;
+    acc.balance += parseFloat(txn.runningBalance) || 0;
+    acc.unitCost += unitCost;
+    acc.totalCost += (qtyIn - qtyOut) * unitCost;
+    return acc;
+  }, { qtyIn: 0, qtyOut: 0, balance: 0, unitCost: 0, totalCost: 0 });
+
+  const money = (value) => (parseFloat(value) || 0).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 
   const TRANSACTION_TYPES = [
     'Purchase', 'Sale', 'Adjustment', 'Transfer In', 'Transfer Out', 'Opening Balance', 'Return',
@@ -236,6 +254,38 @@ const InventoryTransactions = () => {
                 ))
               )}
             </TableBody>
+            {filtered.length > 0 && (
+              <TableFooter>
+                <TableRow sx={{ bgcolor: 'action.hover' }}>
+                  <TableCell colSpan={5}>
+                    <Typography fontWeight={700}>
+                      Page Totals ({filtered.length} transactions)
+                    </Typography>
+                  </TableCell>
+                  <TableCell align="right">
+                    <Typography fontWeight={700} color="success.main">
+                      {pageTotals.qtyIn.toLocaleString()}
+                    </Typography>
+                  </TableCell>
+                  <TableCell align="right">
+                    <Typography fontWeight={700} color="error.main">
+                      {pageTotals.qtyOut.toLocaleString()}
+                    </Typography>
+                  </TableCell>
+                  <TableCell align="right">
+                    <Typography fontWeight={700}>
+                      {pageTotals.balance.toLocaleString()}
+                    </Typography>
+                  </TableCell>
+                  <TableCell align="right">
+                    <Typography fontWeight={700}>{money(pageTotals.unitCost)}</Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                      Cost of balance: {money(pageTotals.totalCost)}
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              </TableFooter>
+            )}
           </Table>
         )}
       </TableContainer>

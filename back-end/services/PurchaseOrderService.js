@@ -22,6 +22,7 @@ class PurchaseOrderService {
 
   async create(data, userId, tenantId) {
     const { details, ...header } = data;
+    PurchaseOrderService._normalizeHeader(header);
     const orderNumber = await this.generateNumber(tenantId);
     header.orderNumber = orderNumber;
     const entity = await PurchaseOrderRepository.create(header, details, userId, tenantId);
@@ -30,9 +31,18 @@ class PurchaseOrderService {
 
   async update(id, data, userId, tenantId) {
     const { details, ...header } = data;
+    PurchaseOrderService._normalizeHeader(header);
     const entity = await PurchaseOrderRepository.update(id, header, details, userId, tenantId);
     if (!entity) throw ApiError.notFound('Purchase Order not found');
     return PurchaseOrderDTO.toDTO(entity);
+  }
+
+  /** Empty form values must not reach DATE/UUID columns as '' (MySQL rejects them). */
+  static _normalizeHeader(header) {
+    ['expectedDeliveryDate', 'warehouseId', 'purchaseRequestId'].forEach((key) => {
+      if (header[key] === '' || header[key] === undefined) header[key] = null;
+    });
+    if (!header.orderDate) header.orderDate = new Date().toISOString().split('T')[0];
   }
 
   async delete(id, tenantId, userId, reason = null) {

@@ -25,7 +25,7 @@ class PurchaseInvoiceRepository {
       where,
       include: [
         { model: db.Supplier, as: 'supplier', attributes: ['id', 'code', 'name', 'vatNumber'] },
-        { model: db.Warehouse, as: 'warehouse', attributes: ['id', 'name'] },
+        { model: db.Warehouse, as: 'warehouse', attributes: ['id', 'name'], required: false },
         { model: db.User, as: 'creator', attributes: ['id', 'username'] },
       ],
       order: [[sortField, sortOrder]],
@@ -44,7 +44,7 @@ class PurchaseInvoiceRepository {
       paranoid: !includeDeleted,
       include: [
         { model: db.Supplier, as: 'supplier', attributes: ['id', 'code', 'name', 'vatNumber', 'phone', 'mobile', 'email'] },
-        { model: db.Warehouse, as: 'warehouse', attributes: ['id', 'name'] },
+        { model: db.Warehouse, as: 'warehouse', attributes: ['id', 'name'], required: false },
         {
           model: db.PurchaseInvoiceDetail,
           as: 'details',

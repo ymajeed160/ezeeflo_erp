@@ -25,19 +25,6 @@ class AuthController {
     }
   }
 
-  async heartbeat(req, res) {
-    // authMiddleware already validated the token and marked this session active;
-    // the client calls this periodically to keep the session alive while open.
-    return ApiResponse.success(res, { data: { active: true }, message: 'ok' });
-  }
-
-  async sessionEnd(req, res) {
-    // Fired by a page-unload beacon: no auth header, so the refresh token proves
-    // the session. A reload arrives immediately after and simply resumes it.
-    await authService.markSessionClosing(req.body?.refreshToken);
-    return ApiResponse.success(res, { data: { closing: true }, message: 'ok' });
-  }
-
   async refreshToken(req, res, next) {
     try {
       const { refreshToken } = req.body;
