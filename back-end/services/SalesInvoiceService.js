@@ -221,6 +221,19 @@ class SalesInvoiceService {
       throw error;
     }
 
+    // Posting inventory without a warehouse would corrupt stock records.
+    if (existing.isInventoryImpact) {
+      const hasTrackedProduct = (existing.details || []).some(
+        (d) => d.item && d.item.itemType === 'product' && d.item.isInventoryTracked !== false
+      );
+      if (hasTrackedProduct && !existing.warehouseId) {
+        const { BadRequestError } = require('../utils/appError');
+        throw new BadRequestError(
+          'Warehouse is required to post this invoice because it reduces stock. Select a warehouse on the invoice and try again (or turn off Inventory Impact).'
+        );
+      }
+    }
+
     const t = await sequelize.transaction();
     try {
       // Auto-resolve posting accounts (customer A/R + revenue/VAT from System Config),
@@ -542,6 +555,8 @@ class SalesInvoiceService {
       if (!item) continue;
       // Only inventory-tracked products affect stock
       if (item.itemType !== 'product' || item.isInventoryTracked === false) continue;
+      // Guard: a warehouse is required to record stock movement
+      if (!invoice.warehouseId) continue;
 
       const quantity = parseFloat(detail.quantity) || 0;
       if (quantity <= 0) continue;
@@ -666,6 +681,7 @@ class SalesInvoiceService {
    */
   static async reverseInventoryImpact(tenantId, invoice, userId, transaction) {
     const { Item } = require('../models');
+    if (!invoice.warehouseId) return;
 
     for (const detail of invoice.details || []) {
       if (!detail.itemId) continue;
