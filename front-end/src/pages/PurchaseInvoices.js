@@ -381,7 +381,7 @@ const PurchaseInvoices = () => {
     try {
       const result = await dispatch(confirmPurchaseInvoice(confirmTarget.id));
       if (result.meta.requestStatus === 'fulfilled') {
-        apiSuccess('Purchase Invoice confirmed and posted successfully.');
+        apiSuccess(`Purchase Invoice ${result.payload?.invoiceNumber || ''} confirmed and posted to the General Ledger.`);
         setConfirmDialogOpen(false);
         setConfirmTarget(null);
       } else {

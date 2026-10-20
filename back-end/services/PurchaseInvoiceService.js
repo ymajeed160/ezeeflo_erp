@@ -498,7 +498,8 @@ class PurchaseInvoiceService {
     const existing = await purchaseInvoiceRepository.findById(id, tenantId);
     if (!existing) throw new Error('Purchase Invoice not found');
     if (existing.status === 'posted' || existing.journalEntryId) throw new Error('This Purchase Invoice has already been posted.');
-    if (existing.status !== 'draft') throw new Error('Only draft invoices can be confirmed');
+    // Accept a previously "confirmed" invoice too, so it can still be posted automatically.
+    if (!['draft', 'confirmed'].includes(existing.status)) throw new Error('Only draft or confirmed invoices can be confirmed');
 
     const details = existing.details || existing.PurchaseInvoiceDetails || [];
     if (!details || details.length === 0) {
