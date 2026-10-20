@@ -385,10 +385,11 @@ class PurchaseInvoiceService {
   }
 
   async _resolvePosting(existing, tenantId, transaction = null) {
+    const { BadRequestError } = require('../utils/appError');
     const supplier = await db.Supplier.findOne({ where: { id: existing.supplierId, tenantId }, transaction });
-    if (!supplier) throw new Error('Supplier not found');
-    if (supplier.status !== 'active' || supplier.isActive === false) throw new Error('Supplier is not active');
-    if (!supplier.apAccountId) throw new Error('Supplier Chart of Account is not configured.');
+    if (!supplier) throw new BadRequestError('Supplier not found');
+    if (supplier.status !== 'active' || supplier.isActive === false) throw new BadRequestError('Supplier is not active');
+    if (!supplier.apAccountId) throw new BadRequestError('Supplier Chart of Account is not configured.');
 
     // VAT Receivable account from System Configuration → Accounting
     const totalTax = parseFloat(existing.taxAmount || 0);
@@ -402,7 +403,7 @@ class PurchaseInvoiceService {
       if (vatConfigs.length > 0 && vatConfigs[0].configValue) {
         vatReceivableId = vatConfigs[0].configValue;
       } else {
-        throw new Error('VAT Receivable Account is not configured in Accounting System Configuration.');
+        throw new BadRequestError('VAT Receivable Account is not configured in Accounting System Configuration.');
       }
     }
 
@@ -410,13 +411,13 @@ class PurchaseInvoiceService {
     const lines = [];
     for (const detail of details) {
       const item = await db.Item.findOne({ where: { id: detail.itemId, tenantId }, transaction });
-      if (!item) throw new Error(`Item ${detail.itemId} not found`);
-      if (item.isActive === false) throw new Error(`Item "${item.name || item.itemName}" is not active`);
+      if (!item) throw new BadRequestError(`Item ${detail.itemId} not found`);
+      if (item.isActive === false) throw new BadRequestError(`Item "${item.name || item.itemName}" is not active`);
 
       const qty = parseFloat(detail.quantity || 0);
-      if (qty <= 0) throw new Error(`Quantity must be greater than zero for item "${item.name || item.itemName}"`);
+      if (qty <= 0) throw new BadRequestError(`Quantity must be greater than zero for item "${item.name || item.itemName}"`);
       const unitCost = parseFloat(detail.unitCost || 0);
-      if (unitCost < 0) throw new Error(`Unit price must not be negative for item "${item.name || item.itemName}"`);
+      if (unitCost < 0) throw new BadRequestError(`Unit price must not be negative for item "${item.name || item.itemName}"`);
 
       // lineTotal is stored net of discount and EXCLUDES VAT; taxAmount is the VAT portion.
       const lineTotal = parseFloat(detail.lineTotal || 0);

@@ -133,7 +133,7 @@ class SalesInvoiceRepository {
           model: SalesInvoiceDetail,
           as: 'details',
           include: [
-            { model: Item, as: 'item', attributes: ['id', 'name', 'itemCode', 'unitOfMeasure', 'incomeAccountId', 'inventoryAccountId', 'expenseAccountId', 'costPrice'], required: false },
+            { model: Item, as: 'item', attributes: ['id', 'name', 'itemCode', 'itemType', 'isInventoryTracked', 'unitOfMeasure', 'incomeAccountId', 'inventoryAccountId', 'expenseAccountId', 'costPrice'], required: false },
           ],
         },
       ],

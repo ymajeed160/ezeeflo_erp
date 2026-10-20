@@ -46,6 +46,7 @@ class InventoryTransactionDTO {
       warehouseId: data.warehouseId,
       transactionType: data.transactionType,
       referenceType: data.referenceType,
+      referenceId: data.referenceId,
       quantityIn: data.quantityIn,
       quantityOut: data.quantityOut,
       runningBalance: data.runningBalance,

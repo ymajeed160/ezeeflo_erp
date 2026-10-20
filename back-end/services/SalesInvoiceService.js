@@ -380,16 +380,19 @@ class SalesInvoiceService {
    */
   static async validatePostingAccounts(tenantId, invoice) {
     const { Account } = require('../models');
+    const { BadRequestError } = require('../utils/appError');
 
     // Customer Account (AR) is required
     if (!invoice.customerAccountId) {
-      throw new Error('Customer Account (Accounts Receivable) is not configured on this invoice');
+      throw new BadRequestError(
+        'Customer Account (A/R) is not configured. Set the A/R account on the customer profile, or select the Customer Account on the invoice before posting.'
+      );
     }
     const arAccount = await Account.findOne({
       where: { id: invoice.customerAccountId, tenantId, isActive: true },
     });
     if (!arAccount) {
-      throw new Error('Customer Account is invalid, inactive, or belongs to a different tenant');
+      throw new BadRequestError('Customer Account is invalid, inactive, or belongs to a different tenant');
     }
 
     // Revenue is derived per invoice line from each item's Income Account (Chart of Account)
@@ -399,7 +402,7 @@ class SalesInvoiceService {
       const item = detail.item;
       if (!item || !item.incomeAccountId) {
         const itemName = item ? item.name : detail.itemId;
-        throw new Error(`Income Account is not configured for item: ${itemName}. Please configure the item's Income Account before posting this invoice.`);
+        throw new BadRequestError(`Income Account is not configured for item: ${itemName}. Please configure the item's Income Account before posting this invoice.`);
       }
       incomeAccountIds.add(item.incomeAccountId);
     }
@@ -410,7 +413,7 @@ class SalesInvoiceService {
       const validIds = new Set(incomeAccounts.map((a) => a.id));
       for (const aid of incomeAccountIds) {
         if (!validIds.has(aid)) {
-          throw new Error('One or more item Income Accounts are invalid, inactive, or belong to a different tenant.');
+          throw new BadRequestError('One or more item Income Accounts are invalid, inactive, or belong to a different tenant.');
         }
       }
     }
@@ -418,13 +421,13 @@ class SalesInvoiceService {
     // Tax Account is required when tax exists
     if (parseFloat(invoice.taxTotal) > 0) {
       if (!invoice.taxAccountId) {
-        throw new Error('Tax Account (VAT Payable) is required because invoice has tax amount');
+        throw new BadRequestError('Tax Account (VAT Payable) is required because invoice has tax amount');
       }
       const taxAccount = await Account.findOne({
         where: { id: invoice.taxAccountId, tenantId, isActive: true },
       });
       if (!taxAccount) {
-        throw new Error('Tax Account is invalid, inactive, or belongs to a different tenant');
+        throw new BadRequestError('Tax Account is invalid, inactive, or belongs to a different tenant');
       }
     }
   }
@@ -530,62 +533,47 @@ class SalesInvoiceService {
    * Uses Weighted Average Cost for COGS calculation
    */
   static async processInventoryImpact(tenantId, invoice, userId, transaction) {
-    const { InventoryTransaction, InventoryBalance } = require('../models');
+    const { InventoryBalance } = require('../models');
 
     for (const detail of invoice.details || []) {
       if (!detail.itemId) continue;
 
       const item = detail.item;
-      // Only process inventory items (items with inventoryAccountId)
-      if (!item || !item.inventoryAccountId) continue;
+      if (!item) continue;
+      // Only inventory-tracked products affect stock
+      if (item.itemType !== 'product' || item.isInventoryTracked === false) continue;
 
-      const quantity = parseFloat(detail.quantity);
-      const costPrice = parseFloat(detail.costPrice) || parseFloat(item.costPrice) || 0;
+      const quantity = parseFloat(detail.quantity) || 0;
+      if (quantity <= 0) continue;
+      const variantId = detail.variantId || null;
 
-      // Use weighted average cost from current inventory balance
+      // Use the balance's weighted average cost when available
       const balance = await InventoryBalance.findOne({
-        where: { tenantId, itemId: detail.itemId, warehouseId: invoice.warehouseId },
+        where: { tenantId, itemId: detail.itemId, variantId, warehouseId: invoice.warehouseId },
         transaction,
       });
-
-      let avgCost = costPrice;
-      let newValue = 0;
-      let newQty = 0;
-
+      let avgCost = parseFloat(detail.costPrice) || parseFloat(item.costPrice) || 0;
       if (balance) {
-        const currentQty = parseFloat(balance.quantityOnHand) || 0;
-        const currentValue = parseFloat(balance.inventoryValue) || (currentQty * costPrice);
-        avgCost = currentQty > 0 ? (currentValue / currentQty) : costPrice;
-        newQty = currentQty - quantity;
-        newValue = currentValue - (quantity * avgCost);
-
-        await balance.update(
-          { quantityOnHand: Math.max(0, newQty), inventoryValue: Math.max(0, newValue), updatedAt: new Date() },
-          { transaction }
-        );
+        const balanceAvg = parseFloat(balance.averageCost) || 0;
+        if (balanceAvg > 0) avgCost = balanceAvg;
       }
 
-      // Create inventory transaction record (OUT)
-      const totalCost = quantity * avgCost;
-      await InventoryTransaction.create({
+      // Record the OUT movement (negative quantity) — the service maintains the
+      // running balance and writes quantity_in / quantity_out correctly.
+      await InventoryTransactionService.recordTransaction({
         tenantId,
         itemId: detail.itemId,
+        variantId,
         warehouseId: invoice.warehouseId,
         transactionType: 'sale',
         referenceId: invoice.id,
         referenceType: 'SalesInvoice',
         referenceNumber: invoice.invoiceNumber,
-        quantity: -quantity, // negative = out
+        referenceLineId: detail.id,
+        quantity: -quantity,
         unitCost: avgCost,
-        totalCost: totalCost,
-        balanceAfter: balance ? Math.max(0, newQty) : 0,
-        createdAt: new Date(),
-      }, { transaction });
-
-      // COGS is handled by the journal entry lines via buildJournalLines
-      if (item.expenseAccountId && totalCost > 0) {
-        // This is handled by the accounts in the JE
-      }
+        totalCost: quantity * avgCost,
+      }, transaction);
     }
   }
 
@@ -692,11 +680,13 @@ class SalesInvoiceService {
       await InventoryTransactionService.recordTransaction({
         tenantId,
         itemId: detail.itemId,
+        variantId: detail.variantId || null,
         warehouseId: invoice.warehouseId,
         transactionType: 'return',
         referenceId: invoice.id,
         referenceType: 'SalesInvoiceCancel',
         referenceNumber: invoice.invoiceNumber,
+        referenceLineId: detail.id,
         quantity, // positive = back in
         unitCost: costPrice,
         totalCost: quantity * costPrice,
