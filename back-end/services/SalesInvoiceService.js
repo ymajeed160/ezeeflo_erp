@@ -276,7 +276,7 @@ class SalesInvoiceService {
       const journalEntry = await JournalEntryService.createEntry({
         tenantId,
         entryDate: invoice.invoiceDate,
-        reference: `INV-${invoice.invoiceNumber}`,
+        reference: invoice.invoiceNumber,
         description: `Sales Invoice #${invoice.invoiceNumber} - Customer: ${invoice.customer ? invoice.customer.name : ''}`,
         lines: journalLines,
       }, tenantId, userId, t);
@@ -765,7 +765,8 @@ class SalesInvoiceService {
   }
 
   /**
-   * Generate invoice number: INV-YYYY-NNNNN
+   * Generate invoice number: SINV-YYYY-NNNNN
+   * Continues from the highest existing number (SINV or legacy INV) for the year.
    */
   static async generateInvoiceNumber(tenantId) {
     const { SalesInvoice } = require('../models');
@@ -773,7 +774,10 @@ class SalesInvoiceService {
     const lastInvoice = await SalesInvoice.findOne({
       where: {
         tenantId,
-        invoiceNumber: { [Op.like]: `INV-${year}-%` },
+        [Op.or]: [
+          { invoiceNumber: { [Op.like]: `SINV-${year}-%` } },
+          { invoiceNumber: { [Op.like]: `INV-${year}-%` } },
+        ],
       },
       order: [['createdAt', 'DESC']],
       paranoid: false,
@@ -788,7 +792,7 @@ class SalesInvoiceService {
       }
     }
 
-    return `INV-${year}-${String(nextNumber).padStart(5, '0')}`;
+    return `SINV-${year}-${String(nextNumber).padStart(5, '0')}`;
   }
 
   /**
