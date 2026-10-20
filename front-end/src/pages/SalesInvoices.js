@@ -739,6 +739,7 @@ const SalesInvoices = () => {
                 <Controller
                   name="warehouseId"
                   control={control}
+                  rules={{ required: 'Warehouse is required' }}
                   render={({ field }) => (
                     <Autocomplete
                       disabled={viewMode}
@@ -748,7 +749,12 @@ const SalesInvoices = () => {
                       getOptionLabel={(opt) => opt.name || opt.warehouseName || ''}
                       isOptionEqualToValue={(opt, val) => opt.id === val.id}
                       renderInput={(params) => (
-                        <TextField {...params} label="Warehouse (for inventory)" />
+                        <TextField
+                          {...params}
+                          label="Warehouse (for inventory) *"
+                          error={!!errors.warehouseId}
+                          helperText={errors.warehouseId?.message}
+                        />
                       )}
                       sx={{ flex: 1 }}
                     />
@@ -1231,13 +1237,12 @@ const SalesInvoices = () => {
         <DialogTitle>Post Invoice #{postTarget?.invoiceNumber || ''}</DialogTitle>
         <DialogContent dividers>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            This will create a journal entry and update inventory (if configured).
-            The Chart of Accounts below were resolved automatically:
+            This will create a journal entry and update inventory. The accounts below were resolved automatically:
           </Typography>
           <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}>
             <Grid container spacing={1.5}>
               <Grid item xs={12}>
-                <Typography variant="caption" color="text.secondary">Customer Account (A/R)</Typography>
+                <Typography variant="caption" color="text.secondary">Customer Account (A/R) — Debit</Typography>
                 <Typography variant="body1" fontWeight={600}>
                   {postPreview?.customerAccount
                     ? `${postPreview.customerAccount.code} - ${postPreview.customerAccount.name}`
@@ -1245,7 +1250,19 @@ const SalesInvoices = () => {
                 </Typography>
               </Grid>
               <Grid item xs={12}>
-                <Typography variant="caption" color="text.secondary">Sales Revenue Accounts (from item Income Accounts)</Typography>
+                <Typography variant="caption" color="text.secondary">Expense / COGS Account — Debit</Typography>
+                {postPreview?.cogsAccounts?.length ? (
+                  postPreview.cogsAccounts.map((ra, idx) => (
+                    <Typography key={idx} variant="body1" fontWeight={600}>
+                      {ra.account ? `${ra.account.code} - ${ra.account.name}` : 'Unknown account'} — {Number(ra.amount || 0).toFixed(2)}
+                    </Typography>
+                  ))
+                ) : (
+                  <Typography variant="body1" fontWeight={600}>No stock items</Typography>
+                )}
+              </Grid>
+              <Grid item xs={12}>
+                <Typography variant="caption" color="text.secondary">Sales Revenue Accounts (from item Income Accounts) — Credit</Typography>
                 {postPreview?.revenueAccounts?.length ? (
                   postPreview.revenueAccounts.map((ra, idx) => (
                     <Typography key={idx} variant="body1" fontWeight={600}>
@@ -1257,7 +1274,19 @@ const SalesInvoices = () => {
                 )}
               </Grid>
               <Grid item xs={12}>
-                <Typography variant="caption" color="text.secondary">Tax Account (VAT Payable)</Typography>
+                <Typography variant="caption" color="text.secondary">Inventory (Stock) Account — Credit</Typography>
+                {postPreview?.inventoryAccounts?.length ? (
+                  postPreview.inventoryAccounts.map((ra, idx) => (
+                    <Typography key={idx} variant="body1" fontWeight={600}>
+                      {ra.account ? `${ra.account.code} - ${ra.account.name}` : 'Unknown account'} — {Number(ra.amount || 0).toFixed(2)}
+                    </Typography>
+                  ))
+                ) : (
+                  <Typography variant="body1" fontWeight={600}>No stock items</Typography>
+                )}
+              </Grid>
+              <Grid item xs={12}>
+                <Typography variant="caption" color="text.secondary">Tax Account (VAT Payable) — Credit</Typography>
                 <Typography variant="body1" fontWeight={600}>
                   {postPreview?.taxAccount
                     ? `${postPreview.taxAccount.code} - ${postPreview.taxAccount.name}`

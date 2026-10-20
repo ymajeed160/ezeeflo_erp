@@ -51,9 +51,28 @@ class SalesInvoiceService {
   }
 
   /**
+   * Warehouse is mandatory when a document contains inventory-tracked products.
+   */
+  static async assertWarehouseForStockLines(tenantId, warehouseId, details) {
+    const { Item } = require('../models');
+    const { BadRequestError } = require('../utils/appError');
+    const ids = [...new Set((details || []).map((d) => d.itemId).filter(Boolean))];
+    if (!ids.length) return;
+    const items = await Item.findAll({
+      where: { id: { [Op.in]: ids }, tenantId },
+      attributes: ['id', 'itemType', 'isInventoryTracked'],
+    });
+    const hasStockItem = items.some((i) => i.itemType === 'product' && i.isInventoryTracked !== false);
+    if (hasStockItem && !warehouseId) {
+      throw new BadRequestError('Warehouse is required for inventory items. Please select a warehouse.');
+    }
+  }
+
+  /**
    * Create invoice with details, generate invoice number
    */
   static async create(tenantId, body, userId) {
+    await SalesInvoiceService.assertWarehouseForStockLines(tenantId, body.warehouseId, body.details);
     const t = await sequelize.transaction();
     try {
       // Generate invoice number if not provided
@@ -96,6 +115,12 @@ class SalesInvoiceService {
       error.status = 400;
       throw error;
     }
+
+    await SalesInvoiceService.assertWarehouseForStockLines(
+      tenantId,
+      body.warehouseId !== undefined ? body.warehouseId : existing.warehouseId,
+      body.details
+    );
 
     const t = await sequelize.transaction();
     try {
@@ -222,16 +247,14 @@ class SalesInvoiceService {
     }
 
     // Posting inventory without a warehouse would corrupt stock records.
-    if (existing.isInventoryImpact) {
-      const hasTrackedProduct = (existing.details || []).some(
-        (d) => d.item && d.item.itemType === 'product' && d.item.isInventoryTracked !== false
+    const hasTrackedProduct = (existing.details || []).some(
+      (d) => d.item && d.item.itemType === 'product' && d.item.isInventoryTracked !== false
+    );
+    if (hasTrackedProduct && !existing.warehouseId) {
+      const { BadRequestError } = require('../utils/appError');
+      throw new BadRequestError(
+        'Warehouse is required to post this invoice because it reduces stock. Select a warehouse on the invoice and try again.'
       );
-      if (hasTrackedProduct && !existing.warehouseId) {
-        const { BadRequestError } = require('../utils/appError');
-        throw new BadRequestError(
-          'Warehouse is required to post this invoice because it reduces stock. Select a warehouse on the invoice and try again (or turn off Inventory Impact).'
-        );
-      }
     }
 
     const t = await sequelize.transaction();
@@ -261,10 +284,8 @@ class SalesInvoiceService {
       // Link journal entry to invoice
       await SalesInvoiceRepository.setJournalEntry(tenantId, id, journalEntry.id, t);
 
-      // 2. Inventory Impact (if configured)
-      if (invoice.isInventoryImpact) {
-        await SalesInvoiceService.processInventoryImpact(tenantId, invoice, userId, t);
-      }
+      // 2. Inventory impact — reduces stock for inventory-tracked products
+      await SalesInvoiceService.processInventoryImpact(tenantId, invoice, userId, t);
 
       // 3. Update status to posted
       await SalesInvoiceRepository.updateStatus(tenantId, id, 'posted', userId, t);
@@ -364,6 +385,34 @@ class SalesInvoiceService {
     }
 
     const ids = [customerAccountId, taxAccountId, ...revenueMap.keys()].filter(Boolean);
+
+    // Inventory lines: DR Expense (COGS) / CR Inventory (Stock)
+    const { InventoryBalance } = require('../models');
+    const cogsMap = new Map();
+    const inventoryMap = new Map();
+    for (const detail of invoice.details || []) {
+      const item = detail.item;
+      if (!item || item.itemType !== 'product' || item.isInventoryTracked === false) continue;
+      if (!item.expenseAccountId || !item.inventoryAccountId) continue;
+      const quantity = parseFloat(detail.quantity) || 0;
+      if (quantity <= 0) continue;
+      const variantId = detail.variantId || null;
+      const balance = invoice.warehouseId
+        ? await InventoryBalance.findOne({
+          where: { tenantId, itemId: detail.itemId, warehouseId: invoice.warehouseId, variantId },
+        })
+        : null;
+      let avgCost = parseFloat(detail.costPrice) || parseFloat(item.costPrice) || 0;
+      const balanceAvg = balance ? (parseFloat(balance.averageCost) || 0) : 0;
+      if (balanceAvg > 0) avgCost = balanceAvg;
+      const cost = quantity * avgCost;
+      if (cost <= 0) continue;
+      cogsMap.set(item.expenseAccountId, (cogsMap.get(item.expenseAccountId) || 0) + cost);
+      inventoryMap.set(item.inventoryAccountId, (inventoryMap.get(item.inventoryAccountId) || 0) + cost);
+      if (!ids.includes(item.expenseAccountId)) ids.push(item.expenseAccountId);
+      if (!ids.includes(item.inventoryAccountId)) ids.push(item.inventoryAccountId);
+    }
+
     const accounts = await Account.findAll({ where: { id: { [Op.in]: ids }, tenantId } });
     const byId = {};
     accounts.forEach((a) => { byId[a.id] = a; });
@@ -385,6 +434,8 @@ class SalesInvoiceService {
       customerAccount: fmt(customerAccountId),
       revenueAccounts,
       taxAccount: fmt(taxAccountId),
+      cogsAccounts: [...cogsMap].map(([accountId, amount]) => ({ account: fmt(accountId), amount: parseFloat(amount.toFixed(2)) })),
+      inventoryAccounts: [...inventoryMap].map(([accountId, amount]) => ({ account: fmt(accountId), amount: parseFloat(amount.toFixed(2)) })),
     };
   }
 
@@ -497,45 +548,48 @@ class SalesInvoiceService {
       });
     }
 
-    // 4. If inventory impact, add COGS and Inventory lines per detail item
-    if (invoice.isInventoryImpact) {
-      for (const detail of invoice.details || []) {
-        if (!detail.itemId) continue;
-        const item = detail.item;
-        if (!item || !item.inventoryAccountId || !item.expenseAccountId) continue;
+    // 4. Inventory impact: DR Cost of Goods Sold / CR Inventory Asset per
+    //    inventory-tracked product line (always posted for stock items).
+    //    Stock is credited, expense (COGS) is debited.
+    for (const detail of invoice.details || []) {
+      if (!detail.itemId) continue;
+      const item = detail.item;
+      if (!item) continue;
+      const isStockItem = item.itemType === 'product' && item.isInventoryTracked !== false;
+      if (!isStockItem) continue;
+      if (!item.inventoryAccountId || !item.expenseAccountId) continue;
 
-        const quantity = parseFloat(detail.quantity) || 0;
-        // Use weighted average cost from inventory balance if available
-        const { InventoryBalance } = require('../models');
-        const balance = await InventoryBalance.findOne({
-          where: { tenantId, itemId: detail.itemId, warehouseId: invoice.warehouseId },
-        });
-        let avgCost = parseFloat(detail.costPrice) || parseFloat(item.costPrice) || 0;
-        if (balance) {
-          const currentQty = parseFloat(balance.quantityOnHand) || 0;
-          const currentValue = parseFloat(balance.inventoryValue) || (currentQty * avgCost);
-          avgCost = currentQty > 0 ? (currentValue / currentQty) : avgCost;
-        }
-        const totalCost = quantity * avgCost;
+      const quantity = parseFloat(detail.quantity) || 0;
+      if (quantity <= 0) continue;
+      const variantId = detail.variantId || null;
 
-        if (totalCost <= 0) continue;
-
-        // DR Cost of Goods Sold
-        lines.push({
-          accountId: item.expenseAccountId,
-          debit: parseFloat(totalCost.toFixed(2)),
-          credit: 0,
-          description: `COGS - ${item.name || ''} for Invoice #${invoice.invoiceNumber}`,
-        });
-
-        // CR Inventory Asset
-        lines.push({
-          accountId: item.inventoryAccountId,
-          debit: 0,
-          credit: parseFloat(totalCost.toFixed(2)),
-          description: `Inventory - ${item.name || ''} for Invoice #${invoice.invoiceNumber}`,
-        });
+      // Use the weighted average cost from the inventory balance when available
+      const { InventoryBalance } = require('../models');
+      const balance = invoice.warehouseId
+        ? await InventoryBalance.findOne({
+          where: { tenantId, itemId: detail.itemId, warehouseId: invoice.warehouseId, variantId },
+        })
+        : null;
+      let avgCost = parseFloat(detail.costPrice) || parseFloat(item.costPrice) || 0;
+      if (balance) {
+        const balanceAvg = parseFloat(balance.averageCost) || 0;
+        if (balanceAvg > 0) avgCost = balanceAvg;
       }
+      const totalCost = quantity * avgCost;
+      if (totalCost <= 0) continue;
+
+      lines.push({
+        accountId: item.expenseAccountId,
+        debit: parseFloat(totalCost.toFixed(2)),
+        credit: 0,
+        description: `COGS - ${item.name || ''} for Invoice #${invoice.invoiceNumber}`,
+      });
+      lines.push({
+        accountId: item.inventoryAccountId,
+        debit: 0,
+        credit: parseFloat(totalCost.toFixed(2)),
+        description: `Inventory (Stock) - ${item.name || ''} for Invoice #${invoice.invoiceNumber}`,
+      });
     }
 
     return lines;

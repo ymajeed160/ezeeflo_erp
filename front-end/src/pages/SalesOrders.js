@@ -679,13 +679,22 @@ const SalesOrders = () => {
                 <Controller
                   name="warehouseId"
                   control={control}
+                  rules={{ required: 'Warehouse is required' }}
                   render={({ field }) => (
                     <Autocomplete
                       options={warehouseList}
                       getOptionLabel={(opt) => opt.name}
                       value={warehouseList.find((w) => w.id === field.value) || null}
                       onChange={(e, val) => field.onChange(val?.id || '')}
-                      renderInput={(params) => <TextField {...params} label="Warehouse" fullWidth />}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          label="Warehouse *"
+                          fullWidth
+                          error={!!errors.warehouseId}
+                          helperText={errors.warehouseId?.message}
+                        />
+                      )}
                       disabled={viewMode}
                     />
                   )}

@@ -4,8 +4,10 @@ const salesOrderRepo = require('../repositories/SalesOrderRepository');
 const quotationRepo = require('../repositories/QuotationRepository');
 const SalesOrderDTO = require('../dto/SalesOrderDTO');
 const AuditLogService = require('./AuditLogService');
-const { sequelize, Quotation, QuotationDetail, SalesOrder } = require('../models');
+const { sequelize, Quotation, QuotationDetail, SalesOrder, Item } = require('../models');
 const { requireDeletionEnabled } = require('../utils/deletionSettings');
+const { BadRequestError } = require('../utils/appError');
+const { Op } = require('sequelize');
 
 class SalesOrderService {
   async list(tenantId, query) {
@@ -26,6 +28,7 @@ class SalesOrderService {
 
   async create(tenantId, data, userId) {
     this._validateLines(data.details);
+    await this._assertWarehouseForStockLines(tenantId, data.warehouseId, data.details);
 
     const t = await sequelize.transaction();
     try {
@@ -98,6 +101,12 @@ class SalesOrderService {
     const existing = await salesOrderRepo.findById(id, tenantId);
     if (!existing) throw new Error('Sales Order not found');
     if (existing.status === 'closed') throw new Error('Cannot update a closed Sales Order');
+
+    await this._assertWarehouseForStockLines(
+      tenantId,
+      data.warehouseId !== undefined ? data.warehouseId : existing.warehouseId,
+      data.details
+    );
 
     const t = await sequelize.transaction();
     try {
@@ -348,6 +357,19 @@ class SalesOrderService {
       });
     }
     return { id: order.id, orderNumber: order.orderNumber, customerId: order.customerId, warehouseId: order.warehouseId, status: order.status, lines };
+  }
+
+  async _assertWarehouseForStockLines(tenantId, warehouseId, details) {
+    const ids = [...new Set((details || []).map((d) => d.itemId).filter(Boolean))];
+    if (!ids.length) return;
+    const items = await Item.findAll({
+      where: { id: { [Op.in]: ids }, tenantId },
+      attributes: ['id', 'itemType', 'isInventoryTracked'],
+    });
+    const hasStockItem = items.some((i) => i.itemType === 'product' && i.isInventoryTracked !== false);
+    if (hasStockItem && !warehouseId) {
+      throw new BadRequestError('Warehouse is required for inventory items. Please select a warehouse.');
+    }
   }
 
   _validateLines(details) {
