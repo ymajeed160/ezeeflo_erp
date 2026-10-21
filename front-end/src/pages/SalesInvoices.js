@@ -682,9 +682,29 @@ const SalesInvoices = () => {
 
   const optionForLine = (line) => {
     if (!line || !line.itemId) return null;
-    return sellableOptions.find(
+    const exact = sellableOptions.find(
       (o) => o.itemId === line.itemId && (o.variantId || '') === (line.variantId || '')
-    ) || null;
+    );
+    if (exact) return exact;
+    // Older lines (or items no longer offered by the picker) still need to show.
+    const byItem = sellableOptions.find((o) => o.itemId === line.itemId);
+    if (byItem && !line.variantId) return byItem;
+    const label = line.variantDescription || line.itemName || line.description || 'Item';
+    return {
+      key: `${line.itemId}|${line.variantId || ''}`,
+      itemId: line.itemId,
+      itemCode: line.itemCode || '',
+      itemName: line.itemName || line.description || 'Item',
+      variantId: line.variantId || null,
+      variantDescription: label,
+      attributeValues: [],
+      availableStock: null,
+      itemType: 'product',
+      isInventoryTracked: true,
+      sellingPrice: parseFloat(line.unitPrice) || 0,
+      costPrice: parseFloat(line.costPrice) || 0,
+      taxPercentage: parseFloat(line.taxPercent) || 0,
+    };
   };
 
   const maxStockForLine = (line) => {

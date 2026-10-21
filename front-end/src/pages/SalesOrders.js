@@ -450,9 +450,27 @@ const SalesOrders = () => {
 
   const optionForLine = (line) => {
     if (!line || !line.itemId) return null;
-    return sellableOptions.find(
+    const exact = sellableOptions.find(
       (o) => o.itemId === line.itemId && (o.variantId || '') === (line.variantId || '')
-    ) || null;
+    );
+    if (exact) return exact;
+    const byItem = sellableOptions.find((o) => o.itemId === line.itemId);
+    if (byItem && !line.variantId) return byItem;
+    return {
+      key: `${line.itemId}|${line.variantId || ''}`,
+      itemId: line.itemId,
+      itemCode: '',
+      itemName: line.variantDescription || line.description || 'Item',
+      variantId: line.variantId || null,
+      variantDescription: line.variantDescription || line.description || 'Item',
+      attributeValues: [],
+      availableStock: null,
+      itemType: 'product',
+      isInventoryTracked: true,
+      sellingPrice: parseFloat(line.unitPrice) || 0,
+      costPrice: 0,
+      taxPercentage: parseFloat(line.taxPercentage) || 0,
+    };
   };
 
   const maxStockForLine = (line) => {
@@ -750,7 +768,7 @@ const SalesOrders = () => {
                                     renderOption={(props, option) => (
                                       <li {...props} key={option.key}>{sellableOptionLabel(option)}</li>
                                     )}
-                                    value={sellableOptions.find((o) => o.itemId === f.value && (o.variantId || '') === (details[index]?.variantId || '')) || null}
+                                    value={optionForLine({ itemId: f.value, variantId: details[index]?.variantId, description: details[index]?.description, unitPrice: details[index]?.unitPrice, taxPercentage: details[index]?.taxPercentage })}
                                     onChange={(e, val) => {
                                       f.onChange(val?.itemId || '');
                                       handleItemSelect(index, val);
