@@ -8,6 +8,7 @@ export const login = createAsyncThunk('auth/login', async (credentials, { reject
     // (redux-persist flushes asynchronously, but axiosInstance reads from localStorage)
     if (response.data?.accessToken) {
       try {
+        sessionStorage.setItem('ef_session_active', '1');
         const persistRoot = JSON.parse(localStorage.getItem('persist:root') || '{}');
         persistRoot.auth = JSON.stringify({
           accessToken: response.data.accessToken,
@@ -78,6 +79,7 @@ const authSlice = createSlice({
       state.companies = action.payload;
     },
     clearAuth: (state) => {
+      try { sessionStorage.removeItem('ef_session_active'); } catch { /* ignore */ }
       state.user = null;
       state.accessToken = null;
       state.refreshToken = null;

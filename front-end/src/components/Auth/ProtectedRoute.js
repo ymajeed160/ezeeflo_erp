@@ -11,6 +11,36 @@ const ProtectedRoute = ({ children, allowedRoles = [], requireCompany = true }) 
   const { activeCompanyId, companies } = useSelector((state) => state.company);
   const location = useLocation();
 
+  // A brand-new tab/window (e.g. after closing the browser or pasting a URL)
+  // has no session marker. End any previous sessions and require signing in.
+  useEffect(() => {
+    let marker = null;
+    try { marker = sessionStorage.getItem('ef_session_active'); } catch { /* ignore */ }
+    if (marker) return;
+    if (!isAuthenticated && !getToken()) return;
+
+    (async () => {
+      try {
+        const state = JSON.parse(localStorage.getItem('persist:root') || '{}');
+        const auth = state.auth ? JSON.parse(state.auth) : null;
+        if (auth?.accessToken) {
+          await fetch(`${process.env.REACT_APP_API_URL || '/api'}/auth/logout-all`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${auth.accessToken}`,
+            },
+            body: JSON.stringify({ refreshToken: auth.refreshToken || null }),
+          });
+        }
+      } catch { /* ignore */ }
+      try { localStorage.removeItem('persist:root'); } catch { /* ignore */ }
+      dispatch(clearAuth());
+      window.location.replace('/login');
+    })();
+    // Run once when the app boots in this tab.
+  }, []);
+
   // ── Initialize active company from URL companyId param ──
   const urlCompanyId = new URLSearchParams(location.search).get('companyId');
 
