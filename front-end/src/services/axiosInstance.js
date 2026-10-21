@@ -98,7 +98,8 @@ axiosInstance.interceptors.response.use(
     // Don't retry logout requests - just clear auth and redirect
     if (originalRequest.url?.includes('/auth/logout')) {
       localStorage.removeItem('persist:root');
-      window.location.replace('/login');
+      window.__efSuppressClosePrompt = true;
+        window.location.replace('/login');
       return Promise.reject(error);
     }
 
@@ -122,6 +123,7 @@ axiosInstance.interceptors.response.use(
         isRefreshing = false;
         // No refresh token available, redirect to login
         localStorage.removeItem('persist:root');
+        window.__efSuppressClosePrompt = true;
         window.location.replace('/login');
         return Promise.reject(error);
       }
@@ -164,6 +166,7 @@ axiosInstance.interceptors.response.use(
         processQueue(refreshError, null);
         // Clear auth and redirect to login
         localStorage.removeItem('persist:root');
+        window.__efSuppressClosePrompt = true;
         window.location.replace('/login');
         return Promise.reject(refreshError);
       } finally {

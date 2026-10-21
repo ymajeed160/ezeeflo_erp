@@ -1,11 +1,12 @@
 import React, { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { useSelector, useDispatch } from 'react-redux';
+import { useSelector, useDispatch, useStore } from 'react-redux';
 import { getToken } from '../../utils/auth';
-import { clearAuth } from '../../store/slices/authSlice';import { setActiveCompany, fetchCompanies } from '../../store/slices/companySlice';
+import { clearAuth } from '../../store/slices/authSlice';
+import { setActiveCompany, fetchCompanies } from '../../store/slices/companySlice';
 
-const ProtectedRoute = ({ children, allowedRoles = [], requireCompany = true }) => {
-  const dispatch = useDispatch();
+const ProtectedRoute = ({ children, allowedRoles = [], requireCompany = true }) => {  const dispatch = useDispatch();
+  const store = useStore();
   const { isAuthenticated, user, companies: authCompanies } = useSelector((state) => state.auth);
   const { activeCompanyId, companies } = useSelector((state) => state.company);
   const location = useLocation();
@@ -32,35 +33,43 @@ const ProtectedRoute = ({ children, allowedRoles = [], requireCompany = true }) 
   useEffect(() => {
     if (!isAuthenticated) return undefined;
 
+    // Signing out (or the session expiring) also unloads the page — never prompt then.
+    let suppressPrompt = !store.getState().auth?.isAuthenticated;
+    const unsubscribe = store.subscribe(() => {
+      if (!store.getState().auth?.isAuthenticated) suppressPrompt = true;
+    });
+
     const handleBeforeUnload = (event) => {
-      // Browsers show their own standard confirmation dialog.
+      if (suppressPrompt || window.__efSuppressClosePrompt) return undefined;
       event.preventDefault();
       event.returnValue = 'Are you sure you want to close? Your session will be ended.';
       return event.returnValue;
     };
 
     const handlePageHide = () => {
+      if (suppressPrompt || window.__efSuppressClosePrompt) return;
       try {
         const state = JSON.parse(localStorage.getItem('persist:root') || '{}');
         const auth = state.auth ? JSON.parse(state.auth) : null;
         const refreshToken = auth?.refreshToken;
         if (!refreshToken) return;
         const url = `${process.env.REACT_APP_API_URL || '/api'}/auth/session-end`;
-        const blob = new Blob([JSON.stringify({ refreshToken })], { type: 'application/json' });
-        if (navigator.sendBeacon) navigator.sendBeacon(url, blob);
+        // URL-encoded body: sendBeacon cannot use application/json (CORS preflight),
+        // and express.urlencoded parses this on the server.
+        const body = new URLSearchParams({ refreshToken });
+        if (navigator.sendBeacon && navigator.sendBeacon(url, body)) return;
+        fetch(url, { method: 'POST', body, keepalive: true });
       } catch { /* ignore */ }
     };
 
-    // "Refresh"/F5 and in-app navigation also trigger beforeunload in some browsers;
-    // we only end the session on pagehide, which does not fire for a normal refresh
-    // in Chrome after the user confirms — acceptable trade-off documented in UI.
     window.addEventListener('beforeunload', handleBeforeUnload);
     window.addEventListener('pagehide', handlePageHide);
     return () => {
+      unsubscribe();
       window.removeEventListener('beforeunload', handleBeforeUnload);
       window.removeEventListener('pagehide', handlePageHide);
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, store]);
 
   // Initialize active company from URL param
   useEffect(() => {
