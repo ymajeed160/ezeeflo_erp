@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const { User } = require('../models');
 const ApiResponse = require('../utils/apiResponse');
 const logger = require('../utils/logger');
+const pendingLogout = require('../utils/pendingLogout');
 
 const authMiddleware = async (req, res, next) => {
   try {
@@ -34,6 +35,9 @@ const authMiddleware = async (req, res, next) => {
     if (user.isLocked) {
       return ApiResponse.unauthorized(res, { message: 'Account is locked. Contact administrator.' });
     }
+
+    // A returning authenticated request means the page was reloaded, not closed.
+    pendingLogout.clear(user.id);
 
     // Preserve tenant context if already set by companyMiddleware (runs before duplicate authMiddleware calls)
     const existingTenantId = req.tenantId || req.user?.tenantId;

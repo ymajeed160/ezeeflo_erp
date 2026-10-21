@@ -25,6 +25,13 @@ class AuthController {
     }
   }
 
+  async sessionEnd(req, res) {
+    // Fired by a page-unload beacon: no auth header, so the refresh token proves
+    // the session. Closing the browser/tab ends the session.
+    await authService.markSessionClosing(req.body?.refreshToken);
+    return ApiResponse.success(res, { data: { closing: true }, message: 'Session ended' });
+  }
+
   async refreshToken(req, res, next) {
     try {
       const { refreshToken } = req.body;

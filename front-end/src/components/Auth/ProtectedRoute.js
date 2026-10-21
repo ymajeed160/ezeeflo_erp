@@ -2,8 +2,7 @@ import React, { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { getToken } from '../../utils/auth';
-import { clearAuth } from '../../store/slices/authSlice';
-import { setActiveCompany, fetchCompanies } from '../../store/slices/companySlice';
+import { clearAuth } from '../../store/slices/authSlice';import { setActiveCompany, fetchCompanies } from '../../store/slices/companySlice';
 
 const ProtectedRoute = ({ children, allowedRoles = [], requireCompany = true }) => {
   const dispatch = useDispatch();
@@ -27,6 +26,41 @@ const ProtectedRoute = ({ children, allowedRoles = [], requireCompany = true }) 
     window.addEventListener('pageshow', handlePageShow);
     return () => window.removeEventListener('pageshow', handlePageShow);
   }, []);
+
+  // Ask for confirmation before closing/reloading the tab, and end the session
+  // when the page is actually unloaded (browser or tab closed).
+  useEffect(() => {
+    if (!isAuthenticated) return undefined;
+
+    const handleBeforeUnload = (event) => {
+      // Browsers show their own standard confirmation dialog.
+      event.preventDefault();
+      event.returnValue = 'Are you sure you want to close? Your session will be ended.';
+      return event.returnValue;
+    };
+
+    const handlePageHide = () => {
+      try {
+        const state = JSON.parse(localStorage.getItem('persist:root') || '{}');
+        const auth = state.auth ? JSON.parse(state.auth) : null;
+        const refreshToken = auth?.refreshToken;
+        if (!refreshToken) return;
+        const url = `${process.env.REACT_APP_API_URL || '/api'}/auth/session-end`;
+        const blob = new Blob([JSON.stringify({ refreshToken })], { type: 'application/json' });
+        if (navigator.sendBeacon) navigator.sendBeacon(url, blob);
+      } catch { /* ignore */ }
+    };
+
+    // "Refresh"/F5 and in-app navigation also trigger beforeunload in some browsers;
+    // we only end the session on pagehide, which does not fire for a normal refresh
+    // in Chrome after the user confirms — acceptable trade-off documented in UI.
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('pagehide', handlePageHide);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('pagehide', handlePageHide);
+    };
+  }, [isAuthenticated]);
 
   // Initialize active company from URL param
   useEffect(() => {

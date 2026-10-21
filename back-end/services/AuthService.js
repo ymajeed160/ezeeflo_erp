@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const userRepository = require('../repositories/UserRepository');
 const companyRepository = require('../repositories/CompanyRepository');
 const { RefreshToken, User } = require('../models');
+const pendingLogout = require('../utils/pendingLogout');
 const { BadRequestError, UnauthorizedError, NotFoundError } = require('../utils/appError');
 const logger = require('../utils/logger');
 
@@ -116,6 +117,15 @@ class AuthService {
       throw new UnauthorizedError('Refresh token has been revoked');
     }
 
+    // The browser/tab was closed (no returning request within the grace period):
+    // end the session instead of refreshing it.
+    if (pendingLogout.isClosed(decoded.userId)) {
+      await storedToken.update({ isRevoked: true, revokedAt: new Date() });
+      pendingLogout.clear(decoded.userId);
+      throw new UnauthorizedError('Session ended because the browser was closed');
+    }
+    pendingLogout.clear(decoded.userId);
+
     if (new Date() > storedToken.expiresAt) {
       await storedToken.update({ isRevoked: true, revokedAt: new Date() });
       throw new UnauthorizedError('Refresh token has expired');
@@ -148,6 +158,20 @@ class AuthService {
       accessToken: newAccessToken,
       refreshToken: newRefreshToken,
     };
+  }
+
+  async markSessionClosing(refreshTokenString) {
+    if (!refreshTokenString) return false;
+    let decoded;
+    try {
+      decoded = jwt.verify(refreshTokenString, process.env.JWT_REFRESH_SECRET);
+    } catch (err) {
+      return false;
+    }
+    // Record the close; the session is revoked after a short grace period so a
+    // page reload (which also fires the beacon) does not log the user out.
+    pendingLogout.mark(decoded.userId);
+    return true;
   }
 
   async logout(userId, refreshTokenString) {

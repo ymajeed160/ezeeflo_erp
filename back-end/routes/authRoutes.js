@@ -7,6 +7,7 @@ const { authValidation } = require('../validators');
 // Public routes
 router.post('/login', authValidation.login, authController.login);
 router.post('/refresh-token', authValidation.refreshToken, authController.refreshToken);
+router.post('/session-end', authController.sessionEnd);
 router.post('/forgot-password', authValidation.forgotPassword, authController.forgotPassword);
 router.post('/reset-password', authValidation.resetPassword, authController.resetPassword);
 
