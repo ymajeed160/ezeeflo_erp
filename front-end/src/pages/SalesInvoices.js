@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
+  Alert,
   Box,
   Button,
   Card,
@@ -38,8 +39,7 @@ import {
 } from '@mui/material';
 import {
   Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
+  Edit as EditIcon,  Delete as DeleteIcon,
   Visibility as ViewIcon,
   Search as SearchIcon,
   Refresh as RefreshIcon,
@@ -60,6 +60,7 @@ import {
   updateInvoice,
   deleteInvoice,
   postInvoice,
+  unpostInvoiceForEdit,
   cancelInvoice,
   generateFromSalesOrder,
   generateFromDeliveryNote,
@@ -140,6 +141,9 @@ const SalesInvoices = () => {
   const [sendingEmail, setSendingEmail] = useState(false);
   const [reasonDialog, setReasonDialog] = useState({ open: false, action: null, target: null });
   const [reasonText, setReasonText] = useState('');
+  const [unpostDialogOpen, setUnpostDialogOpen] = useState(false);
+  const [unpostTarget, setUnpostTarget] = useState(null);
+  const [unpostLoading, setUnpostLoading] = useState(false);
   const [sellableOptions, setSellableOptions] = useState([]);
   const activeCompany = useSelector((s) => s.company?.activeCompany || null);
 
@@ -334,14 +338,45 @@ const SalesInvoices = () => {
   };
 
   const handleEdit = (invoice) => {
-    if (invoice.status !== 'draft') {
-      apiError('Only draft invoices can be edited');
+    if (invoice.status === 'draft') {
+      setViewMode(false);
+      setEditId(invoice.id);
+      dispatch(fetchInvoice(invoice.id));
+      setOpenForm(true);
       return;
     }
-    setViewMode(false);
-    setEditId(invoice.id);
-    dispatch(fetchInvoice(invoice.id));
-    setOpenForm(true);
+    if (['posted', 'partially_paid', 'overdue'].includes(invoice.status)) {
+      // Editing a posted invoice first removes its accounting posting.
+      setUnpostTarget(invoice);
+      setUnpostDialogOpen(true);
+      return;
+    }
+    apiError(`A ${invoice.status} invoice cannot be edited`);
+  };
+
+  const handleUnpostForEdit = async () => {
+    if (!unpostTarget) return;
+    setUnpostLoading(true);
+    try {
+      const result = await dispatch(unpostInvoiceForEdit(unpostTarget.id));
+      if (result.meta.requestStatus === 'fulfilled') {
+        apiSuccess(
+          `${unpostTarget.invoiceNumber} reverted to draft. Its journal posting was removed and stock restored.`
+        );
+        setUnpostDialogOpen(false);
+        const target = unpostTarget;
+        setUnpostTarget(null);
+        loadData();
+        setViewMode(false);
+        setEditId(target.id);
+        dispatch(fetchInvoice(target.id));
+        setOpenForm(true);
+      } else {
+        apiError(result.payload || 'Could not revert the invoice to draft.');
+      }
+    } finally {
+      setUnpostLoading(false);
+    }
   };
 
   const handleView = (invoice) => {
@@ -1204,11 +1239,18 @@ const SalesInvoices = () => {
                           </>
                         )}
                         {['posted', 'partially_paid', 'overdue'].includes(inv.status) && (
-                          <Tooltip title="Cancel">
-                            <IconButton size="small" color="warning" onClick={() => handleCancel(inv)}>
-                              <CancelIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
+                          <>
+                            <Tooltip title="Edit (removes the journal posting and reverts to draft)">
+                              <IconButton size="small" onClick={() => handleEdit(inv)}>
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Cancel">
+                              <IconButton size="small" color="warning" onClick={() => handleCancel(inv)}>
+                                <CancelIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </>
                         )}
                       </Stack>
                     </TableCell>
@@ -1231,6 +1273,38 @@ const SalesInvoices = () => {
 
       {/* Form Dialog */}
       {renderFormDialog()}
+
+      {/* Unpost-for-edit Confirmation Dialog */}
+      <Dialog
+        open={unpostDialogOpen}
+        onClose={() => { if (!unpostLoading) { setUnpostDialogOpen(false); setUnpostTarget(null); } }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Edit posted invoice {unpostTarget?.invoiceNumber || ''}</DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" color="text.secondary">
+            This invoice is already posted. To edit it, the system will first:
+          </Typography>
+          <Box component="ul" sx={{ mt: 1, mb: 1, pl: 3 }}>
+            <li><Typography variant="body2">Remove the accounting posting generated by this invoice (its journal entry and General Ledger transactions)</Typography></li>
+            <li><Typography variant="body2">Restore the inventory quantities that this invoice reduced</Typography></li>
+            <li><Typography variant="body2">Change the invoice status back to <strong>Draft</strong> so you can edit it</Typography></li>
+          </Box>
+          <Alert severity="warning">
+            Only this invoice&apos;s own posting is removed. You must <strong>post the invoice again</strong> after saving
+            to regenerate the accounting entries — nothing is posted automatically.
+          </Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setUnpostDialogOpen(false); setUnpostTarget(null); }} disabled={unpostLoading}>
+            Cancel
+          </Button>
+          <Button onClick={handleUnpostForEdit} variant="contained" color="primary" disabled={unpostLoading}>
+            {unpostLoading ? 'Reverting...' : 'Remove Posting & Edit'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Post Confirmation Dialog */}
       <Dialog open={openPostDialog} onClose={handleClosePost} maxWidth="sm" fullWidth>

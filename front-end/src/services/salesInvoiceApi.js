@@ -112,6 +112,14 @@ class SalesInvoiceApi {
   }
 
   /**
+   * Revert a posted invoice to draft (removes its journal posting)
+   */
+  static async unpostForEdit(id) {
+    const response = await api.post(`/sales-invoices/${id}/unpost-for-edit`);
+    return response.data;
+  }
+
+  /**
    * Preview auto-resolved posting accounts before posting
    */
   static async getPostingPreview(id) {

@@ -115,6 +115,19 @@ export const postInvoice = createAsyncThunk(
   }
 );
 
+// Revert a posted invoice to draft for editing
+export const unpostInvoiceForEdit = createAsyncThunk(
+  'salesInvoice/unpostForEdit',
+  async (id, { rejectWithValue }) => {
+    try {
+      const response = await SalesInvoiceApi.unpostForEdit(id);
+      return response;
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || error.message);
+    }
+  }
+);
+
 // Cancel invoice
 export const cancelInvoice = createAsyncThunk(
   'salesInvoice/cancelInvoice',

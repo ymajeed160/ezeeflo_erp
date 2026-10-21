@@ -174,6 +174,22 @@ class SalesInvoiceController {
   /**
    * POST /api/sales-invoices/:id/post
    */
+  static async unpostForEdit(req, res, next) {
+    try {
+      const tenantId = req.user.tenantId;
+      const id = req.params.id;
+      const userId = req.user?.id;
+      const result = await SalesInvoiceService.unpostForEdit(tenantId, id, userId);
+      res.json({
+        success: true,
+        data: result,
+        message: 'Invoice reverted to draft. Its journal posting was removed and stock restored.',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async post(req, res, next) {
     try {
       const errors = validationResult(req);

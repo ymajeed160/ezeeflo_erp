@@ -84,6 +84,13 @@ router.post(
   SalesInvoiceController.post
 );
 
+// POST /api/:tenantId/sales-invoices/:id/unpost-for-edit - Revert a posted invoice to draft
+router.post(
+  '/:id/unpost-for-edit',
+  authorize('salesinvoice.edit'),
+  SalesInvoiceController.unpostForEdit
+);
+
 // POST /api/:tenantId/sales-invoices/:id/cancel - Cancel invoice
 router.post(
   '/:id/cancel',
