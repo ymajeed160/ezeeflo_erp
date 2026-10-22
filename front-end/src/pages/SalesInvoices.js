@@ -220,6 +220,16 @@ const SalesInvoices = () => {
     }
   }, [configVatPayableId, watch, setValue]);
 
+  // Keep the Customer A/R account in sync with the selected customer. Covers
+  // invoices loaded for editing whose stored customerAccountId is empty.
+  const watchedCustomerId = watch('customerId');
+  const watchedCustomerAccountId = watch('customerAccountId');
+  useEffect(() => {
+    if (!watchedCustomerId || watchedCustomerAccountId) return;
+    const customer = customersList.find((c) => c.id === watchedCustomerId);
+    if (customer?.arAccountId) setValue('customerAccountId', customer.arAccountId);
+  }, [watchedCustomerId, watchedCustomerAccountId, customersList, setValue]);
+
   // Prefill a new invoice from a sales order (navigate ?salesOrderId=X)
   useEffect(() => {
     const params = new URLSearchParams(location.search);
