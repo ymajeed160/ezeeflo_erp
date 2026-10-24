@@ -1349,7 +1349,7 @@ const SalesInvoices = () => {
                 <Typography variant="caption" color="text.secondary">Customer Account (A/R) — Debit</Typography>
                 <Typography variant="body1" fontWeight={600}>
                   {postPreview?.customerAccount
-                    ? `${postPreview.customerAccount.code} - ${postPreview.customerAccount.name}`
+                    ? `${postPreview.customerAccount.code} - ${postPreview.customerAccount.name} — ${Number(postPreview.customerAccount.amount || 0).toFixed(2)}`
                     : 'Not configured'}
                 </Typography>
               </Grid>
@@ -1361,8 +1361,22 @@ const SalesInvoices = () => {
                       {ra.account ? `${ra.account.code} - ${ra.account.name}` : 'Unknown account'} — {Number(ra.amount || 0).toFixed(2)}
                     </Typography>
                   ))
+                ) : postPreview?.missingExpenseAccountItems?.length ? (
+                  <Typography variant="body1" fontWeight={600} color="warning.main">
+                    COGS account not configured for: {postPreview.missingExpenseAccountItems.join(', ')}
+                  </Typography>
+                ) : postPreview?.unpricedStockItems?.length ? (
+                  <Typography variant="body1" fontWeight={600} color="warning.main">
+                    Cost not resolved for: {postPreview.unpricedStockItems.join(', ')}
+                  </Typography>
                 ) : (
-                  <Typography variant="body1" fontWeight={600}>No stock items</Typography>
+                  <Typography variant="body1" fontWeight={600}>
+                    {postPreview?.lineDiagnostics?.some((d) => d.itemType === 'service')
+                      ? 'No inventory-tracked items on this invoice (service items)'
+                      : postPreview?.lineDiagnostics?.length
+                        ? 'No inventory-tracked items on this invoice'
+                        : 'No line items'}
+                  </Typography>
                 )}
               </Grid>
               <Grid item xs={12}>
@@ -1373,6 +1387,10 @@ const SalesInvoices = () => {
                       {ra.account ? `${ra.account.code} - ${ra.account.name}` : 'Unknown account'} — {Number(ra.amount || 0).toFixed(2)}
                     </Typography>
                   ))
+                ) : postPreview?.missingIncomeAccountItems?.length ? (
+                  <Typography variant="body1" fontWeight={600} color="warning.main">
+                    Income account not configured for: {postPreview.missingIncomeAccountItems.join(', ')}
+                  </Typography>
                 ) : (
                   <Typography variant="body1" fontWeight={600}>Not configured</Typography>
                 )}
@@ -1385,15 +1403,29 @@ const SalesInvoices = () => {
                       {ra.account ? `${ra.account.code} - ${ra.account.name}` : 'Unknown account'} — {Number(ra.amount || 0).toFixed(2)}
                     </Typography>
                   ))
+                ) : postPreview?.missingInventoryAccountItems?.length ? (
+                  <Typography variant="body1" fontWeight={600} color="warning.main">
+                    Inventory account not configured for: {postPreview.missingInventoryAccountItems.join(', ')}
+                  </Typography>
+                ) : postPreview?.unpricedStockItems?.length ? (
+                  <Typography variant="body1" fontWeight={600} color="warning.main">
+                    Cost not resolved for: {postPreview.unpricedStockItems.join(', ')}
+                  </Typography>
                 ) : (
-                  <Typography variant="body1" fontWeight={600}>No stock items</Typography>
+                  <Typography variant="body1" fontWeight={600}>
+                    {postPreview?.lineDiagnostics?.some((d) => d.itemType === 'service')
+                      ? 'No inventory-tracked items on this invoice (service items)'
+                      : postPreview?.lineDiagnostics?.length
+                        ? 'No inventory-tracked items on this invoice'
+                        : 'No line items'}
+                  </Typography>
                 )}
               </Grid>
               <Grid item xs={12}>
                 <Typography variant="caption" color="text.secondary">Tax Account (VAT Payable) — Credit</Typography>
                 <Typography variant="body1" fontWeight={600}>
                   {postPreview?.taxAccount
-                    ? `${postPreview.taxAccount.code} - ${postPreview.taxAccount.name}`
+                    ? `${postPreview.taxAccount.code} - ${postPreview.taxAccount.name} — ${Number(postPreview.taxAccount.amount || 0).toFixed(2)}`
                     : 'No tax'}
                 </Typography>
               </Grid>
@@ -1404,12 +1436,33 @@ const SalesInvoices = () => {
                   &nbsp;|&nbsp; Grand Total: <strong>{Number(postPreview?.grandTotal || postTarget?.grandTotal || 0).toFixed(2)}</strong>
                 </Typography>
               </Grid>
+              {postPreview?.insufficientStockItems?.length ? (
+                <Grid item xs={12}>
+                  <Alert severity="error" sx={{ mt: 1 }}>
+                    Insufficient stock:{' '}
+                    {postPreview.insufficientStockItems
+                      .map((s) => `${s.item} (available ${s.available}, requested ${s.requested})`)
+                      .join('; ')}
+                  </Alert>
+                </Grid>
+              ) : null}
             </Grid>
           </Paper>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleClosePost}>Cancel</Button>
-          <Button onClick={handlePostSubmit} variant="contained" color="primary" disabled={!postPreview}>
+          <Button
+            onClick={handlePostSubmit}
+            variant="contained"
+            color="primary"
+            disabled={
+              !postPreview ||
+              !!postPreview?.insufficientStockItems?.length ||
+              !!postPreview?.missingExpenseAccountItems?.length ||
+              !!postPreview?.missingInventoryAccountItems?.length ||
+              !!postPreview?.missingIncomeAccountItems?.length
+            }
+          >
             Post Invoice
           </Button>
         </DialogActions>

@@ -163,7 +163,29 @@ class StockAdjustmentService {
       for (const record of inventoryTransactionRecords) {
         record.referenceId = adjustment.id;
       }
-      await inventoryTransactionRepository.bulkCreate(inventoryTransactionRecords, { transaction });
+      const createdTxs = await inventoryTransactionRepository.bulkCreate(inventoryTransactionRecords, { transaction });
+
+      // Establish FIFO cost layers for positive adjustments (stock-inward).
+      const FifoCostService = require('./FifoCostService');
+      for (let i = 0; i < inventoryTransactionRecords.length; i += 1) {
+        const record = inventoryTransactionRecords[i];
+        if (!record.quantityIn || record.quantityIn <= 0) continue;
+        const tx = createdTxs[i];
+        await FifoCostService.addLayer({
+          tenantId,
+          itemId: record.itemId,
+          variantId: record.variantId || null,
+          warehouseId: record.warehouseId,
+          sourceType: 'adjustment',
+          sourceId: adjustment.id,
+          sourceLineId: null,
+          stockInTransactionId: tx ? tx.id : null,
+          quantity: record.quantityIn,
+          unitCost: record.unitCost,
+          receiptDate: (record.transactionDate || new Date()).toISOString().split('T')[0],
+        }, transaction);
+        await FifoCostService.recomputeBalance(tenantId, record.itemId, record.warehouseId, record.variantId || null, transaction);
+      }
 
       await transaction.commit();
       logger.info(`Stock adjustment created: ${adjustmentNumber} by user ${userId}`);

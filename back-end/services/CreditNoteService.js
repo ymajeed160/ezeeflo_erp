@@ -331,17 +331,21 @@ class CreditNoteService {
 
       if (balance) {
         const currentQty = parseFloat(balance.quantityOnHand) || 0;
-        const currentValue = parseFloat(balance.inventoryValue) || (currentQty * costPrice);
+        const currentAvg = parseFloat(balance.averageCost) || 0;
+        const currentValue = currentQty * currentAvg;
         newQty = currentQty + quantity;
         newValue = currentValue + (quantity * costPrice);
-        await balance.update(
-          { quantityOnHand: newQty, inventoryValue: newValue, updatedAt: new Date() },
-          { transaction }
-        );
       }
 
       // The effective cost after restocking (weighted average)
       const effectiveCost = newQty > 0 ? (newValue / newQty) : costPrice;
+
+      if (balance) {
+        await balance.update(
+          { quantityOnHand: newQty, averageCost: parseFloat(effectiveCost.toFixed(4)) },
+          { transaction }
+        );
+      }
 
       // Create inventory transaction record (IN - return)
       const totalCost = quantity * effectiveCost;

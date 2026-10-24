@@ -3,6 +3,7 @@ const { sequelize } = require('../models');
 const SalesInvoiceRepository = require('../repositories/SalesInvoiceRepository');
 const SalesInvoiceDTO = require('../dto/SalesInvoiceDTO');
 const InventoryTransactionService = require('./InventoryTransactionService');
+const FifoCostService = require('./FifoCostService');
 const AuditService = require('./AuditService');
 const { Op } = require('sequelize');
 const { requireDeletionEnabled } = require('../utils/deletionSettings');
@@ -269,9 +270,14 @@ class SalesInvoiceService {
       // Validate accounts before posting
       await SalesInvoiceService.validatePostingAccounts(tenantId, invoice);
 
-      // 1. Create Journal Entry
+      // 1. FIFO stock consumption — locks cost layers, validates availability,
+      //    persists per-line FIFO allocations and stock-out transactions.
+      //    This is the authoritative source for COGS / Inventory amounts.
+      const allocationsByDetail = await FifoCostService.consumeInvoiceStock(tenantId, invoice, t);
+
+      // 2. Create Journal Entry from the persisted FIFO allocations
       const JournalEntryService = require('./JournalEntryService');
-      const journalLines = await SalesInvoiceService.buildJournalLines(tenantId, invoice);
+      const journalLines = await SalesInvoiceService.buildJournalLines(tenantId, invoice, allocationsByDetail);
 
       const journalEntry = await JournalEntryService.createEntry({
         tenantId,
@@ -289,9 +295,6 @@ class SalesInvoiceService {
 
       // Link journal entry to invoice
       await SalesInvoiceRepository.setJournalEntry(tenantId, id, journalEntry.id, t);
-
-      // 2. Inventory impact — reduces stock for inventory-tracked products
-      await SalesInvoiceService.processInventoryImpact(tenantId, invoice, userId, t);
 
       // 3. Update status to posted
       await SalesInvoiceRepository.updateStatus(tenantId, id, 'posted', userId, t);
@@ -490,14 +493,23 @@ class SalesInvoiceService {
       if (c && c.arAccountId) customerAccountId = c.arAccountId;
     }
 
-    // Revenue accounts are derived per line from each item's Income Account
+    // Revenue accounts are derived per line from each item's Income Account,
+    // falling back to the company's default revenue account.
     const revenueMap = new Map();
+    const missingIncomeAccountItems = [];
     for (const detail of invoice.details || []) {
       const item = detail.item;
-      if (!item || !item.incomeAccountId) continue;
+      if (!item) continue;
       const lineAmount = parseFloat(detail.quantity || 0) * parseFloat(detail.unitPrice || 0);
       const discountAmount = lineAmount * parseFloat(detail.discountPercent || 0) / 100;
-      revenueMap.set(item.incomeAccountId, (revenueMap.get(item.incomeAccountId) || 0) + (lineAmount - discountAmount));
+      const netAmount = lineAmount - discountAmount;
+      if (netAmount <= 0) continue;
+      const incomeAccountId = await SalesInvoiceService._resolveIncomeAccountId(tenantId, item);
+      if (!incomeAccountId) {
+        missingIncomeAccountItems.push(item.name || item.id);
+        continue;
+      }
+      revenueMap.set(incomeAccountId, (revenueMap.get(incomeAccountId) || 0) + netAmount);
     }
 
     let taxAccountId = invoice.taxAccountId;
@@ -512,27 +524,82 @@ class SalesInvoiceService {
     const { InventoryBalance } = require('../models');
     const cogsMap = new Map();
     const inventoryMap = new Map();
+    let hasStockItems = false;
+    const missingExpenseAccountItems = [];
+    const missingInventoryAccountItems = [];
+    const unpricedStockItems = [];
+    const insufficientStockItems = [];
+    const lineDiagnostics = [];
     for (const detail of invoice.details || []) {
       const item = detail.item;
-      if (!item || item.itemType !== 'product' || item.isInventoryTracked === false) continue;
-      if (!item.expenseAccountId || !item.inventoryAccountId) continue;
       const quantity = parseFloat(detail.quantity) || 0;
-      if (quantity <= 0) continue;
       const variantId = detail.variantId || null;
-      const balance = invoice.warehouseId
-        ? await InventoryBalance.findOne({
-          where: { tenantId, itemId: detail.itemId, warehouseId: invoice.warehouseId, variantId },
-        })
-        : null;
-      let avgCost = parseFloat(detail.costPrice) || parseFloat(item.costPrice) || 0;
-      const balanceAvg = balance ? (parseFloat(balance.averageCost) || 0) : 0;
-      if (balanceAvg > 0) avgCost = balanceAvg;
+      const itemName = item ? (item.name || item.id) : null;
+      const isStock = !!item && item.itemType === 'product' && item.isInventoryTracked !== false;
+
+      lineDiagnostics.push({
+        itemId: detail.itemId || null,
+        name: itemName,
+        itemType: item ? item.itemType : null,
+        isInventoryTracked: item ? (item.isInventoryTracked !== false) : null,
+        quantity,
+        isStockItem: isStock,
+        hasExpenseAccount: !!(item && item.expenseAccountId),
+        hasInventoryAccount: !!(item && item.inventoryAccountId),
+        warehouseId: invoice.warehouseId || null,
+      });
+
+      if (!isStock) continue;
+      hasStockItems = true;
+      if (quantity <= 0) continue;
+
+      // Available quantity + FIFO cost from the cost layers (read-only).
+      // Falls back to the legacy balance when no layers exist yet.
+      let available = null;
+      let avgCost = 0;
+      if (invoice.warehouseId) {
+        const peek = await FifoCostService.peekFifoCost(
+          tenantId, detail.itemId, invoice.warehouseId, variantId, quantity
+        );
+        if (peek.hasLayers) {
+          available = peek.available;
+          avgCost = quantity > 0 ? peek.cost / quantity : 0;
+        } else {
+          const balance = await InventoryBalance.findOne({
+            where: { tenantId, itemId: detail.itemId, warehouseId: invoice.warehouseId, variantId },
+          });
+          available = balance ? parseFloat(balance.quantityOnHand) || 0 : 0;
+          avgCost = await SalesInvoiceService._resolveUnitCost(
+            tenantId, detail, item, invoice.warehouseId, variantId
+          );
+        }
+      } else {
+        avgCost = await SalesInvoiceService._resolveUnitCost(
+          tenantId, detail, item, null, variantId
+        );
+      }
+      if (available !== null && available < quantity) {
+        insufficientStockItems.push({ item: itemName, available, requested: quantity });
+      }
+
       const cost = quantity * avgCost;
-      if (cost <= 0) continue;
-      cogsMap.set(item.expenseAccountId, (cogsMap.get(item.expenseAccountId) || 0) + cost);
-      inventoryMap.set(item.inventoryAccountId, (inventoryMap.get(item.inventoryAccountId) || 0) + cost);
-      if (!ids.includes(item.expenseAccountId)) ids.push(item.expenseAccountId);
-      if (!ids.includes(item.inventoryAccountId)) ids.push(item.inventoryAccountId);
+      if (cost <= 0) {
+        unpricedStockItems.push(itemName);
+      }
+
+      if (!item.expenseAccountId) {
+        missingExpenseAccountItems.push(itemName);
+      } else if (cost > 0) {
+        cogsMap.set(item.expenseAccountId, (cogsMap.get(item.expenseAccountId) || 0) + cost);
+        if (!ids.includes(item.expenseAccountId)) ids.push(item.expenseAccountId);
+      }
+
+      if (!item.inventoryAccountId) {
+        missingInventoryAccountItems.push(itemName);
+      } else if (cost > 0) {
+        inventoryMap.set(item.inventoryAccountId, (inventoryMap.get(item.inventoryAccountId) || 0) + cost);
+        if (!ids.includes(item.inventoryAccountId)) ids.push(item.inventoryAccountId);
+      }
     }
 
     const accounts = await Account.findAll({ where: { id: { [Op.in]: ids }, tenantId } });
@@ -545,6 +612,9 @@ class SalesInvoiceService {
       revenueAccounts.push({ account: fmt(accountId), amount: parseFloat(amount.toFixed(2)) });
     }
 
+    const customerAcct = fmt(customerAccountId);
+    const taxAcct = fmt(taxAccountId);
+
     return {
       id: invoice.id,
       invoiceNumber: invoice.invoiceNumber,
@@ -553,12 +623,82 @@ class SalesInvoiceService {
       taxTotal: parseFloat(invoice.taxTotal),
       discountTotal: parseFloat(invoice.discountTotal),
       customer: invoice.customer ? { id: invoice.customer.id, name: invoice.customer.name } : null,
-      customerAccount: fmt(customerAccountId),
+      customerAccount: customerAcct ? { ...customerAcct, amount: parseFloat(invoice.grandTotal) || 0 } : null,
       revenueAccounts,
-      taxAccount: fmt(taxAccountId),
+      taxAccount: taxAcct ? { ...taxAcct, amount: parseFloat(invoice.taxTotal) || 0 } : null,
       cogsAccounts: [...cogsMap].map(([accountId, amount]) => ({ account: fmt(accountId), amount: parseFloat(amount.toFixed(2)) })),
       inventoryAccounts: [...inventoryMap].map(([accountId, amount]) => ({ account: fmt(accountId), amount: parseFloat(amount.toFixed(2)) })),
+      hasStockItems,
+      missingIncomeAccountItems,
+      missingExpenseAccountItems,
+      missingInventoryAccountItems,
+      unpricedStockItems,
+      insufficientStockItems,
+      lineDiagnostics,
     };
+  }
+
+  /**
+   * Resolve the per-unit cost for an inventory-tracked invoice line.
+   *
+   * Precedence (most authoritative first):
+   *   1. Weighted-average cost from the inventory balance (when maintained)
+   *   2. Cost saved on the invoice line
+   *   3. Cost from the item master
+   *   4. Most recent stock-inward transaction cost (self-healing fallback for
+   *      legacy data where average_cost was never maintained)
+   */
+  static async _resolveUnitCost(tenantId, detail, item, warehouseId, variantId = null, transaction = null) {
+    const { InventoryBalance, InventoryTransaction } = require('../models');
+
+    if (warehouseId) {
+      const balance = await InventoryBalance.findOne({
+        where: { tenantId, itemId: detail.itemId, warehouseId, variantId },
+        transaction,
+      });
+      const balanceAvg = balance ? parseFloat(balance.averageCost) || 0 : 0;
+      if (balanceAvg > 0) return balanceAvg;
+    }
+
+    const lineCost = parseFloat(detail.costPrice) || 0;
+    if (lineCost > 0) return lineCost;
+
+    const itemCost = item ? parseFloat(item.costPrice) || 0 : 0;
+    if (itemCost > 0) return itemCost;
+
+    if (warehouseId) {
+      const lastIn = await InventoryTransaction.findOne({
+        where: {
+          tenantId,
+          itemId: detail.itemId,
+          warehouseId,
+          variantId,
+          quantityIn: { [Op.gt]: 0 },
+        },
+        order: [['transactionDate', 'DESC'], ['id', 'DESC']],
+        transaction,
+      });
+      const lastInCost = lastIn ? parseFloat(lastIn.unitCost) || 0 : 0;
+      if (lastInCost > 0) return lastInCost;
+    }
+
+    return 0;
+  }
+
+  /**
+   * Resolve the income (sales revenue) account for an invoice line.
+   *
+   * Precedence: item's Income Account, then the company's default revenue
+   * account from System Config (accounting → revenue_account).
+   */
+  static async _resolveIncomeAccountId(tenantId, item, transaction = null) {
+    if (item && item.incomeAccountId) return item.incomeAccountId;
+    const { SystemConfig } = require('../models');
+    const cfg = await SystemConfig.findOne({
+      where: { tenantId, category: 'accounting', configKey: 'revenue_account' },
+      transaction,
+    });
+    return cfg && cfg.configValue ? cfg.configValue : null;
   }
 
   /**
@@ -581,16 +721,18 @@ class SalesInvoiceService {
       throw new BadRequestError('Customer Account is invalid, inactive, or belongs to a different tenant');
     }
 
-    // Revenue is derived per invoice line from each item's Income Account (Chart of Account)
+    // Revenue is derived per invoice line from each item's Income Account (Chart of
+    // Account), falling back to the company's default revenue account.
     const incomeAccountIds = new Set();
     for (const detail of invoice.details || []) {
       if (!detail.itemId) continue;
       const item = detail.item;
-      if (!item || !item.incomeAccountId) {
+      const incomeAccountId = await SalesInvoiceService._resolveIncomeAccountId(tenantId, item);
+      if (!incomeAccountId) {
         const itemName = item ? item.name : detail.itemId;
-        throw new BadRequestError(`Income Account is not configured for item: ${itemName}. Please configure the item's Income Account before posting this invoice.`);
+        throw new BadRequestError(`Income Account is not configured for item: ${itemName}. Configure the item's Income Account or the company's default revenue account before posting this invoice.`);
       }
-      incomeAccountIds.add(item.incomeAccountId);
+      incomeAccountIds.add(incomeAccountId);
     }
     if (incomeAccountIds.size) {
       const incomeAccounts = await Account.findAll({
@@ -616,6 +758,74 @@ class SalesInvoiceService {
         throw new BadRequestError('Tax Account is invalid, inactive, or belongs to a different tenant');
       }
     }
+
+    // Inventory-tracked products must have both COGS (Expense) and Inventory Asset
+    // accounts configured, otherwise the COGS/Inventory journal lines would be skipped.
+    for (const detail of invoice.details || []) {
+      if (!detail.itemId) continue;
+      const item = detail.item;
+      if (!item) continue;
+      const isStockItem = item.itemType === 'product' && item.isInventoryTracked !== false;
+      if (!isStockItem) continue;
+      const quantity = parseFloat(detail.quantity) || 0;
+      if (quantity <= 0) continue;
+      if (!item.expenseAccountId) {
+        throw new BadRequestError(`COGS Account (Expense) is not configured for item "${item.name}". Configure the item's COGS Account before posting this invoice.`);
+      }
+      if (!item.inventoryAccountId) {
+        throw new BadRequestError(`Inventory Account (Asset) is not configured for item "${item.name}". Configure the item's Inventory Account before posting this invoice.`);
+      }
+    }
+
+    // Inventory availability and costing: posting must not drive stock negative,
+    // and the sold cost must be determinable so COGS/Inventory post correctly.
+    // FIFO cost layers are authoritative when present; otherwise fall back to
+    // the legacy balance-based check (pre-migration data).
+    const { InventoryBalance, InventoryCostLayer } = require('../models');
+    for (const detail of invoice.details || []) {
+      if (!detail.itemId) continue;
+      const item = detail.item;
+      if (!item) continue;
+      const isStockItem = item.itemType === 'product' && item.isInventoryTracked !== false;
+      if (!isStockItem || !invoice.warehouseId) continue;
+      const quantity = parseFloat(detail.quantity) || 0;
+      if (quantity <= 0) continue;
+      const variantId = detail.variantId || null;
+
+      const layerCount = await InventoryCostLayer.count({
+        where: { tenantId, itemId: detail.itemId, warehouseId: invoice.warehouseId, variantId },
+      });
+
+      if (layerCount > 0) {
+        const available = await FifoCostService.getAvailableQuantity(
+          tenantId, detail.itemId, invoice.warehouseId, variantId
+        );
+        if (available < quantity) {
+          throw new BadRequestError(`Insufficient stock for "${item.name}". Available (FIFO): ${available}, requested: ${quantity}`);
+        }
+        const remainingValue = await InventoryCostLayer.sum('remainingValue', {
+          where: { tenantId, itemId: detail.itemId, warehouseId: invoice.warehouseId, variantId, remainingQuantity: { [Op.gt]: 0 } },
+        });
+        if (!remainingValue || parseFloat(remainingValue) <= 0) {
+          throw new BadRequestError(`Inventory cost could not be determined for item "${item.name}". Record the item cost or a stock-inward transaction before posting this invoice.`);
+        }
+        continue;
+      }
+
+      const balance = await InventoryBalance.findOne({
+        where: { tenantId, itemId: detail.itemId, warehouseId: invoice.warehouseId, variantId },
+      });
+      const available = balance ? parseFloat(balance.quantityOnHand) || 0 : 0;
+      if (available < quantity) {
+        throw new BadRequestError(`Insufficient stock for "${item.name}". Available: ${available}, requested: ${quantity}`);
+      }
+      const unitCost = await SalesInvoiceService._resolveUnitCost(
+        tenantId, detail, item, invoice.warehouseId, variantId
+      );
+      if (unitCost <= 0) {
+        throw new BadRequestError(`Inventory cost could not be determined for item "${item.name}". Record the item cost or a stock-inward transaction before posting this invoice.`);
+      }
+    }
   }
 
   /**
@@ -629,7 +839,7 @@ class SalesInvoiceService {
    * DR Cost of Goods Sold (Item expenseAccountId)
    * CR Inventory Asset (Item inventoryAccountId)
    */
-  static async buildJournalLines(tenantId, invoice) {
+  static async buildJournalLines(tenantId, invoice, allocationsByDetail = null) {
     const lines = [];
 
     // 1. DR Accounts Receivable - grandTotal
@@ -640,15 +850,19 @@ class SalesInvoiceService {
       description: `Sales Invoice #${invoice.invoiceNumber}`,
     });
 
-    // 2. CR Sales Revenue per item Income Account (grouped by Chart of Account)
+    // 2. CR Sales Revenue per item Income Account (grouped by Chart of Account),
+    //    falling back to the company's default revenue account.
     const revenueMap = new Map();
     for (const detail of invoice.details || []) {
       const item = detail.item;
-      if (!item || !item.incomeAccountId) continue;
+      if (!item) continue;
       const lineAmount = parseFloat(detail.quantity || 0) * parseFloat(detail.unitPrice || 0);
       const discountAmount = lineAmount * parseFloat(detail.discountPercent || 0) / 100;
       const netAmount = lineAmount - discountAmount;
-      revenueMap.set(item.incomeAccountId, (revenueMap.get(item.incomeAccountId) || 0) + netAmount);
+      if (netAmount <= 0) continue;
+      const incomeAccountId = await SalesInvoiceService._resolveIncomeAccountId(tenantId, item);
+      if (!incomeAccountId) continue;
+      revenueMap.set(incomeAccountId, (revenueMap.get(incomeAccountId) || 0) + netAmount);
     }
     for (const [accountId, amount] of revenueMap) {
       if (amount === 0) continue;
@@ -673,6 +887,8 @@ class SalesInvoiceService {
     // 4. Inventory impact: DR Cost of Goods Sold / CR Inventory Asset per
     //    inventory-tracked product line (always posted for stock items).
     //    Stock is credited, expense (COGS) is debited.
+    //    When FIFO allocations are provided they are the authoritative cost;
+    //    otherwise fall back to unit-cost resolution (legacy / preview).
     for (const detail of invoice.details || []) {
       if (!detail.itemId) continue;
       const item = detail.item;
@@ -685,18 +901,28 @@ class SalesInvoiceService {
       if (quantity <= 0) continue;
       const variantId = detail.variantId || null;
 
-      // Use the weighted average cost from the inventory balance when available
-      const { InventoryBalance } = require('../models');
-      const balance = invoice.warehouseId
-        ? await InventoryBalance.findOne({
-          where: { tenantId, itemId: detail.itemId, warehouseId: invoice.warehouseId, variantId },
-        })
-        : null;
-      let avgCost = parseFloat(detail.costPrice) || parseFloat(item.costPrice) || 0;
-      if (balance) {
-        const balanceAvg = parseFloat(balance.averageCost) || 0;
-        if (balanceAvg > 0) avgCost = balanceAvg;
+      const allocations = allocationsByDetail ? allocationsByDetail.get(detail.id) : null;
+      if (allocations && allocations.length) {
+        const totalCost = FifoCostService.sumAllocationCost(allocations);
+        if (totalCost <= 0) continue;
+        lines.push({
+          accountId: item.expenseAccountId,
+          debit: parseFloat(totalCost.toFixed(2)),
+          credit: 0,
+          description: `COGS - ${item.name || ''} for Invoice #${invoice.invoiceNumber}`,
+        });
+        lines.push({
+          accountId: item.inventoryAccountId,
+          debit: 0,
+          credit: parseFloat(totalCost.toFixed(2)),
+          description: `Inventory (Stock) - ${item.name || ''} for Invoice #${invoice.invoiceNumber}`,
+        });
+        continue;
       }
+
+      const avgCost = await SalesInvoiceService._resolveUnitCost(
+        tenantId, detail, item, invoice.warehouseId || null, variantId
+      );
       const totalCost = quantity * avgCost;
       if (totalCost <= 0) continue;
 
@@ -718,54 +944,15 @@ class SalesInvoiceService {
   }
 
   /**
-   * Process inventory impact: reduce stock from warehouse
-   * Uses Weighted Average Cost for COGS calculation
+   * Process inventory impact: reduce stock from warehouse using FIFO layers.
+   *
+   * Kept for backward compatibility — the posting flow now calls
+   * FifoCostService.consumeInvoiceStock directly so the persisted allocations
+   * can be reused for the journal entry. This wrapper performs the same FIFO
+   * consumption when invoked independently.
    */
   static async processInventoryImpact(tenantId, invoice, userId, transaction) {
-    const { InventoryBalance } = require('../models');
-
-    for (const detail of invoice.details || []) {
-      if (!detail.itemId) continue;
-
-      const item = detail.item;
-      if (!item) continue;
-      // Only inventory-tracked products affect stock
-      if (item.itemType !== 'product' || item.isInventoryTracked === false) continue;
-      // Guard: a warehouse is required to record stock movement
-      if (!invoice.warehouseId) continue;
-
-      const quantity = parseFloat(detail.quantity) || 0;
-      if (quantity <= 0) continue;
-      const variantId = detail.variantId || null;
-
-      // Use the balance's weighted average cost when available
-      const balance = await InventoryBalance.findOne({
-        where: { tenantId, itemId: detail.itemId, variantId, warehouseId: invoice.warehouseId },
-        transaction,
-      });
-      let avgCost = parseFloat(detail.costPrice) || parseFloat(item.costPrice) || 0;
-      if (balance) {
-        const balanceAvg = parseFloat(balance.averageCost) || 0;
-        if (balanceAvg > 0) avgCost = balanceAvg;
-      }
-
-      // Record the OUT movement (negative quantity) — the service maintains the
-      // running balance and writes quantity_in / quantity_out correctly.
-      await InventoryTransactionService.recordTransaction({
-        tenantId,
-        itemId: detail.itemId,
-        variantId,
-        warehouseId: invoice.warehouseId,
-        transactionType: 'sale',
-        referenceId: invoice.id,
-        referenceType: 'SalesInvoice',
-        referenceNumber: invoice.invoiceNumber,
-        referenceLineId: detail.id,
-        quantity: -quantity,
-        unitCost: avgCost,
-        totalCost: quantity * avgCost,
-      }, transaction);
-    }
+    return FifoCostService.consumeInvoiceStock(tenantId, invoice, transaction);
   }
 
   /**
@@ -853,36 +1040,99 @@ class SalesInvoiceService {
   }
 
   /**
-   * Reverse inventory impact (add stock back) for a cancelled invoice
+   * Reverse inventory impact (add stock back) for a cancelled/unposted invoice.
+   *
+   * Restores the original FIFO allocations to their source cost layers so the
+   * reversal matches the posting exactly, and is idempotent — quantities
+   * already restored (by a prior cancellation or sales return) are not
+   * restored twice.
    */
   static async reverseInventoryImpact(tenantId, invoice, userId, transaction) {
-    const { Item } = require('../models');
     if (!invoice.warehouseId) return;
 
     for (const detail of invoice.details || []) {
       if (!detail.itemId) continue;
 
-      const item = detail.item || (await Item.findOne({ where: { id: detail.itemId, tenantId }, transaction }));
+      const item = detail.item;
       if (!item) continue;
       if (item.itemType !== 'product' || item.isInventoryTracked === false) continue;
 
       const quantity = parseFloat(detail.quantity || 0);
       if (quantity <= 0) continue;
-      const costPrice = parseFloat(detail.costPrice || 0) || parseFloat(item.costPrice || 0);
 
-      await InventoryTransactionService.recordTransaction({
-        tenantId,
+      const saleAllocations = await FifoCostService.getSaleAllocations(tenantId, detail.id, transaction);
+      if (!saleAllocations.length) {
+        // Legacy invoices posted before FIFO layers: fall back to reversing the
+        // recorded sale transaction so we never corrupt stock silently.
+        const { InventoryTransaction } = require('../models');
+        const variantId = detail.variantId || null;
+        const legacyScope = {
+          tenantId, itemId: detail.itemId, variantId,
+          warehouseId: invoice.warehouseId,
+          referenceId: invoice.id,
+          referenceLineId: detail.id,
+        };
+
+        // Idempotency: each recorded sale posting may only be reversed once.
+        // If every sale transaction for this line already has a matching
+        // cancellation return, skip instead of creating a duplicate reversal.
+        const [saleCount, cancelCount] = await Promise.all([
+          InventoryTransaction.count({
+            where: { ...legacyScope, transactionType: 'sale', referenceType: 'SalesInvoice' },
+            transaction,
+          }),
+          InventoryTransaction.count({
+            where: { ...legacyScope, transactionType: 'return', referenceType: 'SalesInvoiceCancel' },
+            transaction,
+          }),
+        ]);
+        if (cancelCount >= saleCount) continue;
+
+        const originalSale = await InventoryTransaction.findOne({
+          where: {
+            tenantId, itemId: detail.itemId, variantId,
+            warehouseId: invoice.warehouseId,
+            referenceId: invoice.id,
+            transactionType: 'sale', referenceType: 'SalesInvoice',
+          },
+          order: [['transactionDate', 'DESC'], ['id', 'DESC']],
+          transaction,
+        });
+        let unitCost = originalSale ? parseFloat(originalSale.unitCost) || 0 : 0;
+        if (unitCost <= 0) {
+          unitCost = await SalesInvoiceService._resolveUnitCost(
+            tenantId, detail, item, invoice.warehouseId, variantId, transaction
+          );
+        }
+        await InventoryTransactionService.recordTransaction({
+          tenantId,
+          itemId: detail.itemId,
+          variantId,
+          warehouseId: invoice.warehouseId,
+          transactionType: 'return',
+          referenceId: invoice.id,
+          referenceType: 'SalesInvoiceCancel',
+          referenceNumber: invoice.invoiceNumber,
+          referenceLineId: detail.id,
+          quantity,
+          unitCost,
+          totalCost: quantity * unitCost,
+        }, transaction);
+        continue;
+      }
+
+      // FIFO path — restore the original allocations oldest-first.
+      await FifoCostService.restoreAllocations(tenantId, saleAllocations, quantity, {
+        allocationType: 'cancel',
+        referenceType: 'SalesInvoiceCancel',
+        referenceId: invoice.id,
+        referenceNumber: invoice.invoiceNumber,
+        referenceLineId: detail.id,
         itemId: detail.itemId,
         variantId: detail.variantId || null,
         warehouseId: invoice.warehouseId,
-        transactionType: 'return',
-        referenceId: invoice.id,
-        referenceType: 'SalesInvoiceCancel',
-        referenceNumber: invoice.invoiceNumber,
-        referenceLineId: detail.id,
-        quantity, // positive = back in
-        unitCost: costPrice,
-        totalCost: quantity * costPrice,
+        salesInvoiceId: invoice.id,
+        salesInvoiceDetailId: detail.id,
       }, transaction);
     }
   }

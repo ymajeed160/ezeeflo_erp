@@ -24,15 +24,29 @@ class InventoryTransactionService {
    */
   static async recordTransaction({ tenantId, itemId, variantId = null, warehouseId, transactionType,
     referenceId, referenceType, referenceNumber, referenceLineId = null, quantity, unitCost, totalCost }, transaction) {
-    
+
+    const qty = parseFloat(quantity) || 0;
+    const unit = parseFloat(unitCost) || 0;
+    const total = parseFloat(totalCost) || (qty > 0 ? qty * unit : 0);
+
     // Get current balance
     let balance = await InventoryBalance.findOne({
       where: { tenantId, itemId, variantId, warehouseId },
       transaction,
     });
 
-    const currentQty = balance ? parseFloat(balance.quantityOnHand) : 0;
-    const newQty = currentQty + quantity;
+    const currentQty = balance ? parseFloat(balance.quantityOnHand) || 0 : 0;
+    const currentAvg = balance ? parseFloat(balance.averageCost) || 0 : 0;
+    const newQty = Math.max(0, currentQty + qty);
+
+    // Weighted average cost: stock inward recalculates the per-unit average;
+    // stock outward is valued at the current average and leaves it unchanged.
+    let averageCost = currentAvg;
+    if (qty > 0) {
+      const currentValue = currentQty * currentAvg;
+      const incomingValue = total || qty * unit;
+      if (newQty > 0) averageCost = (currentValue + incomingValue) / newQty;
+    }
 
     if (!balance) {
       balance = await InventoryBalance.create({
@@ -40,13 +54,13 @@ class InventoryTransactionService {
         itemId,
         variantId,
         warehouseId,
-        quantityOnHand: Math.max(0, newQty),
-        lastUpdated: new Date(),
+        quantityOnHand: newQty,
+        averageCost,
       }, { transaction });
     } else {
       await balance.update({
-        quantityOnHand: Math.max(0, newQty),
-        lastUpdated: new Date(),
+        quantityOnHand: newQty,
+        averageCost,
       }, { transaction });
     }
 
@@ -59,10 +73,10 @@ class InventoryTransactionService {
       referenceId,
       referenceType,
       referenceLineId,
-      quantityIn: quantity > 0 ? quantity : 0,
-      quantityOut: quantity < 0 ? Math.abs(quantity) : 0,
-      runningBalance: Math.max(0, newQty),
-      unitCost: unitCost || 0,
+      quantityIn: qty > 0 ? qty : 0,
+      quantityOut: qty < 0 ? Math.abs(qty) : 0,
+      runningBalance: newQty,
+      unitCost: unit,
       transactionDate: new Date(),
     }, { transaction });
 

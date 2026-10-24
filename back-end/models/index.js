@@ -32,6 +32,8 @@ const StockAdjustmentDetail = require('./StockAdjustmentDetail');
 const StockTransfer = require('./StockTransfer');
 const StockTransferDetail = require('./StockTransferDetail');
 const InventoryTransaction = require('./InventoryTransaction');
+const InventoryCostLayer = require('./InventoryCostLayer');
+const InventoryCostAllocation = require('./InventoryCostAllocation');
 const Customer = require('./Customer');
 const { Quotation, QuotationDetail } = require('./Quotation');
 const SalesOrder = require('./SalesOrder')(sequelize, DataTypes);
@@ -389,6 +391,47 @@ InventoryTransaction.belongsTo(Item, { foreignKey: 'itemId', as: 'item' });
 // Warehouse - InventoryTransaction
 Warehouse.hasMany(InventoryTransaction, { foreignKey: 'warehouseId' });
 InventoryTransaction.belongsTo(Warehouse, { foreignKey: 'warehouseId', as: 'warehouse' });
+
+// ============================================================
+// InventoryCostLayer Associations
+// ============================================================
+
+Tenant.hasMany(InventoryCostLayer, { foreignKey: 'tenantId', sourceKey: 'id' });
+InventoryCostLayer.belongsTo(Tenant, { foreignKey: 'tenantId', targetKey: 'id' });
+
+Item.hasMany(InventoryCostLayer, { foreignKey: 'itemId' });
+InventoryCostLayer.belongsTo(Item, { foreignKey: 'itemId', as: 'item' });
+
+Warehouse.hasMany(InventoryCostLayer, { foreignKey: 'warehouseId' });
+InventoryCostLayer.belongsTo(Warehouse, { foreignKey: 'warehouseId', as: 'warehouse' });
+
+ItemVariant.hasMany(InventoryCostLayer, { foreignKey: 'variantId' });
+InventoryCostLayer.belongsTo(ItemVariant, { foreignKey: 'variantId', as: 'variant' });
+
+// ============================================================
+// InventoryCostAllocation Associations
+// ============================================================
+
+Tenant.hasMany(InventoryCostAllocation, { foreignKey: 'tenantId', sourceKey: 'id' });
+InventoryCostAllocation.belongsTo(Tenant, { foreignKey: 'tenantId', targetKey: 'id' });
+
+InventoryCostLayer.hasMany(InventoryCostAllocation, { foreignKey: 'costLayerId' });
+InventoryCostAllocation.belongsTo(InventoryCostLayer, { foreignKey: 'costLayerId', as: 'costLayer' });
+
+SalesInvoice.hasMany(InventoryCostAllocation, { foreignKey: 'salesInvoiceId' });
+InventoryCostAllocation.belongsTo(SalesInvoice, { foreignKey: 'salesInvoiceId', as: 'salesInvoice' });
+
+SalesInvoiceDetail.hasMany(InventoryCostAllocation, { foreignKey: 'salesInvoiceDetailId' });
+InventoryCostAllocation.belongsTo(SalesInvoiceDetail, { foreignKey: 'salesInvoiceDetailId', as: 'salesInvoiceDetail' });
+
+SalesReturn.hasMany(InventoryCostAllocation, { foreignKey: 'salesReturnId' });
+InventoryCostAllocation.belongsTo(SalesReturn, { foreignKey: 'salesReturnId', as: 'salesReturn' });
+
+SalesReturnDetail.hasMany(InventoryCostAllocation, { foreignKey: 'salesReturnDetailId' });
+InventoryCostAllocation.belongsTo(SalesReturnDetail, { foreignKey: 'salesReturnDetailId', as: 'salesReturnDetail' });
+
+InventoryTransaction.hasMany(InventoryCostAllocation, { foreignKey: 'stockTransactionId' });
+InventoryCostAllocation.belongsTo(InventoryTransaction, { foreignKey: 'stockTransactionId', as: 'stockTransaction' });
 
 // ============================================================
 // Customer Associations
@@ -1721,6 +1764,8 @@ module.exports = {
   StockTransfer,
   StockTransferDetail,
   InventoryTransaction,
+  InventoryCostLayer,
+  InventoryCostAllocation,
   Customer,
   Supplier,
   Quotation,

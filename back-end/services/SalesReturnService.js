@@ -4,6 +4,7 @@ const SalesReturnRepository = require('../repositories/SalesReturnRepository');
 const SalesReturnDTO = require('../dto/SalesReturnDTO');
 const AuditService = require('./AuditService');
 const InventoryTransactionService = require('./InventoryTransactionService');
+const FifoCostService = require('./FifoCostService');
 const { Op } = require('sequelize');
 const { requireDeletionEnabled } = require('../utils/deletionSettings');
 
@@ -293,9 +294,13 @@ class SalesReturnService {
       // 3. Validate accounts
       await SalesReturnService.validatePostingAccounts(tenantId, existing);
 
-      // 4. Build + create journal entry (auto-generated, then posted)
+      // 4. Restore stock to the original FIFO cost layers (or legacy fallback)
+      //    and persist restoration allocations.
+      const restoredByDetail = await SalesReturnService._restoreStock(tenantId, existing, t);
+
+      // 5. Build + create journal entry (auto-generated, then posted)
       const JournalEntryService = require('./JournalEntryService');
-      const journalLines = await SalesReturnService.buildPostJournalLines(tenantId, existing);
+      const journalLines = await SalesReturnService.buildPostJournalLines(tenantId, existing, restoredByDetail);
 
       const journalEntry = await JournalEntryService.createEntry({
         tenantId,
@@ -310,13 +315,8 @@ class SalesReturnService {
 
       await JournalEntryService.postEntry(journalEntry.id, tenantId, userId, t);
 
-      // 5. Link journal entry to return
+      // 6. Link journal entry to return
       await SalesReturnRepository.setJournalEntry(tenantId, id, journalEntry.id, t);
-
-      // 6. Reverse inventory impact (increase stock) if applicable
-      if (existing.isInventoryImpact) {
-        await SalesReturnService.processInventoryImpact(tenantId, existing, userId, t);
-      }
 
       // 7. Mark posted
       await SalesReturnRepository.updateStatus(tenantId, id, 'posted', userId, t);
@@ -716,7 +716,7 @@ class SalesReturnService {
    * DR Inventory Asset (Item inventoryAccountId)
    * CR Cost of Goods Sold (Item expenseAccountId)
    */
-  static async buildPostJournalLines(tenantId, salesReturn) {
+  static async buildPostJournalLines(tenantId, salesReturn, restoredByDetail = null) {
     const lines = [];
 
     // 1. DR Sales Revenue per item Income Account (grouped by Chart of Account)
@@ -758,7 +758,7 @@ class SalesReturnService {
     });
 
     // 4. If inventory impact, reverse COGS and Inventory
-    //    (add stock back: DR Inventory, CR COGS)
+    //    (add stock back: DR Inventory, CR COGS) using the restored FIFO costs.
     if (salesReturn.isInventoryImpact) {
       for (const detail of salesReturn.details || []) {
         if (!detail.itemId) continue;
@@ -766,8 +766,12 @@ class SalesReturnService {
         if (!item || !item.inventoryAccountId || !item.expenseAccountId) continue;
 
         const quantity = parseFloat(detail.quantity) || 0;
-        const costPrice = parseFloat(detail.costPrice) || parseFloat(item.costPrice) || 0;
-        const totalCost = quantity * costPrice;
+        if (quantity <= 0) continue;
+
+        const restored = restoredByDetail ? restoredByDetail.get(detail.id) : null;
+        const totalCost = restored && restored.length
+          ? FifoCostService.sumAllocationCost(restored)
+          : (quantity * (parseFloat(detail.costPrice) || parseFloat(item.costPrice) || 0));
 
         if (totalCost <= 0) continue;
 
@@ -790,6 +794,69 @@ class SalesReturnService {
     }
 
     return lines;
+  }
+
+  /**
+   * Restore returned stock to its original FIFO cost layers and persist the
+   * restoration allocations. Returns a Map of returnDetailId -> restored
+   * allocations (used to build the journal entry).
+   */
+  static async _restoreStock(tenantId, salesReturn, transaction) {
+    const restoredByDetail = new Map();
+
+    for (const detail of salesReturn.details || []) {
+      if (!detail.itemId) continue;
+      const item = detail.item;
+      if (!item || !item.inventoryAccountId) continue; // service items: no inventory movement
+
+      const quantity = parseFloat(detail.quantity || 0);
+      if (quantity <= 0) continue;
+      if (!salesReturn.warehouseId) continue;
+
+      const saleAllocations = detail.salesInvoiceDetailId
+        ? await FifoCostService.getSaleAllocations(tenantId, detail.salesInvoiceDetailId, transaction)
+        : [];
+
+      if (saleAllocations.length) {
+        const restored = await FifoCostService.restoreAllocations(tenantId, saleAllocations, quantity, {
+          allocationType: 'return',
+          referenceType: 'SalesReturn',
+          referenceId: salesReturn.id,
+          referenceNumber: salesReturn.returnNumber,
+          referenceLineId: detail.id,
+          itemId: detail.itemId,
+          variantId: detail.variantId || null,
+          warehouseId: salesReturn.warehouseId,
+          salesInvoiceId: salesReturn.salesInvoiceId || null,
+          salesInvoiceDetailId: detail.salesInvoiceDetailId || null,
+          salesReturnId: salesReturn.id,
+          salesReturnDetailId: detail.id,
+        }, transaction);
+        restoredByDetail.set(detail.id, restored);
+        continue;
+      }
+
+      // Legacy path: no persisted FIFO allocations — restore at the recorded
+      // return/item cost and keep the weighted-average balance behaviour.
+      const costPrice = parseFloat(detail.costPrice || 0) || parseFloat(item.costPrice || 0);
+      await InventoryTransactionService.recordTransaction({
+        tenantId,
+        itemId: detail.itemId,
+        variantId: detail.variantId || null,
+        warehouseId: salesReturn.warehouseId,
+        transactionType: 'return',
+        referenceId: salesReturn.id,
+        referenceType: 'SalesReturn',
+        referenceNumber: salesReturn.returnNumber,
+        referenceLineId: detail.id,
+        quantity,
+        unitCost: costPrice,
+        totalCost: quantity * costPrice,
+      }, transaction);
+      restoredByDetail.set(detail.id, [{ quantity, unitCost: costPrice, totalCost: quantity * costPrice, legacy: true }]);
+    }
+
+    return restoredByDetail;
   }
 
   /**

@@ -88,9 +88,15 @@ class StockTransferService {
       // Process each detail line
       const processedDetails = [];
       const inventoryTransactionRecords = [];
+      const sourceRunning = new Map(); // key -> running qty in source warehouse
+      const destRunning = new Map();   // key -> running qty in destination warehouse
+
+      const FifoCostService = require('./FifoCostService');
+      const { InventoryCostLayer } = require('../models');
 
       for (const detail of data.details) {
         const quantity = parseFloat(detail.quantity);
+        const variantId = detail.variantId || null;
 
         // Validate item exists and is a product
         const item = await itemRepository.findById(detail.itemId, tenantId);
@@ -101,86 +107,132 @@ class StockTransferService {
           throw new BadRequestError(`Stock transfer only allowed for product items. "${item.name}" is a service.`);
         }
 
-        // Check stock in source warehouse
+        const sourceKey = `${tenantId}:${detail.itemId}:${data.fromWarehouseId}:${variantId}`;
+        const destKey = `${tenantId}:${detail.itemId}:${data.toWarehouseId}:${variantId}`;
+
         const sourceBalance = await inventoryBalanceRepository.findByWarehouseAndItem(
           data.fromWarehouseId,
           detail.itemId,
           tenantId
         );
-
         const sourceQuantity = sourceBalance ? parseFloat(sourceBalance.quantityOnHand) : 0;
-        if (sourceQuantity < quantity) {
-          throw new BadRequestError(
-            `Insufficient stock for "${item.name}". Available: ${sourceQuantity}, Requested: ${quantity}`
-          );
-        }
+        if (sourceRunning.get(sourceKey) === undefined) sourceRunning.set(sourceKey, sourceQuantity);
 
-        const unitCost = detail.unitCost !== undefined
-          ? parseFloat(detail.unitCost)
-          : (sourceBalance ? parseFloat(sourceBalance.averageCost) : parseFloat(item.costPrice || 0));
-
-        processedDetails.push({
-          itemId: detail.itemId,
-          quantity,
-          unitCost,
-        });
-
-        // Update source warehouse balance (decrease)
-        const newSourceQuantity = sourceQuantity - quantity;
-        await inventoryBalanceRepository.upsertBalance({
-          tenantId,
-          warehouseId: data.fromWarehouseId,
-          itemId: detail.itemId,
-          quantityOnHand: newSourceQuantity,
-          averageCost: unitCost,
-        }, transaction);
-
-        // Update destination warehouse balance (increase)
         const destBalance = await inventoryBalanceRepository.findByWarehouseAndItem(
           data.toWarehouseId,
           detail.itemId,
           tenantId
         );
         const destQuantity = destBalance ? parseFloat(destBalance.quantityOnHand) : 0;
-        const newDestQuantity = destQuantity + quantity;
+        if (destRunning.get(destKey) === undefined) destRunning.set(destKey, destQuantity);
 
-        await inventoryBalanceRepository.upsertBalance({
-          tenantId,
-          warehouseId: data.toWarehouseId,
-          itemId: detail.itemId,
-          quantityOnHand: newDestQuantity,
-          averageCost: unitCost,
-        }, transaction);
-
-        // Transfer Out transaction
-        inventoryTransactionRecords.push({
-          tenantId,
-          itemId: detail.itemId,
-          warehouseId: data.fromWarehouseId,
-          transactionType: 'transfer_out',
-          referenceType: 'stock_transfer',
-          referenceId: null,
-          quantityIn: 0,
-          quantityOut: quantity,
-          runningBalance: newSourceQuantity,
-          unitCost,
-          transactionDate: data.transferDate || new Date(),
+        // FIFO cost layers are authoritative when present; otherwise fall back
+        // to the legacy blended unit cost.
+        const layerCount = await InventoryCostLayer.count({
+          where: { tenantId, itemId: detail.itemId, warehouseId: data.fromWarehouseId, variantId },
+          transaction,
         });
 
-        // Transfer In transaction
-        inventoryTransactionRecords.push({
-          tenantId,
+        let breakdown;
+        let legacy = false;
+        if (layerCount > 0) {
+          breakdown = await FifoCostService.consumeLayers(
+            tenantId, detail.itemId, data.fromWarehouseId, variantId, quantity, transaction
+          );
+          if (breakdown && breakdown.insufficient) {
+            throw new BadRequestError(
+              `Insufficient stock for "${item.name}". Available (FIFO): ${breakdown.available}, Requested: ${quantity}`
+            );
+          }
+        } else {
+          legacy = true;
+          if (sourceQuantity < quantity) {
+            throw new BadRequestError(
+              `Insufficient stock for "${item.name}". Available: ${sourceQuantity}, Requested: ${quantity}`
+            );
+          }
+          const unitCost = detail.unitCost !== undefined
+            ? parseFloat(detail.unitCost)
+            : (sourceBalance ? parseFloat(sourceBalance.averageCost) : parseFloat(item.costPrice || 0));
+          breakdown = [{ layerId: null, quantity, unitCost, totalCost: quantity * unitCost }];
+        }
+
+        // Weighted-average unit cost for the transfer detail row (informational).
+        const totalValue = breakdown.reduce((s, b) => s + (parseFloat(b.totalCost) || 0), 0);
+        const blendedUnitCost = quantity > 0 ? totalValue / quantity : 0;
+
+        processedDetails.push({
           itemId: detail.itemId,
-          warehouseId: data.toWarehouseId,
-          transactionType: 'transfer_in',
-          referenceType: 'stock_transfer',
-          referenceId: null,
-          quantityIn: quantity,
-          quantityOut: 0,
-          runningBalance: newDestQuantity,
-          unitCost,
-          transactionDate: data.transferDate || new Date(),
+          quantity,
+          unitCost: parseFloat(blendedUnitCost.toFixed(6)),
         });
+
+        for (const b of breakdown) {
+          const bQty = parseFloat(b.quantity) || 0;
+          const bUnit = parseFloat(b.unitCost) || 0;
+          if (bQty <= 0) continue;
+
+          // Source warehouse running balance (decrease)
+          const srcRun = parseFloat(sourceRunning.get(sourceKey) || 0) - bQty;
+          sourceRunning.set(sourceKey, srcRun);
+
+          // Destination warehouse running balance (increase)
+          const dstRun = parseFloat(destRunning.get(destKey) || 0) + bQty;
+          destRunning.set(destKey, dstRun);
+
+          inventoryTransactionRecords.push({
+            tenantId,
+            itemId: detail.itemId,
+            variantId,
+            warehouseId: data.fromWarehouseId,
+            transactionType: 'transfer_out',
+            referenceType: 'stock_transfer',
+            referenceId: null,
+            quantityIn: 0,
+            quantityOut: bQty,
+            runningBalance: srcRun,
+            unitCost: bUnit,
+            transactionDate: data.transferDate || new Date(),
+            _transferInCost: bUnit,
+            _transferInQty: bQty,
+          });
+
+          inventoryTransactionRecords.push({
+            tenantId,
+            itemId: detail.itemId,
+            variantId,
+            warehouseId: data.toWarehouseId,
+            transactionType: 'transfer_in',
+            referenceType: 'stock_transfer',
+            referenceId: null,
+            quantityIn: bQty,
+            quantityOut: 0,
+            runningBalance: dstRun,
+            unitCost: bUnit,
+            transactionDate: data.transferDate || new Date(),
+            _transferInCost: bUnit,
+            _transferInQty: bQty,
+            _layer: b.layerId || null,
+          });
+        }
+
+        if (legacy) {
+          // Legacy path: update balances directly (weighted-average behaviour).
+          await inventoryBalanceRepository.upsertBalance({
+            tenantId,
+            warehouseId: data.fromWarehouseId,
+            itemId: detail.itemId,
+            quantityOnHand: sourceRunning.get(sourceKey),
+            averageCost: sourceBalance ? parseFloat(sourceBalance.averageCost) : 0,
+          }, transaction);
+          await inventoryBalanceRepository.upsertBalance({
+            tenantId,
+            warehouseId: data.toWarehouseId,
+            itemId: detail.itemId,
+            quantityOnHand: destRunning.get(destKey),
+            averageCost: blendedUnitCost,
+          }, transaction);
+        }
       }
 
       // Create transfer with details
@@ -207,7 +259,43 @@ class StockTransferService {
       for (const record of inventoryTransactionRecords) {
         record.referenceId = transfer.id;
       }
-      await inventoryTransactionRepository.bulkCreate(inventoryTransactionRecords, { transaction });
+      const cleanRecords = inventoryTransactionRecords.map(({ _transferInCost, _transferInQty, _layer, ...rest }) => rest);
+      const createdTxs = await inventoryTransactionRepository.bulkCreate(cleanRecords, { transaction });
+
+      // Establish FIFO cost layers in the destination warehouse for every
+      // per-layer transfer-in, preserving the original layer costs.
+      let idx = 0;
+      for (const record of inventoryTransactionRecords) {
+        const tx = createdTxs[idx];
+        if (record.transactionType === 'transfer_in' && record._transferInQty > 0) {
+          await FifoCostService.addLayer({
+            tenantId,
+            itemId: record.itemId,
+            variantId: record.variantId || null,
+            warehouseId: record.warehouseId,
+            sourceType: 'transfer_in',
+            sourceId: transfer.id,
+            sourceLineId: null,
+            stockInTransactionId: tx ? tx.id : null,
+            quantity: record._transferInQty,
+            unitCost: record._transferInCost,
+            receiptDate: (record.transactionDate || new Date()).toISOString().split('T')[0],
+          }, transaction);
+        }
+        idx += 1;
+      }
+
+      // Reconcile balances from layers for every affected (item, warehouse) scope.
+      const scopes = new Set();
+      for (const record of inventoryTransactionRecords) {
+        scopes.add(`${record.itemId}:${record.warehouseId}:${record.variantId || null}`);
+      }
+      for (const scope of scopes) {
+        const [itemId, warehouseId, variantId] = scope.split(':');
+        await FifoCostService.recomputeBalance(
+          tenantId, itemId, warehouseId, variantId === 'null' || !variantId ? null : variantId, transaction
+        );
+      }
 
       await transaction.commit();
       logger.info(`Stock transfer created: ${transferNumber} by user ${userId}`);

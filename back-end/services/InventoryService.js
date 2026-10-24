@@ -8,11 +8,12 @@ const { InventoryBalance, InventoryTransaction, Item } = require('../models');
 class InventoryService {
   /**
    * Increase inventory (e.g. from Goods Receipt or Purchase Return reversal).
+   * Also establishes the corresponding FIFO cost layer.
    */
   static async addStock(tenantId, itemId, warehouseId, quantity, unitCost, referenceInfo, transaction, variantId = null) {
     const totalCost = quantity * unitCost;
     const InventoryTransactionService = require('./InventoryTransactionService');
-    return InventoryTransactionService.recordTransaction({
+    const record = await InventoryTransactionService.recordTransaction({
       tenantId,
       itemId,
       variantId,
@@ -25,6 +26,39 @@ class InventoryService {
       unitCost,
       totalCost,
     }, transaction);
+
+    // Establish a FIFO cost layer for the inward movement.
+    const FifoCostService = require('./FifoCostService');
+    const sourceType = InventoryService._layerSourceType(referenceInfo.type);
+    await FifoCostService.addLayer({
+      tenantId,
+      itemId,
+      variantId,
+      warehouseId,
+      sourceType,
+      sourceId: referenceInfo.id || null,
+      sourceLineId: referenceInfo.lineId || null,
+      stockInTransactionId: record ? record.id : null,
+      quantity,
+      unitCost,
+      receiptDate: new Date().toISOString().split('T')[0],
+    }, transaction);
+    await FifoCostService.recomputeBalance(tenantId, itemId, warehouseId, variantId, transaction);
+
+    return record;
+  }
+
+  static _layerSourceType(referenceType) {
+    switch (referenceType) {
+      case 'PurchaseInvoice': return 'purchase';
+      case 'GoodsReceipt': return 'receipt';
+      case 'PurchaseReturn': return 'purchase_return';
+      case 'SalesReturn': return 'sales_return';
+      case 'StockTransfer': return 'transfer_in';
+      case 'StockAdjustment': return 'adjustment';
+      case 'OpeningBalance': return 'opening_balance';
+      default: return 'purchase';
+    }
   }
 
   /**
@@ -33,7 +67,7 @@ class InventoryService {
   static async reduceStock(tenantId, itemId, warehouseId, quantity, unitCost, referenceInfo, transaction, variantId = null) {
     const totalCost = quantity * unitCost;
     const InventoryTransactionService = require('./InventoryTransactionService');
-    return InventoryTransactionService.recordTransaction({
+    const record = await InventoryTransactionService.recordTransaction({
       tenantId,
       itemId,
       variantId,
@@ -46,6 +80,20 @@ class InventoryService {
       unitCost,
       totalCost,
     }, transaction);
+
+    // Re-derive the balance from the FIFO layers when they exist so the
+    // projection stays consistent with the authoritative layers.
+    const FifoCostService = require('./FifoCostService');
+    const { InventoryCostLayer } = require('../models');
+    const layerCount = await InventoryCostLayer.count({
+      where: { tenantId, itemId, warehouseId, variantId },
+      transaction,
+    });
+    if (layerCount > 0) {
+      await FifoCostService.recomputeBalance(tenantId, itemId, warehouseId, variantId, transaction);
+    }
+
+    return record;
   }
 
   /**

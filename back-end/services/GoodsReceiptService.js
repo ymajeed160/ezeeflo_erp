@@ -345,8 +345,8 @@ class GoodsReceiptService {
             itemId: detail.itemId,
             variantId: detail.variantId || null,
             warehouseId: existing.warehouseId,
-            quantity: 0,
-            totalValue: 0,
+            quantityOnHand: 0,
+            averageCost: 0,
           }, { transaction: t });
         }
 
@@ -354,16 +354,19 @@ class GoodsReceiptService {
         const unitCost = parseFloat(detail.unitPrice);
         const totalCost = receivedQty * unitCost;
 
-        const newQty = parseFloat(balance.quantity) + receivedQty;
-        const newValue = parseFloat(balance.totalValue) + totalCost;
+        // Weighted average cost on stock inward
+        const currentQty = parseFloat(balance.quantityOnHand) || 0;
+        const currentAvg = parseFloat(balance.averageCost) || 0;
+        const newQty = currentQty + receivedQty;
+        const newAvg = newQty > 0 ? (currentQty * currentAvg + totalCost) / newQty : 0;
 
         await InventoryBalance.update(
-          { quantity: newQty, totalValue: parseFloat(newValue.toFixed(4)) },
+          { quantityOnHand: newQty, averageCost: parseFloat(newAvg.toFixed(4)) },
           { where: { id: balance.id }, transaction: t }
         );
 
         // Create inventory transaction record
-        await InventoryTransaction.create({
+        const stockTx = await InventoryTransaction.create({
           tenantId,
           itemId: detail.itemId,
           variantId: detail.variantId || null,
@@ -376,6 +379,23 @@ class GoodsReceiptService {
           runningBalance: newQty,
           transactionDate: new Date(),
         }, { transaction: t });
+
+        // Establish a FIFO cost layer for the receipt.
+        const FifoCostService = require('./FifoCostService');
+        await FifoCostService.addLayer({
+          tenantId,
+          itemId: detail.itemId,
+          variantId: detail.variantId || null,
+          warehouseId: existing.warehouseId,
+          sourceType: 'receipt',
+          sourceId: existing.id,
+          sourceLineId: detail.id || null,
+          stockInTransactionId: stockTx.id,
+          quantity: receivedQty,
+          unitCost,
+          receiptDate: existing.receiptDate || new Date().toISOString().split('T')[0],
+        }, t);
+        await FifoCostService.recomputeBalance(tenantId, detail.itemId, existing.warehouseId, detail.variantId || null, t);
       }
 
       // Update status
@@ -423,13 +443,13 @@ class GoodsReceiptService {
           if (balance) {
             const receivedQty = parseFloat(detail.receivedQuantity);
             const unitCost = parseFloat(detail.unitPrice);
-            const totalCost = receivedQty * unitCost;
 
-            const newQty = Math.max(0, parseFloat(balance.quantity) - receivedQty);
-            const newValue = Math.max(0, parseFloat(balance.totalValue) - totalCost);
+            // Reversing a receipt reduces quantity; the weighted average per-unit
+            // cost remains unchanged for an outflow.
+            const newQty = Math.max(0, (parseFloat(balance.quantityOnHand) || 0) - receivedQty);
 
             await InventoryBalance.update(
-              { quantity: newQty, totalValue: parseFloat(newValue.toFixed(4)) },
+              { quantityOnHand: newQty },
               { where: { id: balance.id }, transaction: t }
             );
 
