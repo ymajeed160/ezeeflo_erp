@@ -253,7 +253,10 @@ class PurchaseInvoiceService {
             });
           }
 
-          if (isProduct) {
+          // Same duplicate-guard as the confirm path: a GRN-linked Purchase
+          // Invoice must not add a second stock layer for stock already
+          // received through its Goods Receipt.
+          if (isProduct && !fresh.goodsReceiptId) {
             await inventoryService.addStock(
               tenantId,
               line.itemId,
@@ -531,7 +534,12 @@ class PurchaseInvoiceService {
           });
         }
 
-        if (isProduct) {
+        // Only create a stock-inward layer when this Purchase Invoice is the
+        // actual source of the stock. A GRN-linked invoice (`goodsReceiptId`)
+        // represents a receipt whose stock already entered inventory through
+        // the Goods Receipt; adding it again would double-count the same
+        // physical receipt.
+        if (isProduct && !existing.goodsReceiptId) {
           await inventoryService.addStock(
             tenantId,
             line.itemId,

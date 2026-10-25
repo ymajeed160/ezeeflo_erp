@@ -80,6 +80,11 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: 0,
       },
+      manualAllocations: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        defaultValue: null,
+      },
     },
     {
       sequelize,

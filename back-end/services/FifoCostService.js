@@ -6,6 +6,15 @@ const {
   InventoryCostAllocation,
   InventoryTransaction,
   InventoryBalance,
+  GoodsReceipt,
+  PurchaseInvoice,
+  SalesInvoice,
+  SalesReturn,
+  PurchaseReturn,
+  StockAdjustment,
+  StockTransfer,
+  DeliveryNote,
+  Supplier,
 } = require('../models');
 const { BadRequestError } = require('../utils/appError');
 
@@ -105,8 +114,343 @@ class FifoCostService {
     });
   }
 
+  static _normalizeManualAllocations(detail) {
+    const raw = Array.isArray(detail?.manualAllocations)
+      ? detail.manualAllocations
+      : Array.isArray(detail?.costLayerAllocations)
+        ? detail.costLayerAllocations
+        : Array.isArray(detail?.selectedCostLayers)
+          ? detail.selectedCostLayers
+          : [];
+
+    const byLayer = new Map();
+    for (const entry of raw || []) {
+      const costLayerId = entry?.costLayerId || entry?.layerId || entry?.id || entry?.costLayerID;
+      const qty = this._round(parseFloat(entry?.quantity) || 0, 4);
+      if (!costLayerId || qty <= 0) continue;
+      const total = this._round((byLayer.get(costLayerId) || 0) + qty, 4);
+      byLayer.set(costLayerId, total);
+    }
+
+    return Array.from(byLayer.entries()).map(([costLayerId, quantity]) => ({ costLayerId, quantity }));
+  }
+
   /**
-   * Consume stock FIFO for one sales invoice line.
+   * List the eligible stock cost layers available for manual source selection,
+   * enriched with the source document (GRN / Purchase Invoice) and supplier so
+   * the UI can display a human-readable stock receipt rather than a raw layer ID.
+   *
+   * Source semantics:
+   * - sourceType 'receipt'  → stock received through a Goods Receipt (GRN).
+   * - sourceType 'purchase' → stock inward created directly by a Purchase
+   *   Invoice. When that Purchase Invoice is linked to a GRN
+   *   (`goodsReceiptId`), the physical receipt is already represented by the
+   *   GRN's 'receipt' layer, so the duplicate 'purchase' layer is skipped to
+   *   avoid showing/allocating the same stock twice.
+   */
+  static async getEligibleCostLayers(tenantId, itemId, warehouseId, variantId = null, transaction = null) {
+    const rows = await InventoryCostLayer.findAll({
+      where: {
+        tenantId,
+        itemId,
+        warehouseId,
+        variantId: variantId || null,
+        remainingQuantity: { [Op.gt]: 0 },
+      },
+      order: [['receiptDate', 'ASC'], ['fifoSeq', 'ASC']],
+      transaction,
+    });
+
+    // Collect source document IDs so metadata can be resolved in bulk (avoids
+    // an N+1 query per layer).
+    const sourceIds = {
+      receipt: new Set(),
+      purchase: new Set(),
+      sales_return: new Set(),
+      purchase_return: new Set(),
+      adjustment: new Set(),
+      transfer_in: new Set(),
+    };
+    const stockTransactionIds = new Set();
+    for (const layer of rows) {
+      if (layer.sourceId && sourceIds[layer.sourceType]) {
+        sourceIds[layer.sourceType].add(layer.sourceId);
+      }
+      if (layer.sourceType === 'return' && layer.stockInTransactionId) {
+        stockTransactionIds.add(layer.stockInTransactionId);
+      }
+    }
+
+    const [grns, pis, salesReturns, purchaseReturns, adjustments, transfers, stockTransactions] = await Promise.all([
+      sourceIds.receipt.size
+        ? GoodsReceipt.findAll({
+            where: { id: { [Op.in]: [...sourceIds.receipt] }, tenantId },
+            attributes: ['id', 'grnNumber', 'receiptDate', 'supplierId'],
+            paranoid: false,
+            transaction,
+          })
+        : [],
+      sourceIds.purchase.size
+        ? PurchaseInvoice.findAll({
+            where: { id: { [Op.in]: [...sourceIds.purchase] }, tenantId },
+            attributes: ['id', 'invoiceNumber', 'supplierId', 'invoiceDate', 'goodsReceiptId'],
+            paranoid: false,
+            transaction,
+          })
+        : [],
+      sourceIds.sales_return.size
+        ? SalesReturn.findAll({
+            where: { id: { [Op.in]: [...sourceIds.sales_return] }, tenantId },
+            attributes: ['id', 'returnNumber', 'returnDate', 'customerId'],
+            paranoid: false,
+            transaction,
+          })
+        : [],
+      sourceIds.purchase_return.size
+        ? PurchaseReturn.findAll({
+            where: { id: { [Op.in]: [...sourceIds.purchase_return] }, tenantId },
+            attributes: ['id', 'returnNumber', 'returnDate', 'supplierId'],
+            paranoid: false,
+            transaction,
+          })
+        : [],
+      sourceIds.adjustment.size
+        ? StockAdjustment.findAll({
+            where: { id: { [Op.in]: [...sourceIds.adjustment] }, tenantId },
+            attributes: ['id', 'adjustmentNumber', 'adjustmentDate'],
+            transaction,
+          })
+        : [],
+      sourceIds.transfer_in.size
+        ? StockTransfer.findAll({
+            where: { id: { [Op.in]: [...sourceIds.transfer_in] }, tenantId },
+            attributes: ['id', 'transferNumber', 'transferDate'],
+            transaction,
+          })
+        : [],
+      stockTransactionIds.size
+        ? InventoryTransaction.findAll({
+            where: { id: { [Op.in]: [...stockTransactionIds] }, tenantId },
+            attributes: ['id', 'referenceType', 'referenceId'],
+            transaction,
+          })
+        : [],
+    ]);
+
+    const returnReferenceIds = {
+      salesReturns: new Set(),
+      salesInvoices: new Set(),
+      deliveryNotes: new Set(),
+      purchaseInvoices: new Set(),
+    };
+    for (const stockTransaction of stockTransactions) {
+      if (!stockTransaction.referenceId) continue;
+      const referenceType = String(stockTransaction.referenceType || '').toLowerCase().replace(/[^a-z]/g, '');
+      if (referenceType === 'salesreturn') returnReferenceIds.salesReturns.add(stockTransaction.referenceId);
+      else if (referenceType === 'salesinvoicecancel') returnReferenceIds.salesInvoices.add(stockTransaction.referenceId);
+      else if (referenceType === 'deliverynotecancel') returnReferenceIds.deliveryNotes.add(stockTransaction.referenceId);
+      else if (referenceType === 'purchaseinvoicecancel') returnReferenceIds.purchaseInvoices.add(stockTransaction.referenceId);
+    }
+
+    const [returnSalesDocs, returnInvoiceDocs, returnDeliveryDocs, returnPurchaseDocs] = await Promise.all([
+      returnReferenceIds.salesReturns.size
+        ? SalesReturn.findAll({
+            where: { id: { [Op.in]: [...returnReferenceIds.salesReturns] }, tenantId },
+            attributes: ['id', 'returnNumber', 'returnDate'],
+            paranoid: false,
+            transaction,
+          })
+        : [],
+      returnReferenceIds.salesInvoices.size
+        ? SalesInvoice.findAll({
+            where: { id: { [Op.in]: [...returnReferenceIds.salesInvoices] }, tenantId },
+            attributes: ['id', 'invoiceNumber'],
+            paranoid: false,
+            transaction,
+          })
+        : [],
+      returnReferenceIds.deliveryNotes.size
+        ? DeliveryNote.findAll({
+            where: { id: { [Op.in]: [...returnReferenceIds.deliveryNotes] }, tenantId },
+            attributes: ['id', 'deliveryNumber'],
+            paranoid: false,
+            transaction,
+          })
+        : [],
+      returnReferenceIds.purchaseInvoices.size
+        ? PurchaseInvoice.findAll({
+            where: { id: { [Op.in]: [...returnReferenceIds.purchaseInvoices] }, tenantId },
+            attributes: ['id', 'invoiceNumber'],
+            paranoid: false,
+            transaction,
+          })
+        : [],
+    ]);
+
+    const supplierIds = new Set();
+    for (const grn of grns) if (grn.supplierId) supplierIds.add(grn.supplierId);
+    for (const pi of pis) if (pi.supplierId) supplierIds.add(pi.supplierId);
+    for (const purchaseReturn of purchaseReturns) if (purchaseReturn.supplierId) supplierIds.add(purchaseReturn.supplierId);
+    const suppliers = supplierIds.size
+      ? await Supplier.findAll({
+          where: { id: { [Op.in]: [...supplierIds] }, tenantId },
+          attributes: ['id', 'name', 'code'],
+          paranoid: false,
+          transaction,
+        })
+      : [];
+    const supplierMap = new Map(suppliers.map((s) => [s.id, s]));
+
+    const grnMap = new Map(grns.map((g) => [g.id, g]));
+    const piMap = new Map([...pis, ...returnPurchaseDocs].map((p) => [p.id, p]));
+    const salesReturnMap = new Map([...salesReturns, ...returnSalesDocs].map((r) => [r.id, r]));
+    const salesInvoiceMap = new Map(returnInvoiceDocs.map((invoice) => [invoice.id, invoice]));
+    const deliveryNoteMap = new Map(returnDeliveryDocs.map((delivery) => [delivery.id, delivery]));
+    const purchaseReturnMap = new Map(purchaseReturns.map((r) => [r.id, r]));
+    const adjustmentMap = new Map(adjustments.map((a) => [a.id, a]));
+    const transferMap = new Map(transfers.map((t) => [t.id, t]));
+    const stockTransactionMap = new Map(stockTransactions.map((t) => [t.id, t]));
+    // Purchase invoices linked to a GRN: their physical receipt is the GRN.
+    const piGrnLink = new Map();
+    for (const pi of pis) {
+      if (pi.goodsReceiptId) piGrnLink.set(pi.id, pi.goodsReceiptId);
+    }
+    // GRN ids that actually produced a receipt layer in this scope.
+    const receiptLayerGrnIds = new Set(
+      rows.filter((l) => l.sourceType === 'receipt' && l.sourceId).map((l) => l.sourceId)
+    );
+
+    const result = [];
+    for (const layer of rows) {
+      // Skip the duplicate layer created when a GRN-linked Purchase Invoice
+      // was posted: the GRN layer already represents that stock. Only skip
+      // when that GRN produced a receipt layer for this exact scope.
+      if (
+        layer.sourceType === 'purchase' &&
+        piGrnLink.has(layer.sourceId) &&
+        receiptLayerGrnIds.has(piGrnLink.get(layer.sourceId))
+      ) {
+        continue;
+      }
+
+      const entry = {
+        id: layer.id,
+        costLayerId: layer.id,
+        itemId: layer.itemId,
+        warehouseId: layer.warehouseId,
+        variantId: layer.variantId,
+        sourceType: layer.sourceType,
+        sourceId: layer.sourceId,
+        sourceLineId: layer.sourceLineId,
+        remainingQuantity: this._round(parseFloat(layer.remainingQuantity) || 0, 4),
+        receivedQuantity: this._round(parseFloat(layer.receivedQuantity) || 0, 4),
+        unitCost: this._round(parseFloat(layer.unitCost) || 0, 6),
+        remainingValue: this._round(parseFloat(layer.remainingValue) || 0, 6),
+        receiptDate: layer.receiptDate,
+      };
+
+      entry.sourceLabel = 'Stock receipt';
+      entry.sourceDocumentType = 'Stock';
+      entry.sourceNumber = null;
+      entry.documentDate = layer.receiptDate;
+
+      if (layer.sourceType === 'receipt' && grnMap.has(layer.sourceId)) {
+        const grn = grnMap.get(layer.sourceId);
+        entry.sourceLabel = 'Goods received';
+        entry.sourceDocumentType = 'GRN';
+        entry.grnNumber = grn.grnNumber || null;
+        entry.sourceNumber = grn.grnNumber || null;
+        entry.documentDate = grn.receiptDate || layer.receiptDate;
+        if (grn.supplierId && supplierMap.has(grn.supplierId)) {
+          entry.supplierName = supplierMap.get(grn.supplierId).name || null;
+        }
+        const linkedPi = pis.find((p) => p.goodsReceiptId === layer.sourceId);
+        entry.purchaseInvoiceNumber = linkedPi ? linkedPi.invoiceNumber : null;
+      } else if (layer.sourceType === 'purchase' && piMap.has(layer.sourceId)) {
+        const pi = piMap.get(layer.sourceId);
+        entry.sourceLabel = 'Purchased';
+        entry.sourceDocumentType = 'Purchase Invoice';
+        entry.purchaseInvoiceNumber = pi.invoiceNumber || null;
+        entry.sourceNumber = pi.invoiceNumber || null;
+        entry.documentDate = pi.invoiceDate || layer.receiptDate;
+        if (pi.supplierId && supplierMap.has(pi.supplierId)) {
+          entry.supplierName = supplierMap.get(pi.supplierId).name || null;
+        }
+        const linkedGrn = pi.goodsReceiptId && grnMap.has(pi.goodsReceiptId)
+          ? grnMap.get(pi.goodsReceiptId)
+          : null;
+        entry.grnNumber = linkedGrn ? linkedGrn.grnNumber : null;
+      } else if (layer.sourceType === 'sales_return' && salesReturnMap.has(layer.sourceId)) {
+        const salesReturn = salesReturnMap.get(layer.sourceId);
+        entry.sourceLabel = 'Customer return';
+        entry.sourceDocumentType = 'Sales return';
+        entry.sourceNumber = salesReturn.returnNumber || null;
+        entry.documentDate = salesReturn.returnDate || layer.receiptDate;
+      } else if (layer.sourceType === 'purchase_return' && purchaseReturnMap.has(layer.sourceId)) {
+        const purchaseReturn = purchaseReturnMap.get(layer.sourceId);
+        entry.sourceLabel = 'Purchase return reversal';
+        entry.sourceDocumentType = 'Purchase return';
+        entry.sourceNumber = purchaseReturn.returnNumber || null;
+        entry.documentDate = purchaseReturn.returnDate || layer.receiptDate;
+        if (purchaseReturn.supplierId && supplierMap.has(purchaseReturn.supplierId)) {
+          entry.supplierName = supplierMap.get(purchaseReturn.supplierId).name || null;
+        }
+      } else if (layer.sourceType === 'adjustment' && adjustmentMap.has(layer.sourceId)) {
+        const adjustment = adjustmentMap.get(layer.sourceId);
+        entry.sourceLabel = 'Stock adjustment';
+        entry.sourceDocumentType = 'Stock adjustment';
+        entry.sourceNumber = adjustment.adjustmentNumber || null;
+        entry.documentDate = adjustment.adjustmentDate || layer.receiptDate;
+      } else if (layer.sourceType === 'transfer_in' && transferMap.has(layer.sourceId)) {
+        const transfer = transferMap.get(layer.sourceId);
+        entry.sourceLabel = 'Warehouse transfer';
+        entry.sourceDocumentType = 'Stock transfer';
+        entry.sourceNumber = transfer.transferNumber || null;
+        entry.documentDate = transfer.transferDate || layer.receiptDate;
+      } else if (layer.sourceType === 'opening_balance') {
+        entry.sourceLabel = 'Opening balance';
+        entry.sourceDocumentType = 'Opening balance';
+      } else if (layer.sourceType === 'return') {
+        const stockTransaction = stockTransactionMap.get(layer.stockInTransactionId);
+        const referenceType = stockTransaction?.referenceType;
+        const referenceId = stockTransaction?.referenceId;
+        const normalizedReference = String(referenceType || '').toLowerCase().replace(/[^a-z]/g, '');
+        if (normalizedReference === 'salesreturn') {
+          const salesReturn = salesReturnMap.get(referenceId);
+          entry.sourceLabel = 'Customer return';
+          entry.sourceDocumentType = 'Sales return';
+          entry.sourceNumber = salesReturn?.returnNumber || null;
+          entry.documentDate = salesReturn?.returnDate || layer.receiptDate;
+        } else if (normalizedReference === 'salesinvoicecancel') {
+          const invoice = salesInvoiceMap.get(referenceId);
+          entry.sourceLabel = 'Sales invoice cancellation';
+          entry.sourceDocumentType = 'Sales invoice cancellation';
+          entry.sourceNumber = invoice?.invoiceNumber || null;
+        } else if (normalizedReference === 'deliverynotecancel') {
+          const deliveryNote = deliveryNoteMap.get(referenceId);
+          entry.sourceLabel = 'Delivery note cancellation';
+          entry.sourceDocumentType = 'Delivery note cancellation';
+          entry.sourceNumber = deliveryNote?.deliveryNumber || null;
+        } else if (normalizedReference === 'purchaseinvoicecancel') {
+          const invoice = piMap.get(referenceId);
+          entry.sourceLabel = 'Purchase invoice cancellation';
+          entry.sourceDocumentType = 'Purchase invoice cancellation';
+          entry.sourceNumber = invoice?.invoiceNumber || null;
+        } else {
+          entry.sourceLabel = 'Returned stock';
+          entry.sourceDocumentType = 'Stock return';
+        }
+      }
+
+      result.push(entry);
+    }
+
+    return result;
+  }
+
+  /**
+   * Consume stock FIFO for one sales invoice line, or consume from a manually
+   * chosen cost layer selection when provided.
    *
    * Locks the eligible layers, validates availability, decrements layer
    * quantities, persists one allocation per layer consumed and writes the
@@ -120,6 +464,96 @@ class FifoCostService {
     const warehouseId = invoice.warehouseId;
 
     if (quantity <= 0) return [];
+
+    const manualAllocations = this._normalizeManualAllocations(detail);
+    if (manualAllocations.length) {
+      const batch = manualAllocations.map((entry) => ({
+        costLayerId: entry.costLayerId,
+        quantity: this._round(parseFloat(entry.quantity) || 0, 4),
+      }));
+
+      const totalSelected = this._round(batch.reduce((sum, entry) => sum + entry.quantity, 0), 4);
+      if (this._round(totalSelected, 4) !== this._round(quantity, 4)) {
+        throw new BadRequestError(`Selected stock allocations total ${totalSelected} but the line quantity is ${quantity}. The selected GRNs must exactly match the sales quantity.`);
+      }
+
+      const layerIds = batch.map((entry) => entry.costLayerId);
+      const layers = await InventoryCostLayer.findAll({
+        where: { id: { [Op.in]: layerIds }, tenantId, itemId: detail.itemId, warehouseId, variantId },
+        order: [['receiptDate', 'ASC'], ['fifoSeq', 'ASC']],
+        lock: transaction.LOCK.UPDATE,
+        transaction,
+      });
+      const layerMap = new Map(layers.map((layer) => [layer.id, layer]));
+      for (const entry of batch) {
+        const layer = layerMap.get(entry.costLayerId);
+        if (!layer) {
+          throw new BadRequestError('Selected GRN no longer exists or belongs to a different warehouse/company for this item.');
+        }
+        const available = this._round(parseFloat(layer.remainingQuantity) || 0, 4);
+        if (available < entry.quantity) {
+          throw new BadRequestError(`Selected GRN has insufficient stock. Available: ${available}, requested: ${entry.quantity}.`);
+        }
+      }
+
+      const balanceKey = `${tenantId}:${detail.itemId}:${warehouseId}:${variantId}`;
+      let running = runningBalances.get(balanceKey);
+      if (running === undefined) {
+        running = await FifoCostService.getAvailableQuantity(tenantId, detail.itemId, warehouseId, variantId, transaction);
+      }
+
+      const allocations = [];
+      for (const entry of batch) {
+        const layer = layerMap.get(entry.costLayerId);
+        const take = this._round(parseFloat(entry.quantity) || 0, 4);
+        const unitCost = this._round(parseFloat(layer.unitCost) || 0, 6);
+        const totalCost = this._round(take * unitCost, 6);
+        const originalQty = this._round(parseFloat(layer.remainingQuantity) || 0, 4);
+        const originalValue = this._round(parseFloat(layer.remainingValue || 0) || 0, 6);
+        await layer.update({
+          remainingQuantity: this._round(originalQty - take, 4),
+          remainingValue: this._round(Math.max(0, originalValue - totalCost), 6),
+        }, { transaction });
+
+        running = this._round(running - take, 4);
+        const stockTx = await InventoryTransaction.create({
+          tenantId,
+          itemId: detail.itemId,
+          variantId,
+          warehouseId,
+          transactionType: 'sale',
+          referenceType: 'SalesInvoice',
+          referenceId: invoice.id,
+          referenceNumber: invoice.invoiceNumber,
+          referenceLineId: detail.id,
+          quantityIn: 0,
+          quantityOut: take,
+          runningBalance: running,
+          unitCost,
+          transactionDate: new Date(),
+        }, { transaction });
+
+        const allocation = await InventoryCostAllocation.create({
+          tenantId,
+          allocationType: 'sale',
+          salesInvoiceId: invoice.id,
+          salesInvoiceDetailId: detail.id,
+          itemId: detail.itemId,
+          variantId,
+          warehouseId,
+          costLayerId: layer.id,
+          quantity: take,
+          unitCost,
+          totalCost,
+          stockTransactionId: stockTx.id,
+        }, { transaction });
+
+        allocations.push({ layerId: layer.id, quantity: take, unitCost, totalCost, allocationId: allocation.id });
+      }
+
+      runningBalances.set(balanceKey, running);
+      return allocations;
+    }
 
     const layers = await this._lockEligibleLayers(tenantId, detail.itemId, warehouseId, variantId, transaction);
 
@@ -138,8 +572,6 @@ class FifoCostService {
     const balanceKey = `${tenantId}:${detail.itemId}:${warehouseId}:${variantId}`;
     let running = runningBalances.get(balanceKey);
     if (running === undefined) {
-      // Seed the running balance from the FIFO layers (authoritative), not the
-      // possibly-stale inventory_balances projection.
       running = await FifoCostService.getAvailableQuantity(tenantId, detail.itemId, warehouseId, variantId, transaction);
     }
 
@@ -155,7 +587,6 @@ class FifoCostService {
       const unitCost = this._round(parseFloat(layer.unitCost) || 0, 6);
       const totalCost = this._round(take * unitCost, 6);
 
-      // Decrement the layer.
       const newRemainingQty = this._round(layerRemaining - take, 4);
       const newRemainingValue = this._round(parseFloat(layer.remainingValue || 0) - totalCost, 6);
       await layer.update({
@@ -163,7 +594,6 @@ class FifoCostService {
         remainingValue: newRemainingValue < 0 ? 0 : newRemainingValue,
       }, { transaction });
 
-      // Stock-out transaction (one per allocation — drives stock history UI).
       running = this._round(running - take, 4);
       const stockTx = await InventoryTransaction.create({
         tenantId,

@@ -1,5 +1,6 @@
 'use strict';
 const SalesInvoiceService = require('../services/SalesInvoiceService');
+const FifoCostService = require('../services/FifoCostService');
 const EmailSetting = require('../models/EmailSetting');
 const EmailService = require('../services/EmailService');
 const { validationResult } = require('express-validator');
@@ -99,6 +100,24 @@ class SalesInvoiceController {
       const id = req.params.id;
       const result = await SalesInvoiceService.getById(tenantId, id);
       res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/sales-invoices/eligible-cost-layers
+   * Returns valid stock cost layers available for manual GRN allocation.
+   */
+  static async getEligibleCostLayers(req, res, next) {
+    try {
+      const tenantId = req.user.tenantId;
+      const { itemId, warehouseId, variantId } = req.query;
+      if (!itemId || !warehouseId) {
+        return res.json({ success: true, data: [] });
+      }
+      const result = await FifoCostService.getEligibleCostLayers(tenantId, itemId, warehouseId, variantId || null);
+      res.json({ success: true, data: result });
     } catch (error) {
       next(error);
     }

@@ -264,15 +264,44 @@ class SalesInvoiceService {
       // then apply any explicit overrides from the request body.
       await SalesInvoiceService._resolveAndSetAccounts(tenantId, id, existing, body, t);
 
-      // Use existing (with resolved accounts) for posting
       const invoice = existing;
+      const selectionMap = new Map();
+      if (Array.isArray(body.details)) {
+        for (const line of body.details) {
+          const manualAllocations = Array.isArray(line.manualAllocations)
+            ? line.manualAllocations
+            : Array.isArray(line.costLayerAllocations)
+              ? line.costLayerAllocations
+              : [];
+          if (line.id && manualAllocations.length) {
+            selectionMap.set(line.id, manualAllocations);
+          }
+        }
+      }
+      // Fall back to the user's saved source selection when the post request
+      // does not re-supply it (e.g. posting from the list view). The persisted
+      // selection is read back from the invoice line and re-validated at
+      // consumption time, so a stale or unavailable layer is rejected.
+      for (const detail of invoice.details || []) {
+        if (selectionMap.has(detail.id)) continue;
+        const persisted = detail.manualAllocations || detail.costLayerAllocations;
+        if (Array.isArray(persisted) && persisted.length) {
+          selectionMap.set(detail.id, persisted);
+        }
+      }
+      for (const detail of invoice.details || []) {
+        const manual = selectionMap.get(detail.id);
+        if (manual) {
+          detail.manualAllocations = manual;
+        }
+      }
 
       // Validate accounts before posting
       await SalesInvoiceService.validatePostingAccounts(tenantId, invoice);
 
-      // 1. FIFO stock consumption — locks cost layers, validates availability,
-      //    persists per-line FIFO allocations and stock-out transactions.
-      //    This is the authoritative source for COGS / Inventory amounts.
+      // 1. FIFO stock consumption (or manual GRN selection, when supplied) — locks cost
+      //    layers, validates availability, persists per-line allocations and stock-out
+      //    transactions. This is the authoritative source for COGS / Inventory amounts.
       const allocationsByDetail = await FifoCostService.consumeInvoiceStock(tenantId, invoice, t);
 
       // 2. Create Journal Entry from the persisted FIFO allocations

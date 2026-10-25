@@ -70,6 +70,16 @@ class SalesInvoiceApi {
   }
 
   /**
+   * Get eligible stock cost layers for manual GRN selection.
+   */
+  static async getEligibleCostLayers({ itemId, warehouseId, variantId = null }) {
+    const response = await api.get('/sales-invoices/eligible-cost-layers', {
+      params: { itemId, warehouseId, variantId },
+    });
+    return response.data;
+  }
+
+  /**
    * Create new sales invoice
    */
   static async create(data) {

@@ -1,6 +1,6 @@
 'use strict';
 /**
- * FIFO inventory costing acceptance tests (Test A–I from the specification).
+ * FIFO inventory costing acceptance tests (Test A–J from the specification).
  *
  * Runs entirely inside rolled-back transactions against the local dev DB, so
  * no production data is created or modified.
@@ -9,7 +9,7 @@
  */
 require('dotenv').config({ path: __dirname + '/.env' });
 
-const { sequelize } = require('./models');
+const { sequelize, InventoryCostLayer, InventoryTransaction, Supplier, GoodsReceipt, PurchaseInvoice } = require('./models');
 const FifoCostService = require('./services/FifoCostService');
 const SalesInvoiceService = require('./services/SalesInvoiceService');
 const { v4: uuidv4 } = require('uuid');
@@ -74,6 +74,36 @@ function makeDetail(variantId, quantity) {
     } finally { await t.rollback(); }
   }
 
+  // ── Test A1: manual GRN selection overrides FIFO for specific layers ──
+  {
+    const t = await sequelize.transaction();
+    try {
+      const variantId = uuidv4();
+      const layer1 = await FifoCostService.addLayer({ tenantId: TENANT_ID, itemId: ITEM_ID, variantId, warehouseId: WAREHOUSE_ID, sourceType: 'purchase', quantity: 5, unitCost: 100, receiptDate: '2024-01-01' }, t);
+      const layer2 = await FifoCostService.addLayer({ tenantId: TENANT_ID, itemId: ITEM_ID, variantId, warehouseId: WAREHOUSE_ID, sourceType: 'purchase', quantity: 6, unitCost: 120, receiptDate: '2024-01-02' }, t);
+      const manualDetail = {
+        ...makeDetail(variantId, 4),
+        manualAllocations: [
+          { costLayerId: layer1.id, quantity: 2 },
+          { costLayerId: layer2.id, quantity: 2 },
+        ],
+      };
+      const allocations = await FifoCostService.consumeForSale({
+        tenantId: TENANT_ID,
+        detail: manualDetail,
+        item: makeItem(),
+        invoice: makeInvoice(variantId),
+        runningBalances: new Map(),
+        transaction: t,
+      });
+      check(allocations.length === 2, 'Manual GRN: two selected allocations produced');
+      check(near(FifoCostService.sumAllocationCost(allocations), 440, 0.011), 'Manual GRN: total COGS = 440');
+      const updatedL1 = await InventoryCostLayer.findByPk(layer1.id, { transaction: t });
+      const updatedL2 = await InventoryCostLayer.findByPk(layer2.id, { transaction: t });
+      check(near(updatedL1.remainingQuantity, 3) && near(updatedL2.remainingQuantity, 4), 'Manual GRN: remaining stock matches selected consumption');
+    } finally { await t.rollback(); }
+  }
+
   // ── Test B: full sales return (return all 6 → 5@100 + 1@120) ──
   {
     const t = await sequelize.transaction();
@@ -120,7 +150,34 @@ function makeDetail(variantId, quantity) {
     } finally { await t.rollback(); }
   }
 
-  // ── Test F: insufficient stock ──
+  // ── Test F: manual GRN validation rejects quantity mismatch ──
+  {
+    const t = await sequelize.transaction();
+    try {
+      const variantId = uuidv4();
+      const layer1 = await FifoCostService.addLayer({ tenantId: TENANT_ID, itemId: ITEM_ID, variantId, warehouseId: WAREHOUSE_ID, sourceType: 'purchase', quantity: 5, unitCost: 100, receiptDate: '2024-01-01' }, t);
+      const layer2 = await FifoCostService.addLayer({ tenantId: TENANT_ID, itemId: ITEM_ID, variantId, warehouseId: WAREHOUSE_ID, sourceType: 'purchase', quantity: 6, unitCost: 120, receiptDate: '2024-01-02' }, t);
+      await expectThrow(
+        () => FifoCostService.consumeForSale({
+          tenantId: TENANT_ID,
+          detail: {
+            ...makeDetail(variantId, 4),
+            manualAllocations: [
+              { costLayerId: layer1.id, quantity: 2 },
+              { costLayerId: layer2.id, quantity: 1 },
+            ],
+          },
+          item: makeItem(),
+          invoice: makeInvoice(variantId),
+          runningBalances: new Map(),
+          transaction: t,
+        }),
+        'Test F: mismatched manual allocations are rejected', 'must exactly match'
+      );
+    } finally { await t.rollback(); }
+  }
+
+  // ── Test G: insufficient stock ──
   {
     const t = await sequelize.transaction();
     try {
@@ -128,7 +185,7 @@ function makeDetail(variantId, quantity) {
       await FifoCostService.addLayer({ tenantId: TENANT_ID, itemId: ITEM_ID, variantId, warehouseId: WAREHOUSE_ID, sourceType: 'purchase', quantity: 5, unitCost: 100, receiptDate: '2024-01-01' }, t);
       await expectThrow(
         () => FifoCostService.consumeForSale({ tenantId: TENANT_ID, detail: makeDetail(variantId, 6), item: makeItem(), invoice: makeInvoice(variantId), runningBalances: new Map(), transaction: t }),
-        'Test F: insufficient stock throws clear error', 'Insufficient stock'
+        'Test G: insufficient stock throws clear error', 'Insufficient stock'
       );
     } finally { await t.rollback(); }
   }
@@ -207,6 +264,188 @@ function makeDetail(variantId, quantity) {
     const invCredit = lines.filter((l) => l.accountId === INVENTORY_ACCOUNT).reduce((s, l) => s + (parseFloat(l.credit) || 0), 0);
     check(near(cogsDebit, 620, 0.011), 'Journal: COGS debit = 620');
     check(near(invCredit, 620, 0.011), 'Journal: Inventory credit = 620');
+  }
+
+  // ── Test B: direct Purchase Invoice inward (no GRN) is selectable ──
+  {
+    const t = await sequelize.transaction();
+    try {
+      const variantId = uuidv4();
+      const supplier = await Supplier.create({ tenantId: TENANT_ID, code: `SUP-${Date.now()}-${Math.floor(Math.random() * 1e4)}`, name: 'Test Supplier B' }, { transaction: t });
+      const pi = await PurchaseInvoice.create({
+        tenantId: TENANT_ID,
+        invoiceNumber: `PINV-TEST-${Date.now()}`,
+        supplierId: supplier.id,
+        invoiceDate: '2024-01-02',
+        warehouseId: WAREHOUSE_ID,
+        status: 'posted',
+        subtotal: 720,
+        taxAmount: 0,
+        discountAmount: 0,
+        totalAmount: 720,
+        goodsReceiptId: null,
+      }, { transaction: t });
+      const layer = await FifoCostService.addLayer({
+        tenantId: TENANT_ID, itemId: ITEM_ID, variantId, warehouseId: WAREHOUSE_ID,
+        sourceType: 'purchase', sourceId: pi.id, sourceLineId: null,
+        quantity: 6, unitCost: 120, receiptDate: '2024-01-02',
+      }, t);
+
+      const allocations = await FifoCostService.consumeForSale({
+        tenantId: TENANT_ID,
+        detail: { ...makeDetail(variantId, 2), manualAllocations: [{ costLayerId: layer.id, quantity: 2 }] },
+        item: makeItem(), invoice: makeInvoice(variantId), runningBalances: new Map(), transaction: t,
+      });
+      check(near(FifoCostService.sumAllocationCost(allocations), 240, 0.011), 'Test B: direct PI COGS = 240');
+      const updated = await InventoryCostLayer.findByPk(layer.id, { transaction: t });
+      check(near(updated.remainingQuantity, 4), 'Test B: direct PI remaining quantity = 4');
+
+      const eligible = await FifoCostService.getEligibleCostLayers(TENANT_ID, ITEM_ID, WAREHOUSE_ID, variantId, t);
+      check(eligible.length === 1 && eligible[0].sourceNumber === pi.invoiceNumber, 'Test B: direct PI appears as an eligible source with its invoice number');
+    } finally { await t.rollback(); }
+  }
+
+  // ── Test C: mixed source allocation (2 from GRN + 2 from direct PI) ──
+  {
+    const t = await sequelize.transaction();
+    try {
+      const variantId = uuidv4();
+      const grnLayer = await FifoCostService.addLayer({ tenantId: TENANT_ID, itemId: ITEM_ID, variantId, warehouseId: WAREHOUSE_ID, sourceType: 'receipt', sourceId: uuidv4(), sourceLineId: uuidv4(), quantity: 5, unitCost: 100, receiptDate: '2024-01-01' }, t);
+      const piLayer = await FifoCostService.addLayer({ tenantId: TENANT_ID, itemId: ITEM_ID, variantId, warehouseId: WAREHOUSE_ID, sourceType: 'purchase', sourceId: uuidv4(), sourceLineId: null, quantity: 6, unitCost: 120, receiptDate: '2024-01-02' }, t);
+      const allocations = await FifoCostService.consumeForSale({
+        tenantId: TENANT_ID,
+        detail: {
+          ...makeDetail(variantId, 4),
+          manualAllocations: [
+            { costLayerId: grnLayer.id, quantity: 2 },
+            { costLayerId: piLayer.id, quantity: 2 },
+          ],
+        },
+        item: makeItem(), invoice: makeInvoice(variantId), runningBalances: new Map(), transaction: t,
+      });
+      check(near(FifoCostService.sumAllocationCost(allocations), 440, 0.011), 'Test C: mixed source COGS = 440');
+      const g = await InventoryCostLayer.findByPk(grnLayer.id, { transaction: t });
+      const p = await InventoryCostLayer.findByPk(piLayer.id, { transaction: t });
+      check(near(g.remainingQuantity, 3) && near(p.remainingQuantity, 4), 'Test C: mixed source remaining = GRN 3 / PI 4');
+    } finally { await t.rollback(); }
+  }
+
+  // ── Test D: GRN linked to Purchase Invoice is not shown or allocated twice ──
+  {
+    const t = await sequelize.transaction();
+    try {
+      const variantId = uuidv4();
+      const supplier = await Supplier.create({ tenantId: TENANT_ID, code: `SUP-${Date.now()}-${Math.floor(Math.random() * 1e4)}`, name: 'Test Supplier' }, { transaction: t });
+      const grn = await GoodsReceipt.create({
+        tenantId: TENANT_ID,
+        grnNumber: `GRN-TEST-${Date.now()}`,
+        receiptDate: '2024-01-01',
+        supplierId: supplier.id,
+        warehouseId: WAREHOUSE_ID,
+        status: 'received',
+        totalQuantity: 10,
+      }, { transaction: t });
+      const pi = await PurchaseInvoice.create({
+        tenantId: TENANT_ID,
+        invoiceNumber: `PINV-GRN-${Date.now()}`,
+        supplierId: supplier.id,
+        invoiceDate: '2024-01-01',
+        warehouseId: WAREHOUSE_ID,
+        status: 'posted',
+        subtotal: 1000, taxAmount: 0, discountAmount: 0, totalAmount: 1000,
+        goodsReceiptId: grn.id,
+      }, { transaction: t });
+
+      // The physical receipt layer comes from the GRN.
+      await FifoCostService.addLayer({ tenantId: TENANT_ID, itemId: ITEM_ID, variantId, warehouseId: WAREHOUSE_ID, sourceType: 'receipt', sourceId: grn.id, sourceLineId: uuidv4(), quantity: 10, unitCost: 100, receiptDate: '2024-01-01' }, t);
+      // The GRN-linked PI erroneously duplicated the layer in legacy data.
+      await FifoCostService.addLayer({ tenantId: TENANT_ID, itemId: ITEM_ID, variantId, warehouseId: WAREHOUSE_ID, sourceType: 'purchase', sourceId: pi.id, sourceLineId: null, quantity: 10, unitCost: 100, receiptDate: '2024-01-01' }, t);
+
+      const eligible = await FifoCostService.getEligibleCostLayers(TENANT_ID, ITEM_ID, WAREHOUSE_ID, variantId, t);
+      check(eligible.length === 1, 'Test D: GRN-linked PI layer is deduplicated (only one eligible layer)');
+      check(eligible[0].sourceDocumentType === 'GRN' && eligible[0].grnNumber === grn.grnNumber, 'Test D: eligible layer points at the GRN');
+      check(eligible[0].supplierName === 'Test Supplier' && eligible[0].purchaseInvoiceNumber === pi.invoiceNumber, 'Test D: eligible layer carries supplier and linked PI number');
+    } finally { await t.rollback(); }
+  }
+
+  // ── Test F: return/cancel across both source types restores original costs ──
+  {
+    const t = await sequelize.transaction();
+    try {
+      const variantId = uuidv4();
+      const grnLayer = await FifoCostService.addLayer({ tenantId: TENANT_ID, itemId: ITEM_ID, variantId, warehouseId: WAREHOUSE_ID, sourceType: 'receipt', sourceId: uuidv4(), sourceLineId: uuidv4(), quantity: 5, unitCost: 100, receiptDate: '2024-01-01' }, t);
+      const piLayer = await FifoCostService.addLayer({ tenantId: TENANT_ID, itemId: ITEM_ID, variantId, warehouseId: WAREHOUSE_ID, sourceType: 'purchase', sourceId: uuidv4(), sourceLineId: null, quantity: 6, unitCost: 120, receiptDate: '2024-01-02' }, t);
+      const detail = {
+        ...makeDetail(variantId, 4),
+        manualAllocations: [
+          { costLayerId: grnLayer.id, quantity: 2 },
+          { costLayerId: piLayer.id, quantity: 2 },
+        ],
+      };
+      const invoice = makeInvoice(variantId);
+      await FifoCostService.consumeForSale({ tenantId: TENANT_ID, detail, item: makeItem(), invoice, runningBalances: new Map(), transaction: t });
+      const saleAllocations = await FifoCostService.getSaleAllocations(TENANT_ID, detail.id, t);
+      const restored = await FifoCostService.restoreAllocations(TENANT_ID, saleAllocations, 4, {
+        allocationType: 'cancel', referenceType: 'SalesInvoiceCancel', referenceId: invoice.id, referenceNumber: invoice.invoiceNumber, referenceLineId: detail.id,
+        itemId: ITEM_ID, variantId, warehouseId: WAREHOUSE_ID, salesInvoiceId: invoice.id, salesInvoiceDetailId: detail.id,
+      }, t);
+      check(near(FifoCostService.sumAllocationCost(restored), 440, 0.011), 'Test F: cancellation restores 440 across both source types');
+      const g = await InventoryCostLayer.findByPk(grnLayer.id, { transaction: t });
+      const p = await InventoryCostLayer.findByPk(piLayer.id, { transaction: t });
+      check(near(g.remainingQuantity, 5) && near(p.remainingQuantity, 6), 'Test F: both source layers fully restored without duplication');
+    } finally { await t.rollback(); }
+  }
+
+  // ── Test H: company isolation for eligible layers ──
+  {
+    const t = await sequelize.transaction();
+    try {
+      const variantId = uuidv4();
+      await FifoCostService.addLayer({ tenantId: TENANT_ID, itemId: ITEM_ID, variantId, warehouseId: WAREHOUSE_ID, sourceType: 'purchase', sourceId: uuidv4(), sourceLineId: null, quantity: 3, unitCost: 100, receiptDate: '2024-01-01' }, t);
+      const otherTenant = uuidv4();
+      const eligible = await FifoCostService.getEligibleCostLayers(otherTenant, ITEM_ID, WAREHOUSE_ID, variantId, t);
+      check(eligible.length === 0, 'Test H: another company sees no eligible stock');
+    } finally { await t.rollback(); }
+  }
+
+  // ── Test J: legacy cancellation layers receive a readable source label ──
+  {
+    const t = await sequelize.transaction();
+    try {
+      const variantId = uuidv4();
+      const stockTransaction = await InventoryTransaction.create({
+        tenantId: TENANT_ID,
+        itemId: ITEM_ID,
+        variantId,
+        warehouseId: WAREHOUSE_ID,
+        transactionType: 'return',
+        referenceType: 'SalesInvoiceCancel',
+        referenceId: uuidv4(),
+        quantityIn: 2,
+        quantityOut: 0,
+        runningBalance: 2,
+        unitCost: 800,
+        transactionDate: new Date(),
+      }, { transaction: t });
+      const layer = await FifoCostService.addLayer({
+        tenantId: TENANT_ID,
+        itemId: ITEM_ID,
+        variantId,
+        warehouseId: WAREHOUSE_ID,
+        sourceType: 'return',
+        stockInTransactionId: stockTransaction.id,
+        quantity: 2,
+        unitCost: 800,
+        receiptDate: '2024-01-01',
+      }, t);
+      const eligible = await FifoCostService.getEligibleCostLayers(TENANT_ID, ITEM_ID, WAREHOUSE_ID, variantId, t);
+      const source = eligible.find((entry) => entry.id === layer.id);
+      check(
+        source?.sourceLabel === 'Sales invoice cancellation' &&
+          source.sourceDocumentType === 'Sales invoice cancellation',
+        'Test J: cancellation layer has a readable source label'
+      );
+    } finally { await t.rollback(); }
   }
 
   console.log(`\n${passed} passed, ${failed} failed`);

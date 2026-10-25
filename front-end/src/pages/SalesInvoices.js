@@ -145,6 +145,7 @@ const SalesInvoices = () => {
   const [unpostTarget, setUnpostTarget] = useState(null);
   const [unpostLoading, setUnpostLoading] = useState(false);
   const [sellableOptions, setSellableOptions] = useState([]);
+  const [stockLayerDialog, setStockLayerDialog] = useState({ open: false, index: null, options: [], selections: [] });
   const activeCompany = useSelector((s) => s.company?.activeCompany || null);
 
   const { register, handleSubmit, control, reset, watch, setValue, formState: { errors } } = useForm({
@@ -318,6 +319,7 @@ const SalesInvoices = () => {
           taxPercent: d.taxPercent || 0,
           discountPercent: d.discountPercent || 0,
           costPrice: d.costPrice || 0,
+          manualAllocations: Array.isArray(d.manualAllocations) ? d.manualAllocations : [],
         })) : [{ itemId: '', description: '', quantity: 1, unitPrice: 0, taxPercent: 0, discountPercent: 0, costPrice: 0 }],
       });
     }
@@ -466,6 +468,81 @@ const SalesInvoices = () => {
     setPostPreview(null);
   };
 
+  const openCostLayerSelector = async (index) => {
+    const line = details?.[index];
+    if (!line?.itemId || !selectedWarehouseId) {
+      apiError('Select an item and warehouse before choosing a GRN / stock lot.');
+      return;
+    }
+
+    try {
+      const response = await SalesInvoiceApi.getEligibleCostLayers({
+        itemId: line.itemId,
+        warehouseId: selectedWarehouseId,
+        variantId: line.variantId || null,
+      });
+      const options = response.data || response || [];
+      const currentSelections = Array.isArray(line.manualAllocations)
+        ? line.manualAllocations.map((entry) => {
+            const costLayerId = entry.costLayerId || entry.layerId || entry.id;
+            const layer = options.find((option) => option.id === costLayerId);
+            return {
+              costLayerId,
+              quantity: parseFloat(entry.quantity) || 0,
+              sourceNumber: entry.sourceNumber || layer?.sourceNumber || null,
+              sourceLabel: entry.sourceLabel || layer?.sourceLabel || null,
+              sourceDocumentType: entry.sourceDocumentType || layer?.sourceDocumentType || null,
+              sourceType: entry.sourceType || layer?.sourceType || null,
+              unitCost: parseFloat(entry.unitCost) || parseFloat(layer?.unitCost) || 0,
+            };
+          })
+        : [];
+      if (currentSelections.length > 0) {
+        setValue(`details.${index}.manualAllocations`, currentSelections);
+      }
+      setStockLayerDialog({ open: true, index, options, selections: currentSelections });
+    } catch (error) {
+      apiError(error.response?.data?.message || 'Unable to load available GRNs for this item.');
+    }
+  };
+
+  const handleStockLayerSelectionChange = (layer, quantity) => {
+    const layerId = typeof layer === 'string' ? layer : layer.id;
+    const nextSelections = (stockLayerDialog.selections || []).filter((entry) => entry.costLayerId !== layerId);
+    const qty = parseFloat(quantity) || 0;
+    if (qty > 0) {
+      nextSelections.push({
+        costLayerId: layerId,
+        quantity: qty,
+        sourceNumber: typeof layer === 'object' ? (layer.sourceNumber || layer.grnNumber || layer.purchaseInvoiceNumber || null) : null,
+        sourceLabel: typeof layer === 'object' ? (layer.sourceLabel || null) : null,
+        sourceDocumentType: typeof layer === 'object' ? (layer.sourceDocumentType || null) : null,
+        sourceType: typeof layer === 'object' ? (layer.sourceType || null) : null,
+        unitCost: typeof layer === 'object' ? (parseFloat(layer.unitCost) || 0) : 0,
+      });
+    }
+    setStockLayerDialog((prev) => ({ ...prev, selections: nextSelections }));
+  };
+
+  const confirmStockLayerSelection = () => {
+    if (stockLayerDialog.index === null || stockLayerDialog.index === undefined) return;
+    const selections = (stockLayerDialog.selections || []).filter((entry) => (parseFloat(entry.quantity) || 0) > 0);
+    const totalSelected = Number(selections.reduce((sum, entry) => sum + (parseFloat(entry.quantity) || 0), 0).toFixed(4));
+    const unavailable = selections.find((entry) => {
+      const layer = stockLayerDialog.options.find((option) => option.id === entry.costLayerId);
+      return !layer || (parseFloat(entry.quantity) || 0) > (parseFloat(layer.remainingQuantity) || 0);
+    });
+    if (unavailable) {
+      apiError('A selected stock source no longer has enough available quantity. Refresh the list and reallocate.');
+      return;
+    }
+    setValue(`details.${stockLayerDialog.index}.manualAllocations`, selections, { shouldDirty: true });
+    if (totalSelected > 0) {
+      setValue(`details.${stockLayerDialog.index}.quantity`, totalSelected, { shouldDirty: true, shouldValidate: true });
+    }
+    setStockLayerDialog({ open: false, index: null, options: [], selections: [] });
+  };
+
   const handleViewPdf = async (invoice) => {
     try {
       const response = await SalesInvoiceApi.getById(invoice.id);
@@ -582,6 +659,24 @@ const SalesInvoices = () => {
         costPrice: parseFloat(d.costPrice) || 0,
         salesOrderDetailId: d.salesOrderDetailId || null,
         deliveryNoteDetailId: d.deliveryNoteDetailId || null,
+        manualAllocations: Array.isArray(d.manualAllocations) ? d.manualAllocations.map((allocation) => ({
+          costLayerId: allocation.costLayerId || allocation.layerId || allocation.id,
+          quantity: parseFloat(allocation.quantity) || 0,
+          sourceNumber: allocation.sourceNumber || null,
+          sourceLabel: allocation.sourceLabel || null,
+          sourceDocumentType: allocation.sourceDocumentType || null,
+          sourceType: allocation.sourceType || null,
+          unitCost: parseFloat(allocation.unitCost) || 0,
+        })) : [],
+        costLayerAllocations: Array.isArray(d.manualAllocations) ? d.manualAllocations.map((allocation) => ({
+          costLayerId: allocation.costLayerId || allocation.layerId || allocation.id,
+          quantity: parseFloat(allocation.quantity) || 0,
+          sourceNumber: allocation.sourceNumber || null,
+          sourceLabel: allocation.sourceLabel || null,
+          sourceDocumentType: allocation.sourceDocumentType || null,
+          sourceType: allocation.sourceType || null,
+          unitCost: parseFloat(allocation.unitCost) || 0,
+        })) : [],
       })),
     };
 
@@ -655,7 +750,15 @@ const SalesInvoices = () => {
       setValue(`details.${index}.itemId`, '');
       setValue(`details.${index}.variantId`, '');
       setValue(`details.${index}.variantDescription`, '');
+      setValue(`details.${index}.manualAllocations`, []);
       return;
+    }
+    const currentLine = details?.[index];
+    if (
+      currentLine?.itemId !== item.itemId ||
+      (currentLine?.variantId || '') !== (item.variantId || '')
+    ) {
+      setValue(`details.${index}.manualAllocations`, []);
     }
     setValue(`details.${index}.itemId`, item.itemId);
     setValue(`details.${index}.variantId`, item.variantId || '');
@@ -723,6 +826,17 @@ const SalesInvoices = () => {
     if (!opt || opt.itemType !== 'product' || !opt.isInventoryTracked) return null;
     return Number.isFinite(opt.availableStock) ? opt.availableStock : null;
   };
+
+  const stockSourceLabel = (sourceType) => ({
+    receipt: 'Goods received',
+    purchase: 'Purchase invoice',
+    sales_return: 'Customer return',
+    purchase_return: 'Purchase return reversal',
+    adjustment: 'Stock adjustment',
+    transfer_in: 'Warehouse transfer',
+    opening_balance: 'Opening balance',
+    return: 'Returned stock',
+  }[sourceType] || 'Stock source');
 
   const renderFormDialog = () => (
     <Dialog open={openForm} onClose={handleClose} maxWidth="lg" fullWidth>
@@ -948,6 +1062,7 @@ const SalesInvoices = () => {
                   <TableCell sx={{ minWidth: 340 }}>Item</TableCell>
                   <TableCell sx={{ minWidth: 150 }}>Description</TableCell>
                   <TableCell sx={{ minWidth: 110 }}>Qty</TableCell>
+                  <TableCell sx={{ minWidth: 180 }}>Stock Source</TableCell>
                   <TableCell sx={{ minWidth: 120 }}>Unit Price</TableCell>
                   <TableCell sx={{ minWidth: 110 }}>Tax %</TableCell>
                   <TableCell sx={{ minWidth: 110 }}>Disc %</TableCell>
@@ -1021,6 +1136,30 @@ const SalesInvoices = () => {
                         fullWidth
                         inputProps={{ step: 'any', min: 0, max: maxStockForLine(details[index]) ?? undefined }}
                       />
+                    </TableCell>
+                    <TableCell>
+                      <Stack direction="column" spacing={0.5}>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          disabled={viewMode || !details[index]?.itemId || !selectedWarehouseId}
+                          onClick={() => openCostLayerSelector(index)}
+                        >
+                          {Array.isArray(details[index]?.manualAllocations) && details[index].manualAllocations.length
+                            ? `Sources (${details[index].manualAllocations.length})`
+                            : 'Select Stock Source'}
+                        </Button>
+                        {Array.isArray(details[index]?.manualAllocations) && details[index].manualAllocations.length > 0 && (
+                          <Typography variant="caption" color="text.secondary">
+                            {details[index].manualAllocations.map((p) => {
+                              const source = p.sourceNumber
+                                ? `${p.sourceDocumentType || p.sourceLabel || stockSourceLabel(p.sourceType)} ${p.sourceNumber}`
+                                : (p.sourceLabel || stockSourceLabel(p.sourceType));
+                              return `${p.quantity} × ${source}${p.unitCost ? ` @ ${Number(p.unitCost).toFixed(2)}` : ''}`;
+                            }).join(' · ')}
+                          </Typography>
+                        )}
+                      </Stack>
                     </TableCell>
                     <TableCell>
                       <TextField
@@ -1110,6 +1249,66 @@ const SalesInvoices = () => {
             </Grid>
           </Grid>
         </DialogContent>
+
+        <Dialog open={stockLayerDialog.open} onClose={() => setStockLayerDialog({ open: false, index: null, options: [], selections: [] })} maxWidth="sm" fullWidth>
+          <DialogTitle>Select GRN / Purchase Invoice Stock</DialogTitle>
+          <DialogContent dividers>
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Enter the quantity to issue from each source. You can allocate multiple units across one or more sources; applying the selection sets the invoice line quantity to the allocation total.
+            </Alert>
+            {stockLayerDialog.options.length === 0 ? (
+              <Typography color="text.secondary">No eligible stock lots were found for this item and warehouse.</Typography>
+            ) : (
+              <Stack spacing={2}>
+                {stockLayerDialog.options.map((layer) => {
+                  const selection = (stockLayerDialog.selections || []).find((entry) => entry.costLayerId === layer.id)
+                  const selectedQty = selection ? parseFloat(selection.quantity) || 0 : 0;
+                  const sourceLabel = layer.sourceLabel || layer.sourceDocumentType || stockSourceLabel(layer.sourceType);
+                  const sourceNumber = layer.sourceNumber || layer.grnNumber || layer.purchaseInvoiceNumber || null;
+                  const linkedLabel = layer.sourceDocumentType === 'GRN' && layer.purchaseInvoiceNumber
+                    ? ` (PI ${layer.purchaseInvoiceNumber})`
+                    : '';
+                  const dateLabel = layer.documentDate || layer.receiptDate;
+                  return (
+                    <Box key={layer.id} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1.5 }}>
+                      <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}>
+                        <Box>
+                          <Typography variant="subtitle2">
+                            {sourceLabel}{sourceNumber ? ` • ${sourceNumber}` : ''}{linkedLabel}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {layer.supplierName ? `${layer.supplierName} • ` : ''}
+                            {dateLabel ? `${new Date(dateLabel).toLocaleDateString()} • ` : ''}
+                            {layer.remainingQuantity} available • Unit cost {Number(layer.unitCost || 0).toFixed(2)}
+                          </Typography>
+                        </Box>
+                        <TextField
+                          size="small"
+                          type="number"
+                          label="Qty"
+                          value={selectedQty}
+                          onChange={(e) => handleStockLayerSelectionChange(layer, e.target.value)}
+                          inputProps={{ min: 0, max: layer.remainingQuantity || 0, step: 'any' }}
+                          sx={{ width: 130 }}
+                        />
+                      </Stack>
+                    </Box>
+                  );
+                })}
+              </Stack>
+            )}
+            {stockLayerDialog.options.length > 0 && (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                Selected quantity: {(stockLayerDialog.selections || []).reduce((sum, entry) => sum + (parseFloat(entry.quantity) || 0), 0).toFixed(4).replace(/\.?0+$/, '')}
+              </Typography>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setStockLayerDialog({ open: false, index: null, options: [], selections: [] })}>Cancel</Button>
+            <Button variant="contained" onClick={confirmStockLayerSelection}>Apply</Button>
+          </DialogActions>
+        </Dialog>
+
         <DialogActions>
           <Button onClick={handleClose}>Close</Button>
           {!viewMode && (

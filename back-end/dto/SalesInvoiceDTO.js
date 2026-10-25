@@ -22,6 +22,28 @@ class SalesInvoiceDTO {
       costPrice: parseFloat(line.costPrice) || 0,
       deliveryNoteDetailId: line.deliveryNoteDetailId || null,
       salesOrderDetailId: line.salesOrderDetailId || null,
+      manualAllocations: Array.isArray(line.manualAllocations)
+        ? line.manualAllocations.map((allocation) => ({
+            costLayerId: allocation.costLayerId || allocation.layerId || allocation.id || null,
+            quantity: parseFloat(allocation.quantity) || 0,
+            sourceNumber: allocation.sourceNumber || null,
+            sourceLabel: allocation.sourceLabel || null,
+            sourceDocumentType: allocation.sourceDocumentType || null,
+            sourceType: allocation.sourceType || null,
+            unitCost: parseFloat(allocation.unitCost) || 0,
+          }))
+        : [],
+      costLayerAllocations: Array.isArray(line.costLayerAllocations)
+        ? line.costLayerAllocations.map((allocation) => ({
+            costLayerId: allocation.costLayerId || allocation.layerId || allocation.id || null,
+            quantity: parseFloat(allocation.quantity) || 0,
+            sourceNumber: allocation.sourceNumber || null,
+            sourceLabel: allocation.sourceLabel || null,
+            sourceDocumentType: allocation.sourceDocumentType || null,
+            sourceType: allocation.sourceType || null,
+            unitCost: parseFloat(allocation.unitCost) || 0,
+          }))
+        : [],
     }));
 
     // Compute header totals
@@ -79,6 +101,28 @@ class SalesInvoiceDTO {
       costPrice: parseFloat(line.costPrice) || 0,
       deliveryNoteDetailId: line.deliveryNoteDetailId || null,
       salesOrderDetailId: line.salesOrderDetailId || null,
+      manualAllocations: Array.isArray(line.manualAllocations)
+        ? line.manualAllocations.map((allocation) => ({
+            costLayerId: allocation.costLayerId || allocation.layerId || allocation.id || null,
+            quantity: parseFloat(allocation.quantity) || 0,
+            sourceNumber: allocation.sourceNumber || null,
+            sourceLabel: allocation.sourceLabel || null,
+            sourceDocumentType: allocation.sourceDocumentType || null,
+            sourceType: allocation.sourceType || null,
+            unitCost: parseFloat(allocation.unitCost) || 0,
+          }))
+        : [],
+      costLayerAllocations: Array.isArray(line.costLayerAllocations)
+        ? line.costLayerAllocations.map((allocation) => ({
+            costLayerId: allocation.costLayerId || allocation.layerId || allocation.id || null,
+            quantity: parseFloat(allocation.quantity) || 0,
+            sourceNumber: allocation.sourceNumber || null,
+            sourceLabel: allocation.sourceLabel || null,
+            sourceDocumentType: allocation.sourceDocumentType || null,
+            sourceType: allocation.sourceType || null,
+            unitCost: parseFloat(allocation.unitCost) || 0,
+          }))
+        : [],
     }));
 
     const subTotal = details.reduce((sum, d) => sum + (d.quantity * d.unitPrice), 0);
@@ -229,6 +273,7 @@ class SalesInvoiceDTO {
         discountPercent: parseFloat(line.discountPercent || 0),
         lineTotal: parseFloat(line.lineTotal || 0),
         costPrice: parseFloat(line.costPrice || 0),
+        manualAllocations: Array.isArray(line.manualAllocations) ? line.manualAllocations : [],
       })),
     };
   }

@@ -49,3 +49,10 @@ coverage/
 deploy-tezhost/nodejs_app/
 deploy-tezhost/hr_payroll_nodejs_app/
 deploy-tezhost/loyalty_nodejs_app/
+
+# Production database dumps (sensitive data)
+deploy-tezhost/ezeefloc_erp.sql.gz
+deploy-tezhost/ezeefloc_erp.sql/
+
+# Unrelated full project copy
+ERP Project Without CRM/

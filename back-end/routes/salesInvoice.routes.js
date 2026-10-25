@@ -45,6 +45,13 @@ router.get(
   SalesInvoiceController.listForAllocation
 );
 
+// GET /api/:tenantId/sales-invoices/eligible-cost-layers - manual GRN selection candidates
+router.get(
+  '/eligible-cost-layers',
+  authorize('salesinvoice.view'),
+  SalesInvoiceController.getEligibleCostLayers
+);
+
 // GET /api/:tenantId/sales-invoices/:id/posting-preview - auto-resolved posting accounts
 router.get(
   '/:id/posting-preview',

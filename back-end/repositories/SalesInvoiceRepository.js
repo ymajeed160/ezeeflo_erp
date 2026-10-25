@@ -214,6 +214,9 @@ class SalesInvoiceRepository {
               discountPercent: line.discountPercent,
               lineTotal: line.lineTotal,
               costPrice: line.costPrice,
+              variantId: line.variantId || null,
+              variantDescription: line.variantDescription || null,
+              manualAllocations: line.manualAllocations || null,
             },
             { where: { id: line.id, tenantId, salesInvoiceId: id }, transaction }
           );
@@ -230,6 +233,9 @@ class SalesInvoiceRepository {
               discountPercent: line.discountPercent,
               lineTotal: line.lineTotal,
               costPrice: line.costPrice,
+              variantId: line.variantId || null,
+              variantDescription: line.variantDescription || null,
+              manualAllocations: line.manualAllocations || null,
             },
             { transaction }
           );
