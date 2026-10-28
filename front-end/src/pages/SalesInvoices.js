@@ -539,6 +539,13 @@ const SalesInvoices = () => {
     setValue(`details.${stockLayerDialog.index}.manualAllocations`, selections, { shouldDirty: true });
     if (totalSelected > 0) {
       setValue(`details.${stockLayerDialog.index}.quantity`, totalSelected, { shouldDirty: true, shouldValidate: true });
+      // Keep the line's saved unit cost aligned with the selected stock sources
+      // (weighted by quantity) so no consumer of costPrice can use a stale value.
+      const weightedCost = selections.reduce(
+        (sum, entry) => sum + (parseFloat(entry.quantity) || 0) * (parseFloat(entry.unitCost) || 0),
+        0
+      ) / totalSelected;
+      setValue(`details.${stockLayerDialog.index}.costPrice`, Number(weightedCost.toFixed(4)), { shouldDirty: true });
     }
     setStockLayerDialog({ open: false, index: null, options: [], selections: [] });
   };
@@ -1645,6 +1652,16 @@ const SalesInvoices = () => {
                   </Alert>
                 </Grid>
               ) : null}
+              {postPreview?.invalidAllocationItems?.length ? (
+                <Grid item xs={12}>
+                  <Alert severity="error" sx={{ mt: 1 }}>
+                    Selected stock source is not valid:{' '}
+                    {postPreview.invalidAllocationItems
+                      .map((s) => `${s.item} (${s.message})`)
+                      .join('; ')}
+                  </Alert>
+                </Grid>
+              ) : null}
             </Grid>
           </Paper>
         </DialogContent>
@@ -1657,6 +1674,7 @@ const SalesInvoices = () => {
             disabled={
               !postPreview ||
               !!postPreview?.insufficientStockItems?.length ||
+              !!postPreview?.invalidAllocationItems?.length ||
               !!postPreview?.missingExpenseAccountItems?.length ||
               !!postPreview?.missingInventoryAccountItems?.length ||
               !!postPreview?.missingIncomeAccountItems?.length

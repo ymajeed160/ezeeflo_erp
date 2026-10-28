@@ -1,5 +1,53 @@
 # ERPMTSuite Release Notes
 
+## Version 4.0.0 — October 29, 2026
+
+---
+
+## 🆕 New Features
+
+### Stock-Source Costing — COGS Follows the Selected GRN / Purchase Invoice
+
+When a stock source is selected on a Sales Invoice line, that source's own cost now drives the accounting:
+
+- **Selected lots are authoritative** — COGS = `Σ (allocated quantity × that source's unit cost)`. Selecting 5 units from Purchase Invoice `PINV-2026-00049` at AED 500 posts **AED 2,500**, not the cost of the oldest lot in stock.
+- **Preview = posting** — the posting-preview dialog and the posted journal entry are produced by the same calculation, so the amounts can no longer differ.
+- **Restored on reopen** — the selected sources load back into the invoice line when a draft is reopened or edited (previously the line showed "Select Stock Source" again).
+- **Weighted line cost** — applying sources writes their weighted unit cost onto the invoice line, so the line cost always agrees with the stock that will be issued.
+- **Validation in the post dialog** — unresolvable allocations (source deleted, different warehouse/company, quantity already consumed, or allocations not equal to the line quantity) are listed per item and the **Post** button stays disabled until corrected. No silent substitution of another lot.
+
+### Inventory Cost Layers & Per-Lot Allocations
+
+- `inventory_cost_layers` is the source of truth for quantity and value; every sale writes a per-lot row in `inventory_cost_allocations`.
+- Supported sources: **Goods Receipts (GRN)**, **direct Purchase Invoices without a GRN**, **returned stock** from Sales Returns and Sales Invoice cancellations, purchase-return reversals, stock adjustments, warehouse transfers and opening balances.
+- When a lot carries no recorded cost, the acquisition cost is resolved from the item's most recent posted **Purchase Invoice** (falling back to its **Goods Receipt**).
+- Inventory balance (quantity + average cost) is re-derived from the layers after every posting, cancellation and return.
+
+---
+
+## 🔧 Improvements
+
+- Posting honours the manual source selection and only falls back to automatic oldest-first FIFO when no source has been chosen for the line.
+- Sales invoice cancellation / revert-to-draft / sales returns restore stock to the **original lot at its original cost**, and are idempotent — a repeated cancellation, or a cancellation after a partial return, never restores the same stock twice.
+- Reconciliation tooling for existing data: `scripts/reconcile-inventory-cost-layers.js`, `scripts/reconcile-inventory-balances.js` and `deploy-tezhost/fifo-cost-layers-backfill.sql`.
+
+---
+
+## 🐛 Bug Fixes
+
+- **COGS/Inventory posted at the wrong cost** — the saved stock-source selection was returned by the database as JSON *text* and silently discarded, so posting fell back to first-match FIFO (AED 500 selections were posted at AED 100). The value is now parsed on read, so the DTO, posting and costing engine all see the same array.
+- **Posting preview ignored the selection** — it valued stock from the item-master cost price; it now uses the selected allocations.
+- **Item master cost price override** — the line's cost price taken from the item master no longer overrides the cost of the selected stock.
+
+---
+
+## 🗄️ Database
+
+- New column `sales_invoice_details.manual_allocations` (JSON).
+- Existing/deployed databases: run **`deploy-tezhost/manual-allocations-patch.sql`** once in phpMyAdmin (safe to re-run), or `npx sequelize-cli db:migrate`.
+
+---
+
 ## Version 3.9.0 — October 11, 2026
 
 ---

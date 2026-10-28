@@ -84,6 +84,22 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.JSON,
         allowNull: true,
         defaultValue: null,
+        // MariaDB stores JSON columns as LONGTEXT, so the driver returns the raw
+        // JSON text instead of a parsed array. Normalise on read so the DTO,
+        // posting and FIFO costing all see the same array shape.
+        get() {
+          const raw = this.getDataValue('manualAllocations');
+          if (Array.isArray(raw)) return raw;
+          if (typeof raw === 'string' && raw.trim() !== '') {
+            try {
+              const parsed = JSON.parse(raw);
+              return Array.isArray(parsed) ? parsed : [];
+            } catch (e) {
+              return [];
+            }
+          }
+          return [];
+        },
       },
     },
     {

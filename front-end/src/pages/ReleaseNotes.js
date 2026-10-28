@@ -4,6 +4,30 @@ import { ExpandMore, ExpandLess, NewReleases } from '@mui/icons-material';
 
 const RELEASES = [
   {
+    version: 'v4.0.0',
+    date: '2026-10-29',
+    title: 'Stock-Source Costing — COGS Follows the Selected GRN / Purchase Invoice',
+    tag: 'Major',
+    tagColor: 'primary',
+    changes: [
+      { type: 'Fixed', text: 'Sales Invoice COGS and Inventory were valued at the oldest stock lot instead of the stock source you selected (e.g. AED 100 instead of the AED 500 Purchase Invoice lot). The saved source selection is now read back correctly — the database returns it as JSON text, which was being silently discarded, so posting fell back to first-match FIFO' },
+      { type: 'Fixed', text: 'The posting-preview dialog and the posted journal entry now use the exact same calculation: COGS = Σ (allocated quantity × that source\'s unit cost). What you see in the preview is what gets posted' },
+      { type: 'Fixed', text: 'The line\'s cost price taken from the item master (e.g. AED 100) no longer overrides the cost of the stock you selected' },
+      { type: 'Fixed', text: 'Reopening or editing a saved invoice now restores its selected stock sources instead of showing "Select Stock Source" again' },
+      { type: 'Fixed', text: 'Posting is blocked with a clear message when a saved allocation cannot be resolved (source deleted, different warehouse/company, quantity already consumed, or allocations not equal to the line quantity) — it no longer silently substitutes another lot' },
+      { type: 'New', text: 'Applying stock sources now writes their weighted unit cost onto the invoice line, so the line cost always agrees with the stock that will be issued' },
+      { type: 'New', text: 'The post dialog lists any invalid stock allocation per item, and the Post button stays disabled until it is corrected' },
+      { type: 'New', text: 'Stock sources supported end-to-end for cost: Goods Receipts (GRN), direct Purchase Invoices without a GRN, returned stock from Sales Returns and Sales Invoice cancellations, purchased-return reversals, stock adjustments, warehouse transfers and opening balances' },
+      { type: 'New', text: 'Inventory cost layers are the source of truth for quantity and value; every sale writes a per-lot cost allocation, so cancellations and returns restore the original lot at its original cost' },
+      { type: 'New', text: 'When a lot carries no recorded cost, the acquisition cost is resolved from the item\'s most recent posted Purchase Invoice (falling back to its Goods Receipt) instead of guessing from a general balance' },
+      { type: 'Changed', text: 'Posting honours the manual source selection and only falls back to automatic oldest-first FIFO when no source has been chosen for the line' },
+      { type: 'Changed', text: 'Stock availability and average cost on the inventory balance are re-derived from the cost layers after every posting, cancellation and return' },
+      { type: 'New', text: 'Reconciliation tooling for existing data: scripts/reconcile-inventory-cost-layers.js, scripts/reconcile-inventory-balances.js and deploy-tezhost/fifo-cost-layers-backfill.sql' },
+      { type: 'Fixed', text: 'Cancelling or reverting a posted invoice restores quantity and value to the original lots and is idempotent — repeated cancellations or a cancellation after a partial sales return no longer restore the same stock twice' },
+      { type: 'New', text: 'Deployed databases need the manual_allocations column on sales_invoice_details — run deploy-tezhost/manual-allocations-patch.sql once in phpMyAdmin (safe to re-run)' },
+    ],
+  },
+  {
     version: 'v3.9.0',
     date: '2026-10-11',
     title: 'Item Variants in Sales, Variant Attributes & Session Management',
@@ -215,7 +239,7 @@ const ReleaseNotes = () => {
           <Typography variant="body2" color="text.secondary">Version history and changelog for EzeeFlo ERP</Typography>
         </Box>
         <Box sx={{ flex: 1 }} />
-        <Chip label="Current: v3.9.0" color="primary" />
+        <Chip label="Current: v4.0.0" color="primary" />
       </Box>
 
       {RELEASES.map((release) => {

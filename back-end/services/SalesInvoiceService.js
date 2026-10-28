@@ -558,6 +558,7 @@ class SalesInvoiceService {
     const missingInventoryAccountItems = [];
     const unpricedStockItems = [];
     const insufficientStockItems = [];
+    const invalidAllocationItems = [];
     const lineDiagnostics = [];
     for (const detail of invoice.details || []) {
       const item = detail.item;
@@ -582,28 +583,39 @@ class SalesInvoiceService {
       hasStockItems = true;
       if (quantity <= 0) continue;
 
-      // Available quantity + FIFO cost from the cost layers (read-only).
-      // Falls back to the legacy balance when no layers exist yet.
+      // Cost source (read-only, no locking/consumption):
+      //   1. The stock source(s) the user selected on this line — authoritative.
+      //   2. Otherwise the same rules the posting engine applies (cost layers,
+      //      then the linked purchase document cost).
+      // The preview must mirror the posting exactly so the dialog cannot show a
+      // different COGS/Inventory value than the journal entry that gets posted.
       let available = null;
-      let avgCost = 0;
-      if (invoice.warehouseId) {
+      let cost = 0;
+      const savedAllocations = Array.isArray(detail.manualAllocations) ? detail.manualAllocations : [];
+      if (invoice.warehouseId && savedAllocations.length) {
+        const allocationCost = await FifoCostService.previewAllocationCost({ tenantId, detail, invoice });
+        cost = allocationCost.totalCost;
+        available = allocationCost.available;
+        for (const message of allocationCost.errors) {
+          invalidAllocationItems.push({ item: itemName, message });
+        }
+      } else if (invoice.warehouseId) {
         const peek = await FifoCostService.peekFifoCost(
           tenantId, detail.itemId, invoice.warehouseId, variantId, quantity
         );
         if (peek.hasLayers) {
           available = peek.available;
-          avgCost = quantity > 0 ? peek.cost / quantity : 0;
         } else {
           const balance = await InventoryBalance.findOne({
             where: { tenantId, itemId: detail.itemId, warehouseId: invoice.warehouseId, variantId },
           });
           available = balance ? parseFloat(balance.quantityOnHand) || 0 : 0;
-          avgCost = await SalesInvoiceService._resolveUnitCost(
-            tenantId, detail, item, invoice.warehouseId, variantId
-          );
         }
+        cost = quantity * await SalesInvoiceService._resolveUnitCost(
+          tenantId, detail, item, invoice.warehouseId, variantId
+        );
       } else {
-        avgCost = await SalesInvoiceService._resolveUnitCost(
+        cost = quantity * await SalesInvoiceService._resolveUnitCost(
           tenantId, detail, item, null, variantId
         );
       }
@@ -611,8 +623,7 @@ class SalesInvoiceService {
         insufficientStockItems.push({ item: itemName, available, requested: quantity });
       }
 
-      const cost = quantity * avgCost;
-      if (cost <= 0) {
+      if (cost <= 0 && !invalidAllocationItems.some((entry) => entry.item === itemName)) {
         unpricedStockItems.push(itemName);
       }
 
@@ -663,6 +674,7 @@ class SalesInvoiceService {
       missingInventoryAccountItems,
       unpricedStockItems,
       insufficientStockItems,
+      invalidAllocationItems,
       lineDiagnostics,
     };
   }
@@ -680,6 +692,21 @@ class SalesInvoiceService {
   static async _resolveUnitCost(tenantId, detail, item, warehouseId, variantId = null, transaction = null) {
     const { InventoryBalance, InventoryTransaction } = require('../models');
 
+    // 1. Explicit cost saved on the invoice line (most specific user intent).
+    const lineCost = parseFloat(detail.costPrice) || 0;
+    if (lineCost > 0) return lineCost;
+
+    // 2. Acquisition cost from the linked Purchase Invoice / GRN — the actual
+    //    cost the item was bought at. This is the authoritative costing source,
+    //    independent of FIFO layers (per business rule).
+    if (warehouseId) {
+      const purchaseCost = await FifoCostService.resolvePurchaseUnitCost(
+        tenantId, detail.itemId, variantId, warehouseId, transaction
+      );
+      if (purchaseCost > 0) return purchaseCost;
+    }
+
+    // 3. Weighted-average cost maintained on the inventory balance.
     if (warehouseId) {
       const balance = await InventoryBalance.findOne({
         where: { tenantId, itemId: detail.itemId, warehouseId, variantId },
@@ -689,12 +716,11 @@ class SalesInvoiceService {
       if (balanceAvg > 0) return balanceAvg;
     }
 
-    const lineCost = parseFloat(detail.costPrice) || 0;
-    if (lineCost > 0) return lineCost;
-
+    // 4. Item master cost.
     const itemCost = item ? parseFloat(item.costPrice) || 0 : 0;
     if (itemCost > 0) return itemCost;
 
+    // 5. Most recent stock-inward transaction cost (self-healing fallback).
     if (warehouseId) {
       const lastIn = await InventoryTransaction.findOne({
         where: {
@@ -806,11 +832,11 @@ class SalesInvoiceService {
       }
     }
 
-    // Inventory availability and costing: posting must not drive stock negative,
-    // and the sold cost must be determinable so COGS/Inventory post correctly.
-    // FIFO cost layers are authoritative when present; otherwise fall back to
-    // the legacy balance-based check (pre-migration data).
-    const { InventoryBalance, InventoryCostLayer } = require('../models');
+    // Inventory availability: posting must not oversell. Stock-out is consumed
+    // automatically (oldest-first) or from the user's selected GRN / Purchase
+    // Invoice lots; the sold cost is resolved from the linked purchase
+    // documents (not inferred via FIFO). Only availability is pre-validated
+    // here so overselling fails with a clear message before the transaction.
     for (const detail of invoice.details || []) {
       if (!detail.itemId) continue;
       const item = detail.item;
@@ -819,40 +845,14 @@ class SalesInvoiceService {
       if (!isStockItem || !invoice.warehouseId) continue;
       const quantity = parseFloat(detail.quantity) || 0;
       if (quantity <= 0) continue;
-      const variantId = detail.variantId || null;
 
-      const layerCount = await InventoryCostLayer.count({
-        where: { tenantId, itemId: detail.itemId, warehouseId: invoice.warehouseId, variantId },
-      });
-
-      if (layerCount > 0) {
-        const available = await FifoCostService.getAvailableQuantity(
-          tenantId, detail.itemId, invoice.warehouseId, variantId
-        );
-        if (available < quantity) {
-          throw new BadRequestError(`Insufficient stock for "${item.name}". Available (FIFO): ${available}, requested: ${quantity}`);
-        }
-        const remainingValue = await InventoryCostLayer.sum('remainingValue', {
-          where: { tenantId, itemId: detail.itemId, warehouseId: invoice.warehouseId, variantId, remainingQuantity: { [Op.gt]: 0 } },
-        });
-        if (!remainingValue || parseFloat(remainingValue) <= 0) {
-          throw new BadRequestError(`Inventory cost could not be determined for item "${item.name}". Record the item cost or a stock-inward transaction before posting this invoice.`);
-        }
-        continue;
-      }
-
-      const balance = await InventoryBalance.findOne({
-        where: { tenantId, itemId: detail.itemId, warehouseId: invoice.warehouseId, variantId },
-      });
-      const available = balance ? parseFloat(balance.quantityOnHand) || 0 : 0;
-      if (available < quantity) {
-        throw new BadRequestError(`Insufficient stock for "${item.name}". Available: ${available}, requested: ${quantity}`);
-      }
-      const unitCost = await SalesInvoiceService._resolveUnitCost(
-        tenantId, detail, item, invoice.warehouseId, variantId
+      const available = await FifoCostService.getAvailableQuantity(
+        tenantId, detail.itemId, invoice.warehouseId, detail.variantId || null
       );
-      if (unitCost <= 0) {
-        throw new BadRequestError(`Inventory cost could not be determined for item "${item.name}". Record the item cost or a stock-inward transaction before posting this invoice.`);
+      if (available < quantity) {
+        throw new BadRequestError(
+          `Insufficient stock for "${item.name}". Available: ${available}, requested: ${quantity}.`
+        );
       }
     }
   }

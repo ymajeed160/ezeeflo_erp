@@ -5,7 +5,7 @@ const options = {
     openapi: '3.0.0',
     info: {
       title: 'ERP Multi-Tenant API',
-      version: '2.0.0',
+      version: '4.0.0',
       description: `
 A comprehensive multi-tenant ERP system backend API built with Express.js and MySQL.
 

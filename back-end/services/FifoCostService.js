@@ -7,7 +7,9 @@ const {
   InventoryTransaction,
   InventoryBalance,
   GoodsReceipt,
+  GoodsReceiptDetail,
   PurchaseInvoice,
+  PurchaseInvoiceDetail,
   SalesInvoice,
   SalesReturn,
   PurchaseReturn,
@@ -100,6 +102,128 @@ class FifoCostService {
       remaining = this._round(remaining - take, 4);
     }
     return { available: this._round(available, 4), cost: this._round(cost, 6), hasLayers: layers.length > 0 };
+  }
+
+  /**
+   * Read-only cost of a saved manual stock-source selection, computed exactly
+   * like `consumeForSale` would compute it, without locking or consuming.
+   *
+   * @returns { allocations, totalCost, available, errors }
+   */
+  static async previewAllocationCost({ tenantId, detail, invoice, transaction = null }) {
+    const quantity = this._round(parseFloat(detail.quantity) || 0, 4);
+    const variantId = detail.variantId || null;
+    const warehouseId = invoice ? invoice.warehouseId : null;
+    const manual = this._normalizeManualAllocations(detail);
+    if (!manual.length) return { allocations: [], totalCost: 0, available: null, errors: [] };
+
+    const errors = [];
+    if (!warehouseId) {
+      return { allocations: [], totalCost: 0, available: null, errors: ['Select a warehouse before allocating stock sources.'] };
+    }
+
+    const totalSelected = this._round(manual.reduce((sum, entry) => sum + entry.quantity, 0), 4);
+    if (totalSelected !== quantity) {
+      errors.push(`Selected stock total ${totalSelected} does not match the line quantity ${quantity}.`);
+    }
+
+    const layers = await InventoryCostLayer.findAll({
+      where: {
+        id: { [Op.in]: manual.map((entry) => entry.costLayerId) },
+        tenantId,
+        itemId: detail.itemId,
+        warehouseId,
+        variantId,
+      },
+      transaction,
+    });
+    const byId = new Map(layers.map((layer) => [layer.id, layer]));
+
+    const allocations = [];
+    let totalCost = 0;
+    for (const entry of manual) {
+      const layer = byId.get(entry.costLayerId);
+      if (!layer) {
+        errors.push('A selected stock source no longer exists for this item, warehouse or company.');
+        continue;
+      }
+      const available = this._round(parseFloat(layer.remainingQuantity) || 0, 4);
+      if (available < entry.quantity) {
+        errors.push(`Selected stock source has ${available} available but ${entry.quantity} was allocated.`);
+      }
+      let unitCost = this._round(parseFloat(layer.unitCost) || 0, 6);
+      if (unitCost <= 0) {
+        unitCost = this._round(
+          await this.resolvePurchaseUnitCost(tenantId, detail.itemId, variantId, warehouseId, transaction),
+          6
+        );
+      }
+      const lineCost = this._round(entry.quantity * unitCost, 6);
+      totalCost = this._round(totalCost + lineCost, 6);
+      allocations.push({ layerId: layer.id, quantity: entry.quantity, unitCost, totalCost: lineCost });
+    }
+
+    return { allocations, totalCost, available: null, errors };
+  }
+
+  /**
+   * Resolve the acquisition unit cost for an item directly from its linked
+   * purchase documents — the actual cost paid on the Purchase Invoice / Goods
+   * Receipt — rather than from a FIFO cost layer.
+   *
+   * This is the authoritative fallback whenever a layer carries no usable cost
+   * (e.g. stock restored from a sales return / invoice cancellation whose
+   * original cost was never recorded). Lookup order:
+   *   1. Most recent posted Purchase Invoice detail unit_cost
+   *   2. Most recent posted Goods Receipt (GRN) detail unit_price
+   *
+   * @returns {number} unit cost (0 when no linked purchase document is found)
+   */
+  static async resolvePurchaseUnitCost(tenantId, itemId, variantId, warehouseId, transaction = null) {
+    if (!warehouseId) return 0;
+    const vc = variantId || null;
+
+    const piRows = await sequelize.query(
+      `SELECT pid.unit_cost AS cost
+         FROM purchaseinvoicedetails pid
+         JOIN purchaseinvoices pi ON pi.id = pid.purchase_invoice_id
+        WHERE pid.item_id = :itemId
+          AND (pid.variant_id <=> :variantId)
+          AND pi.tenant_id = :tenantId
+          AND pi.warehouse_id = :warehouseId
+          AND pi.status = 'posted'
+          AND pid.unit_cost > 0
+        ORDER BY pi.invoice_date DESC, pi.created_at DESC
+        LIMIT 1`,
+      {
+        replacements: { itemId, variantId: vc, tenantId, warehouseId },
+        type: sequelize.QueryTypes.SELECT,
+        transaction,
+      }
+    );
+    if (piRows && piRows.length) return this._round(parseFloat(piRows[0].cost) || 0, 6);
+
+    const grnRows = await sequelize.query(
+      `SELECT grd.unit_price AS cost
+         FROM goodsreceiptdetails grd
+         JOIN goodsreceipts gr ON gr.id = grd.goods_receipt_id
+        WHERE grd.item_id = :itemId
+          AND (grd.variant_id <=> :variantId)
+          AND gr.tenant_id = :tenantId
+          AND gr.warehouse_id = :warehouseId
+          AND gr.status = 'posted'
+          AND grd.unit_price > 0
+        ORDER BY gr.receipt_date DESC, gr.created_at DESC
+        LIMIT 1`,
+      {
+        replacements: { itemId, variantId: vc, tenantId, warehouseId },
+        type: sequelize.QueryTypes.SELECT,
+        transaction,
+      }
+    );
+    if (grnRows && grnRows.length) return this._round(parseFloat(grnRows[0].cost) || 0, 6);
+
+    return 0;
   }
 
   /**
@@ -465,19 +589,31 @@ class FifoCostService {
 
     if (quantity <= 0) return [];
 
+    const balanceKey = `${tenantId}:${detail.itemId}:${warehouseId}:${variantId}`;
+    const itemName = item ? item.name : detail.itemId;
+
+    // ── Build the consumption plan ──────────────────────────────────────────
+    // Two sources:
+    //   1. A user-selected inward lot (GRN / Purchase Invoice) when supplied.
+    //   2. Automatic oldest-first consumption of the remaining layers when no
+    //      explicit selection is made.
+    // In both cases the sold cost is resolved from the linked Purchase
+    // Invoice / GRN (never inferred via FIFO when a layer carries no cost).
     const manualAllocations = this._normalizeManualAllocations(detail);
+    let batch; // [{ layer, take }]
+
     if (manualAllocations.length) {
-      const batch = manualAllocations.map((entry) => ({
+      const selected = manualAllocations.map((entry) => ({
         costLayerId: entry.costLayerId,
         quantity: this._round(parseFloat(entry.quantity) || 0, 4),
       }));
 
-      const totalSelected = this._round(batch.reduce((sum, entry) => sum + entry.quantity, 0), 4);
+      const totalSelected = this._round(selected.reduce((sum, entry) => sum + entry.quantity, 0), 4);
       if (this._round(totalSelected, 4) !== this._round(quantity, 4)) {
         throw new BadRequestError(`Selected stock allocations total ${totalSelected} but the line quantity is ${quantity}. The selected GRNs must exactly match the sales quantity.`);
       }
 
-      const layerIds = batch.map((entry) => entry.costLayerId);
+      const layerIds = selected.map((entry) => entry.costLayerId);
       const layers = await InventoryCostLayer.findAll({
         where: { id: { [Op.in]: layerIds }, tenantId, itemId: detail.itemId, warehouseId, variantId },
         order: [['receiptDate', 'ASC'], ['fifoSeq', 'ASC']],
@@ -485,7 +621,7 @@ class FifoCostService {
         transaction,
       });
       const layerMap = new Map(layers.map((layer) => [layer.id, layer]));
-      for (const entry of batch) {
+      batch = selected.map((entry) => {
         const layer = layerMap.get(entry.costLayerId);
         if (!layer) {
           throw new BadRequestError('Selected GRN no longer exists or belongs to a different warehouse/company for this item.');
@@ -494,104 +630,58 @@ class FifoCostService {
         if (available < entry.quantity) {
           throw new BadRequestError(`Selected GRN has insufficient stock. Available: ${available}, requested: ${entry.quantity}.`);
         }
+        return { layer, take: entry.quantity };
+      });
+    } else {
+      // Automatic: consume the remaining layers oldest-first (FIFO for
+      // physical quantity only — the cost value is resolved from the linked
+      // purchase documents below, per the business rule).
+      const layers = await this._lockEligibleLayers(tenantId, detail.itemId, warehouseId, variantId, transaction);
+      let available = 0;
+      for (const l of layers) available += this._round(parseFloat(l.remainingQuantity) || 0, 4);
+      available = this._round(available, 4);
+      if (available < quantity) {
+        throw new BadRequestError(`Insufficient stock for "${itemName}". Available: ${available}, requested: ${quantity}.`);
       }
 
-      const balanceKey = `${tenantId}:${detail.itemId}:${warehouseId}:${variantId}`;
-      let running = runningBalances.get(balanceKey);
-      if (running === undefined) {
-        running = await FifoCostService.getAvailableQuantity(tenantId, detail.itemId, warehouseId, variantId, transaction);
+      batch = [];
+      let remaining = this._round(quantity, 4);
+      for (const layer of layers) {
+        if (remaining <= 0) break;
+        const layerRemaining = this._round(parseFloat(layer.remainingQuantity) || 0, 4);
+        if (layerRemaining <= 0) continue;
+        const take = Math.min(layerRemaining, remaining);
+        batch.push({ layer, take });
+        remaining = this._round(remaining - take, 4);
       }
-
-      const allocations = [];
-      for (const entry of batch) {
-        const layer = layerMap.get(entry.costLayerId);
-        const take = this._round(parseFloat(entry.quantity) || 0, 4);
-        const unitCost = this._round(parseFloat(layer.unitCost) || 0, 6);
-        const totalCost = this._round(take * unitCost, 6);
-        const originalQty = this._round(parseFloat(layer.remainingQuantity) || 0, 4);
-        const originalValue = this._round(parseFloat(layer.remainingValue || 0) || 0, 6);
-        await layer.update({
-          remainingQuantity: this._round(originalQty - take, 4),
-          remainingValue: this._round(Math.max(0, originalValue - totalCost), 6),
-        }, { transaction });
-
-        running = this._round(running - take, 4);
-        const stockTx = await InventoryTransaction.create({
-          tenantId,
-          itemId: detail.itemId,
-          variantId,
-          warehouseId,
-          transactionType: 'sale',
-          referenceType: 'SalesInvoice',
-          referenceId: invoice.id,
-          referenceNumber: invoice.invoiceNumber,
-          referenceLineId: detail.id,
-          quantityIn: 0,
-          quantityOut: take,
-          runningBalance: running,
-          unitCost,
-          transactionDate: new Date(),
-        }, { transaction });
-
-        const allocation = await InventoryCostAllocation.create({
-          tenantId,
-          allocationType: 'sale',
-          salesInvoiceId: invoice.id,
-          salesInvoiceDetailId: detail.id,
-          itemId: detail.itemId,
-          variantId,
-          warehouseId,
-          costLayerId: layer.id,
-          quantity: take,
-          unitCost,
-          totalCost,
-          stockTransactionId: stockTx.id,
-        }, { transaction });
-
-        allocations.push({ layerId: layer.id, quantity: take, unitCost, totalCost, allocationId: allocation.id });
-      }
-
-      runningBalances.set(balanceKey, running);
-      return allocations;
     }
 
-    const layers = await this._lockEligibleLayers(tenantId, detail.itemId, warehouseId, variantId, transaction);
-
-    let available = 0;
-    for (const l of layers) available += this._round(parseFloat(l.remainingQuantity) || 0, 4);
-    available = this._round(available, 4);
-
-    if (available < quantity) {
-      const name = item ? item.name : detail.itemId;
-      throw new BadRequestError(
-        `Insufficient stock for "${name}". Available (FIFO): ${available}, requested: ${quantity}. ` +
-        'Run the inventory cost-layer reconciliation if stock exists but no cost layers were found.'
-      );
-    }
-
-    const balanceKey = `${tenantId}:${detail.itemId}:${warehouseId}:${variantId}`;
+    // ── Consume the plan ────────────────────────────────────────────────────
     let running = runningBalances.get(balanceKey);
     if (running === undefined) {
       running = await FifoCostService.getAvailableQuantity(tenantId, detail.itemId, warehouseId, variantId, transaction);
     }
 
     const allocations = [];
-    let remaining = quantity;
+    for (const { layer, take: rawTake } of batch) {
+      const take = this._round(parseFloat(rawTake) || 0, 4);
+      if (take <= 0) continue;
 
-    for (const layer of layers) {
-      if (remaining <= 0) break;
-      const layerRemaining = this._round(parseFloat(layer.remainingQuantity) || 0, 4);
-      if (layerRemaining <= 0) continue;
-
-      const take = Math.min(layerRemaining, remaining);
-      const unitCost = this._round(parseFloat(layer.unitCost) || 0, 6);
+      // Cost source-of-truth: the layer's own cost when recorded; otherwise the
+      // linked Purchase Invoice / GRN acquisition cost.
+      let unitCost = this._round(parseFloat(layer.unitCost) || 0, 6);
+      if (unitCost <= 0) {
+        unitCost = this._round(
+          await FifoCostService.resolvePurchaseUnitCost(tenantId, detail.itemId, variantId, warehouseId, transaction),
+          6
+        );
+      }
       const totalCost = this._round(take * unitCost, 6);
-
-      const newRemainingQty = this._round(layerRemaining - take, 4);
-      const newRemainingValue = this._round(parseFloat(layer.remainingValue || 0) - totalCost, 6);
+      const originalQty = this._round(parseFloat(layer.remainingQuantity) || 0, 4);
+      const originalValue = this._round(parseFloat(layer.remainingValue || 0) || 0, 6);
       await layer.update({
-        remainingQuantity: newRemainingQty,
-        remainingValue: newRemainingValue < 0 ? 0 : newRemainingValue,
+        remainingQuantity: this._round(originalQty - take, 4),
+        remainingValue: this._round(Math.max(0, originalValue - totalCost), 6),
       }, { transaction });
 
       running = this._round(running - take, 4);
@@ -628,7 +718,6 @@ class FifoCostService {
       }, { transaction });
 
       allocations.push({ layerId: layer.id, quantity: take, unitCost, totalCost, allocationId: allocation.id });
-      remaining = this._round(remaining - take, 4);
     }
 
     runningBalances.set(balanceKey, running);

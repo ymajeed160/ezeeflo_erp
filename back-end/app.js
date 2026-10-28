@@ -165,7 +165,7 @@ app.get('/api', (req, res) => {
     return ApiResponse.success(res, {
       message: 'ERP Multi-Tenant API',
       data: {
-        version: '1.0.0',
+        version: '4.0.0',
         swagger: '/api/docs',
         endpoints: {
           health: '/api/health',
