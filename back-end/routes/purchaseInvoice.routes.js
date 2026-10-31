@@ -90,6 +90,14 @@ router.delete(
   purchaseInvoiceController.delete.bind(purchaseInvoiceController)
 );
 
+router.get(
+  '/:id/delete-check',
+  authorize('purchaseinvoice.delete'),
+  purchaseInvoiceValidation.getById,
+  purchaseInvoiceValidation.validate,
+  purchaseInvoiceController.getDeletionCheck.bind(purchaseInvoiceController)
+);
+
 router.post(
   '/:id/approve',
   authorize('purchaseinvoice.approve'),

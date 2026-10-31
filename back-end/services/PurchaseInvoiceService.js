@@ -1,11 +1,13 @@
 'use strict';
 
 const db = require('../models');
+const { Op } = require('sequelize');
 const purchaseInvoiceRepository = require('../repositories/PurchaseInvoiceRepository');
 const JournalEntryService = require('./JournalEntryService');
 const inventoryService = require('./InventoryService');
 const GenericAuditService = require('./GenericAuditService');
-const { requireDeletionEnabled } = require('../utils/deletionSettings');
+const { isDeletionEnabled, requireDeletionEnabled } = require('../utils/deletionSettings');
+const { NotFoundError, ConflictError } = require('../utils/appError');
 const PurchaseInvoiceDTO = require('../dto/PurchaseInvoiceDTO');
 
 class PurchaseInvoiceService {
@@ -328,15 +330,101 @@ class PurchaseInvoiceService {
     }
   }
 
-  async delete(id, tenantId, userId, reason = null) {
+  /**
+   * Pre-flight deletion check used by the UI before offering the delete action.
+   * Returns every blocking dependency plus the linked journal entry, if any.
+   */
+  async getDeletionCheck(id, tenantId) {
     const existing = await purchaseInvoiceRepository.findById(id, tenantId);
-    if (!existing) throw new Error('Purchase Invoice not found');
+    if (!existing) throw new NotFoundError('Purchase Invoice not found');
+
+    const blockers = await this._collectDeletionBlockers(existing, tenantId);
+    const journalEntry = await this._findLinkedJournalEntry(existing, tenantId);
+
+    return {
+      invoiceId: existing.id,
+      invoiceNumber: existing.invoiceNumber,
+      status: existing.status,
+      canDelete: blockers.length === 0,
+      blockers,
+      journalEntry: journalEntry
+        ? {
+            id: journalEntry.id,
+            entryNumber: journalEntry.entryNumber,
+            status: journalEntry.status,
+            entryDate: journalEntry.entryDate,
+          }
+        : null,
+    };
+  }
+
+  /**
+   * Delete a purchase invoice safely.
+   *
+   * Order of operations: validate → (confirm journal entry) → journal entry
+   * removal → inventory reversal → soft delete, all in one transaction.
+   * When a journal entry exists and `deleteJournalEntry` is not confirmed the
+   * call returns a confirmation request and changes nothing.
+   */
+  async delete(id, tenantId, userId, reason = null, options = {}) {
+    const { deleteJournalEntry = false } = options || {};
+
+    const existing = await purchaseInvoiceRepository.findById(id, tenantId);
+    if (!existing) throw new NotFoundError('Purchase Invoice not found');
+
     await requireDeletionEnabled(tenantId, 'purchase_invoices');
-    if (existing.journalEntryId) throw new Error('This Purchase Invoice is linked to a journal entry. Delete the journal entry first, then delete this invoice.');
+
+    const blockers = await this._collectDeletionBlockers(existing, tenantId);
+    if (blockers.length > 0) throw this._deletionBlockedError(blockers);
+
+    const journalEntry = await this._findLinkedJournalEntry(existing, tenantId);
+    if (journalEntry && !deleteJournalEntry) {
+      return {
+        requiresJournalEntryConfirmation: true,
+        message:
+          `This Purchase Invoice has an associated Journal Entry (${journalEntry.entryNumber}). ` +
+          'To delete this invoice, you must first delete its Journal Entry. ' +
+          'Do you want to proceed with deleting the Journal Entry and then the Purchase Invoice?',
+        journalEntry: {
+          id: journalEntry.id,
+          entryNumber: journalEntry.entryNumber,
+          status: journalEntry.status,
+          entryDate: journalEntry.entryDate,
+        },
+      };
+    }
 
     const transaction = await db.sequelize.transaction();
     try {
-      // Record who deleted and why, then soft-delete the header (details are kept for restore)
+      // Re-read under lock and re-validate so concurrent changes cannot slip in.
+      const lockedInvoice = await db.PurchaseInvoice.findOne({
+        where: { id, tenantId, deletedAt: null },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      if (!lockedInvoice) throw new NotFoundError('Purchase Invoice not found');
+
+      const recheck = await this._collectDeletionBlockers(lockedInvoice, tenantId, transaction);
+      if (recheck.length > 0) throw this._deletionBlockedError(recheck);
+
+      let deletedJournalEntry = null;
+      if (journalEntry) {
+        const je = await db.JournalEntry.findOne({
+          where: { id: journalEntry.id, tenantId, deletedAt: null },
+          transaction,
+          lock: transaction.LOCK.UPDATE,
+        });
+        if (!je) throw new ConflictError('The linked Journal Entry no longer exists. Refresh and try again.');
+
+        await JournalEntryService.deleteEntry(je.id, tenantId, userId, {
+          reason: `Deleted with Purchase Invoice ${lockedInvoice.invoiceNumber}`,
+          transaction,
+        });
+        deletedJournalEntry = { id: je.id, entryNumber: je.entryNumber };
+      }
+
+      const reversedInventory = await inventoryService.reverseInvoiceInward(tenantId, lockedInvoice, transaction);
+
       await db.PurchaseInvoice.update(
         { deletedBy: userId, deleteReason: reason || null },
         { where: { id, tenantId }, transaction }
@@ -349,15 +437,179 @@ class PurchaseInvoiceService {
         entityId: id,
         action: 'SOFT_DELETE',
         performedBy: userId,
-        newValues: { deletedBy: userId, deleteReason: reason || null },
+        newValues: {
+          invoiceNumber: lockedInvoice.invoiceNumber,
+          status: lockedInvoice.status,
+          deletedBy: userId,
+          deleteReason: reason || null,
+          journalEntryDeleted: deletedJournalEntry,
+          inventoryReversed: reversedInventory,
+        },
       }, transaction);
 
       await transaction.commit();
-      return { message: 'Purchase Invoice deleted successfully' };
+
+      return {
+        message: 'Purchase Invoice deleted successfully',
+        journalEntryDeleted: deletedJournalEntry,
+        inventoryReversed: reversedInventory,
+      };
     } catch (error) {
       await transaction.rollback();
       throw error;
     }
+  }
+
+  _deletionBlockedError(blockers) {
+    const error = new ConflictError(blockers[0].message);
+    error.errors = blockers;
+    return error;
+  }
+
+  /**
+   * Every dependency that makes deletion unsafe. Stock already sold or consumed
+   * is checked first so the user always sees the sales dependency message.
+   */
+  async _collectDeletionBlockers(existing, tenantId, transaction = null) {
+    const blockers = [];
+    const block = (code, message, extra = {}) => blockers.push({ code, message, ...extra });
+
+    if (existing.status === 'cancelled') {
+      block('INVOICE_CANCELLED', `Purchase Invoice ${existing.invoiceNumber} is cancelled and cannot be deleted.`);
+      return blockers;
+    }
+
+    if (!(await isDeletionEnabled(tenantId, 'purchase_invoices'))) {
+      block(
+        'DELETION_DISABLED',
+        'Deletion is disabled for Purchase Invoices. Enable it in Settings → Deletion Control before deleting.'
+      );
+    }
+
+    const layers = await db.InventoryCostLayer.findAll({
+      where: { tenantId, sourceType: 'purchase', sourceId: existing.id },
+      transaction,
+    });
+
+    if (layers.length > 0) {
+      const allocations = await db.InventoryCostAllocation.findAll({
+        where: { tenantId, costLayerId: { [Op.in]: layers.map((l) => l.id) } },
+        transaction,
+      });
+
+      const saleAllocations = allocations.filter((a) => a.allocationType === 'sale');
+      if (saleAllocations.length > 0) {
+        const salesInvoiceIds = [...new Set(saleAllocations.map((a) => a.salesInvoiceId).filter(Boolean))];
+        const salesInvoices = salesInvoiceIds.length
+          ? await db.SalesInvoice.findAll({
+              where: { id: salesInvoiceIds, tenantId },
+              attributes: ['id', 'invoiceNumber', 'status'],
+              paranoid: false,
+              transaction,
+            })
+          : [];
+        const numbers = salesInvoices.map((s) => s.invoiceNumber).filter(Boolean);
+
+        block(
+          'STOCK_USED_IN_SALES',
+          'This Purchase Invoice cannot be deleted because its stock has already been used in Sales Invoice(s)' +
+            (numbers.length ? `: ${numbers.join(', ')}` : '') +
+            '. Please review the related sales transactions before attempting deletion.',
+          { salesInvoices: salesInvoices.map((s) => ({ id: s.id, invoiceNumber: s.invoiceNumber, status: s.status })) }
+        );
+      }
+
+      const consumed = layers.some((layer) => {
+        const received = Math.round((parseFloat(layer.receivedQuantity) || 0) * 10000) / 10000;
+        const remaining = Math.round((parseFloat(layer.remainingQuantity) || 0) * 10000) / 10000;
+        return remaining < received;
+      });
+
+      if (consumed && saleAllocations.length === 0) {
+        block(
+          'STOCK_CONSUMED',
+          'This Purchase Invoice cannot be deleted because its stock has already been consumed by other ' +
+            'inventory transactions (purchase returns, transfers or adjustments).'
+        );
+      }
+    } else {
+      const movementCount = await db.InventoryTransaction.count({
+        where: { tenantId, referenceType: 'PurchaseInvoice', referenceId: existing.id },
+        transaction,
+      });
+      if (movementCount > 0) {
+        block(
+          'STOCK_MOVEMENTS_UNTRACKED',
+          'This Purchase Invoice cannot be deleted because its inventory movements cannot be safely traced for reversal.'
+        );
+      }
+    }
+
+    const returnCount = await db.PurchaseReturn.count({
+      where: { tenantId, purchaseInvoiceId: existing.id },
+      transaction,
+    });
+    if (returnCount > 0) {
+      block(
+        'PURCHASE_RETURNS',
+        `This Purchase Invoice cannot be deleted because ${returnCount} purchase return(s) reference it.`
+      );
+    }
+
+    const paymentAllocationCount = await db.SupplierPaymentAllocation.count({
+      where: { tenantId, purchaseInvoiceId: existing.id },
+      transaction,
+    });
+    if (paymentAllocationCount > 0) {
+      block(
+        'SUPPLIER_PAYMENTS',
+        `This Purchase Invoice cannot be deleted because ${paymentAllocationCount} supplier payment(s) are allocated to it.`
+      );
+    }
+
+    const voucherAllocationCount = await db.PaymentVoucherAllocation.count({
+      where: { tenantId, purchaseInvoiceId: existing.id },
+      transaction,
+    });
+    if (voucherAllocationCount > 0) {
+      block(
+        'PAYMENT_VOUCHERS',
+        `This Purchase Invoice cannot be deleted because ${voucherAllocationCount} cash payment voucher(s) are allocated to it.`
+      );
+    }
+
+    const assetCount = await db.Asset.count({
+      where: { tenantId, purchaseInvoiceId: existing.id },
+      transaction,
+    });
+    if (assetCount > 0) {
+      block(
+        'FIXED_ASSETS',
+        `This Purchase Invoice cannot be deleted because ${assetCount} fixed asset(s) were created from it.`
+      );
+    }
+
+    return blockers;
+  }
+
+  /**
+   * The journal entry generated by this purchase invoice, identified by the
+   * stored link or by the source document relationship.
+   */
+  async _findLinkedJournalEntry(existing, tenantId, transaction = null) {
+    if (existing.journalEntryId) {
+      const entry = await db.JournalEntry.findOne({
+        where: { id: existing.journalEntryId, tenantId },
+        transaction,
+      });
+      if (entry) return entry;
+    }
+
+    return db.JournalEntry.findOne({
+      where: { tenantId, source: 'PURCHASE_INVOICE', sourceId: existing.id },
+      order: [['created_at', 'DESC']],
+      transaction,
+    });
   }
 
   async restore(id, tenantId, userId) {

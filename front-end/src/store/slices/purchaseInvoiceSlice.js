@@ -66,8 +66,8 @@ export const deletePurchaseInvoice = createAsyncThunk(
   'purchaseInvoices/delete',
   async (payload, { rejectWithValue }) => {
     try {
-      const { id, reason } = typeof payload === 'string' ? { id: payload } : payload;
-      const { data } = await purchaseInvoiceApi.delete(id, reason);
+      const { id, reason, deleteJournalEntry } = typeof payload === 'string' ? { id: payload } : payload;
+      const { data } = await purchaseInvoiceApi.delete(id, reason, { deleteJournalEntry });
       return { id, ...data };
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || 'Failed to delete purchase invoice');

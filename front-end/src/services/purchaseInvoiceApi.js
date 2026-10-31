@@ -15,8 +15,13 @@ const purchaseInvoiceApi = {
   update: (id, data) =>
     api.put(`/purchase-invoices/${id}`, data),
 
-  delete: (id, reason) =>
-    api.delete(`/purchase-invoices/${id}`, { data: { reason } }),
+  delete: (id, reason, options = {}) =>
+    api.delete(`/purchase-invoices/${id}`, {
+      data: { reason, deleteJournalEntry: options.deleteJournalEntry === true },
+    }),
+
+  checkDelete: (id) =>
+    api.get(`/purchase-invoices/${id}/delete-check`),
 
   restore: (id) =>
     api.post(`/purchase-invoices/${id}/restore`),

@@ -50,9 +50,11 @@ deploy-tezhost/nodejs_app/
 deploy-tezhost/hr_payroll_nodejs_app/
 deploy-tezhost/loyalty_nodejs_app/
 
-# Production database dumps (sensitive data)
+# Production database dumps (sensitive data: password hashes, IBANs, customer PII)
 deploy-tezhost/ezeefloc_erp.sql.gz
 deploy-tezhost/ezeefloc_erp.sql/
+deploy-tezhost/ezeefloc_erp_tezhost_*.sql
+deploy-tezhost/ezeefloc_erp_tezhost_*.sql.gz
 database/ezeefloc_erp.sql
 
 # Unrelated full project copy

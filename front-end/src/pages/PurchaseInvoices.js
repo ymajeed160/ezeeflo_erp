@@ -103,6 +103,8 @@ const PurchaseInvoices = () => {
   const [confirmFetching, setConfirmFetching] = useState(false);
   const [reasonDialog, setReasonDialog] = useState({ open: false, action: null, target: null });
   const [reasonText, setReasonText] = useState('');
+  const [deleteCheck, setDeleteCheck] = useState({ open: false, loading: false, target: null, info: null });
+  const [deleting, setDeleting] = useState(false);
   const [variantDialog, setVariantDialog] = useState({ open: false, item: null, lineIndex: null });
   const activeCompany = useSelector((s) => s.company?.activeCompany || null);
 
@@ -292,22 +294,55 @@ const PurchaseInvoices = () => {
   };
 
   const handleDelete = async (id) => {
-    setReasonDialog({ open: true, action: 'delete', target: id });
     setReasonText('');
+    setDeleteCheck({ open: true, loading: true, target: id, info: null });
+    try {
+      const response = await purchaseInvoiceApi.checkDelete(id);
+      const info = response.data?.data || response.data;
+      setDeleteCheck({ open: true, loading: false, target: id, info });
+    } catch (error) {
+      setDeleteCheck({ open: false, loading: false, target: null, info: null });
+      apiError(error.response?.data?.message || 'Failed to check purchase invoice dependencies');
+    }
+  };
+
+  const closeDeleteDialog = () => {
+    if (deleting) return;
+    setDeleteCheck({ open: false, loading: false, target: null, info: null });
+    setReasonText('');
+  };
+
+  const handleDeleteConfirm = async () => {
+    const { target, info } = deleteCheck;
+    if (!target || !info?.canDelete) return;
+    setDeleting(true);
+    const result = await dispatch(
+      deletePurchaseInvoice({
+        id: target,
+        reason: reasonText || null,
+        deleteJournalEntry: !!info.journalEntry,
+      })
+    );
+    setDeleting(false);
+    if (result.meta.requestStatus === 'fulfilled') {
+      apiSuccess(
+        info.journalEntry
+          ? 'Journal entry and purchase invoice deleted successfully'
+          : 'Purchase Invoice deleted successfully'
+      );
+      setDeleteCheck({ open: false, loading: false, target: null, info: null });
+      setReasonText('');
+      loadData();
+    } else {
+      apiError(result.payload || 'Failed to delete purchase invoice');
+    }
   };
 
   const handleReasonConfirm = async () => {
     const { action, target } = reasonDialog;
     setReasonDialog({ open: false, action: null, target: null });
     if (!target) return;
-    if (action === 'delete') {
-      const result = await dispatch(deletePurchaseInvoice({ id: target, reason: reasonText || null }));
-      if (result.meta.requestStatus === 'fulfilled') {
-        apiSuccess('Purchase Invoice deleted successfully');
-      } else {
-        apiError(result.payload || 'Failed to delete purchase invoice');
-      }
-    } else if (action === 'cancel') {
+    if (action === 'cancel') {
       const result = await dispatch(cancelPurchaseInvoice({ id: target, reason: reasonText || null }));
       if (result.meta.requestStatus === 'fulfilled') {
         apiSuccess('Purchase Invoice cancelled successfully');
@@ -693,16 +728,12 @@ const PurchaseInvoices = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Delete / Cancel reason dialog */}
+      {/* Cancel reason dialog */}
       <Dialog open={reasonDialog.open} onClose={() => setReasonDialog({ open: false, action: null, target: null })} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          {reasonDialog.action === 'delete' ? 'Delete Purchase Invoice' : 'Cancel Purchase Invoice'}
-        </DialogTitle>
+        <DialogTitle>Cancel Purchase Invoice</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-            {reasonDialog.action === 'delete'
-              ? 'This invoice will be deleted. If it has a journal entry, delete the journal entry first.'
-              : 'Cancelling a posted invoice reverses its journal entry and inventory.'}
+            Cancelling a posted invoice reverses its journal entry and inventory.
           </Typography>
           <TextField
             fullWidth
@@ -716,13 +747,87 @@ const PurchaseInvoices = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setReasonDialog({ open: false, action: null, target: null })}>Back</Button>
-          <Button
-            onClick={handleReasonConfirm}
-            variant="contained"
-            color={reasonDialog.action === 'delete' ? 'error' : 'warning'}
-          >
-            {reasonDialog.action === 'delete' ? 'Delete' : 'Cancel Invoice'}
+          <Button onClick={handleReasonConfirm} variant="contained" color="warning">
+            Cancel Invoice
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Safe delete dialog */}
+      <Dialog open={deleteCheck.open} onClose={closeDeleteDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {deleteCheck.loading
+            ? 'Checking Purchase Invoice…'
+            : deleteCheck.info && !deleteCheck.info.canDelete
+            ? 'Cannot Delete Purchase Invoice'
+            : deleteCheck.info?.journalEntry
+            ? 'Delete Journal Entry and Purchase Invoice'
+            : 'Delete Purchase Invoice'}
+        </DialogTitle>
+        <DialogContent>
+          {deleteCheck.loading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+              <CircularProgress size={28} />
+            </Box>
+          ) : (
+            <>
+              {deleteCheck.info && !deleteCheck.info.canDelete && (
+                <Stack spacing={1}>
+                  <Typography variant="body2" color="text.secondary">
+                    This invoice cannot be deleted for the following reason(s):
+                  </Typography>
+                  {deleteCheck.info.blockers.map((blocker, index) => (
+                    <Alert key={blocker.code || index} severity="error">
+                      {blocker.message}
+                    </Alert>
+                  ))}
+                </Stack>
+              )}
+              {deleteCheck.info?.canDelete && (
+                <>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                    {deleteCheck.info.journalEntry
+                      ? `This Purchase Invoice has an associated Journal Entry (${deleteCheck.info.journalEntry.entryNumber}). To delete this invoice, you must first delete its Journal Entry. Do you want to proceed with deleting the Journal Entry and then the Purchase Invoice?`
+                      : 'This purchase invoice has no journal entry and no blocking dependencies. It will be deleted.'}
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Reason (optional)"
+                    multiline
+                    rows={2}
+                    value={reasonText}
+                    onChange={(e) => setReasonText(e.target.value)}
+                  />
+                </>
+              )}
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          {deleteCheck.info && !deleteCheck.info.canDelete ? (
+            <Button onClick={closeDeleteDialog} variant="contained">
+              Close
+            </Button>
+          ) : (
+            <>
+              <Button onClick={closeDeleteDialog} disabled={deleting}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleDeleteConfirm}
+                variant="contained"
+                color="error"
+                disabled={deleting || deleteCheck.loading || !deleteCheck.info?.canDelete}
+              >
+                {deleting
+                  ? 'Deleting...'
+                  : deleteCheck.info?.journalEntry
+                  ? 'Delete Journal Entry and Continue'
+                  : 'Delete'}
+              </Button>
+            </>
+          )}
         </DialogActions>
       </Dialog>
 
@@ -1114,11 +1219,6 @@ const PurchaseInvoices = () => {
                                 <CheckCircle fontSize="small" />
                               </IconButton>
                             </Tooltip>
-                            <Tooltip title="Delete">
-                              <IconButton size="small" color="error" onClick={() => handleDelete(inv.id)}>
-                                <Delete fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
                           </>
                         )}
                         {inv.status === 'confirmed' && (
@@ -1158,6 +1258,13 @@ const PurchaseInvoices = () => {
                               </IconButton>
                             </Tooltip>
                           </>
+                        )}
+                        {inv.status !== 'cancelled' && (
+                          <Tooltip title="Delete">
+                            <IconButton size="small" color="error" onClick={() => handleDelete(inv.id)}>
+                              <Delete fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
                         )}
                       </TableCell>
                     </TableRow>

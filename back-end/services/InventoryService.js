@@ -97,6 +97,66 @@ class InventoryService {
   }
 
   /**
+   * Reverse the stock received by a purchase invoice.
+   *
+   * Only the inward movements created by the invoice itself are reversed: the
+   * FIFO layers are exhausted and a matching reversal movement is recorded so
+   * the stock history stays traceable. Balances are re-derived from the layers
+   * afterwards. Callers must verify the layers are untouched before calling.
+   */
+  static async reverseInvoiceInward(tenantId, invoice, transaction) {
+    const { InventoryCostLayer } = require('../models');
+    const InventoryTransactionService = require('./InventoryTransactionService');
+    const FifoCostService = require('./FifoCostService');
+
+    const layers = await InventoryCostLayer.findAll({
+      where: { tenantId, sourceType: 'purchase', sourceId: invoice.id },
+      transaction,
+      lock: transaction ? transaction.LOCK.UPDATE : undefined,
+    });
+
+    const reversed = [];
+    for (const layer of layers) {
+      const quantity = parseFloat(layer.remainingQuantity) || 0;
+      const unitCost = parseFloat(layer.unitCost) || 0;
+
+      if (quantity > 0) {
+        // Mirrors the goods-receipt cancellation pattern: a stock-out movement
+        // with the dedicated 'receipt_cancel' type, traceable to the invoice.
+        await InventoryTransactionService.recordTransaction({
+          tenantId,
+          itemId: layer.itemId,
+          variantId: layer.variantId,
+          warehouseId: layer.warehouseId,
+          transactionType: 'receipt_cancel',
+          referenceId: invoice.id,
+          referenceType: 'PurchaseInvoice_Deleted',
+          referenceNumber: invoice.invoiceNumber,
+          quantity: -quantity,
+          unitCost,
+          totalCost: -(quantity * unitCost),
+        }, transaction);
+      }
+
+      await layer.update({ remainingQuantity: 0, remainingValue: 0 }, { transaction });
+      const balance = await FifoCostService.recomputeBalance(
+        tenantId, layer.itemId, layer.warehouseId, layer.variantId, transaction
+      );
+
+      reversed.push({
+        itemId: layer.itemId,
+        variantId: layer.variantId,
+        warehouseId: layer.warehouseId,
+        quantity,
+        unitCost,
+        quantityOnHand: balance.quantityOnHand,
+      });
+    }
+
+    return reversed;
+  }
+
+  /**
    * Get current stock for an item in a warehouse.
    */
   static async getStock(tenantId, itemId, warehouseId, variantId = null) {

@@ -162,8 +162,9 @@ class JournalEntryRepository extends BaseRepository {
     }
   }
 
-  async deleteEntry(id, tenantId, userId = null, reason = null) {
-    const transaction = await sequelize.transaction();
+  async deleteEntry(id, tenantId, userId = null, reason = null, externalTransaction = null) {
+    const transaction = externalTransaction || await sequelize.transaction();
+    const shouldUseOwnTx = !externalTransaction;
     try {
       const now = new Date();
 
@@ -179,10 +180,10 @@ class JournalEntryRepository extends BaseRepository {
         { where: { id, tenantId, deletedAt: null }, paranoid: false, transaction }
       );
 
-      await transaction.commit();
+      if (shouldUseOwnTx) await transaction.commit();
       return affected > 0;
     } catch (error) {
-      await transaction.rollback();
+      if (shouldUseOwnTx) await transaction.rollback();
       logger.error('JournalEntryRepository deleteEntry error:', { error: error.message });
       throw error;
     }

@@ -58,9 +58,33 @@ class PurchaseInvoiceController {
       const tenantId = req.user.tenantId;
       const userId = req.user.id;
       const { id } = req.params;
-      const reason = req.body?.reason || null;
-      const result = await purchaseInvoiceService.delete(id, tenantId, userId, reason);
+      const { reason = null, deleteJournalEntry = false } = req.body || {};
+
+      const result = await purchaseInvoiceService.delete(id, tenantId, userId, reason, {
+        deleteJournalEntry: deleteJournalEntry === true,
+      });
+
+      if (result.requiresJournalEntryConfirmation) {
+        return res.status(409).json({
+          success: false,
+          code: 'JOURNAL_ENTRY_DELETE_CONFIRMATION_REQUIRED',
+          message: result.message,
+          data: result,
+        });
+      }
+
       res.json({ success: true, ...result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getDeletionCheck(req, res, next) {
+    try {
+      const tenantId = req.user.tenantId;
+      const { id } = req.params;
+      const result = await purchaseInvoiceService.getDeletionCheck(id, tenantId);
+      res.json({ success: true, data: result });
     } catch (error) {
       next(error);
     }
